@@ -1,0 +1,31 @@
+{
+  "name": "pje-perito-automation",
+  "version": "1.0.0",
+  "description": "Automação para vinculação de peritos no PJE",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron src/main.js",
+    "dev": "electron src/main.js --dev",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "electron": "^27.0.0",
+    "playwright": "^1.40.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.6.4"
+  },
+  "build": {
+    "appId": "com.pje.perito.automation",
+    "productName": "PJE Perito Automation",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "data/**/*",
+      "node_modules/**/*"
+    ]
+  }
+}

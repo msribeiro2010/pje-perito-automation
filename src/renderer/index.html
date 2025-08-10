@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PJE Perito Automation</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-gavel"></i> PJE Perito Automation</h1>
+            <p>Sistema de automação para vinculação de peritos no PJE</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="peritos">Peritos</button>
+            <button class="tab-button" data-tab="config">Configurações</button>
+            <button class="tab-button" data-tab="automation">Automação</button>
+        </nav>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <div id="loading-title" class="loading-text">Processando...</div>
+                <div id="loading-subtitle" class="loading-details">Aguarde enquanto o sistema trabalha</div>
+                <div class="progress-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="progress-text" class="progress-text">0/0 passos concluídos</div>
+            </div>
+        </div>
+
+        <!-- Aba Peritos -->
+        <div id="peritos" class="tab-content active">
+            <div class="section-header">
+                <h2>Gerenciar Peritos</h2>
+                <div class="button-group">
+                    <button id="add-perito" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Adicionar Perito
+                    </button>
+                    <button id="import-peritos" class="btn btn-secondary">
+                        <i class="fas fa-upload"></i> Importar
+                    </button>
+                    <button id="export-peritos" class="btn btn-secondary">
+                        <i class="fas fa-download"></i> Exportar
+                    </button>
+                </div>
+            </div>
+
+            <div class="peritos-list">
+                <div class="table-container">
+                    <table id="peritos-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all"></th>
+                                <th>Nome</th>
+                                <th>CPF</th>
+                                <th>Órgãos Julgadores</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="peritos-tbody">
+                            <!-- Peritos serão carregados aqui -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aba Configurações -->
+        <div id="config" class="tab-content">
+            <div class="section-header">
+                <h2>Configurações do Sistema</h2>
+            </div>
+
+            <form id="config-form" class="config-form">
+                <div class="form-group">
+                    <label for="pje-url">URL do PJE:</label>
+                    <input type="url" id="pje-url" name="PJE_URL" placeholder="https://pje.exemplo.com.br" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="login">Login:</label>
+                    <input type="text" id="login" name="LOGIN" placeholder="Seu login" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha:</label>
+                    <input type="password" id="password" name="PASSWORD" placeholder="Sua senha" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Salvar Configurações
+                </button>
+            </form>
+        </div>
+
+        <!-- Aba Automação -->
+        <div id="automation" class="tab-content">
+            <div class="section-header">
+                <h2>Executar Automação</h2>
+            </div>
+
+            <div class="automation-controls">
+                <div class="selected-peritos">
+                    <h3>Peritos Selecionados:</h3>
+                    <div id="selected-peritos-list" class="selected-list">
+                        <p class="no-selection">Nenhum perito selecionado</p>
+                    </div>
+                </div>
+
+                <div class="automation-buttons">
+                    <button id="start-automation" class="btn btn-success" disabled>
+                        <i class="fas fa-play"></i> Iniciar Automação
+                    </button>
+                    <button id="stop-automation" class="btn btn-danger" disabled>
+                        <i class="fas fa-stop"></i> Parar Automação
+                    </button>
+                </div>
+
+                <div class="status-panel">
+                    <h3>Status da Automação:</h3>
+                    <div id="status-log" class="status-log">
+                        <p class="status-item info">Aguardando início da automação...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para adicionar/editar perito -->
+    <div id="perito-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Adicionar Perito</h3>
+                <span class="close">&times;</span>
+            </div>
+            <form id="perito-form">
+                <div class="form-group">
+                    <label for="perito-nome">Nome:</label>
+                    <input type="text" id="perito-nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="perito-cpf">CPF:</label>
+                    <input type="text" id="perito-cpf" placeholder="000.000.000-00" required>
+                </div>
+                <div class="form-group">
+                    <label for="perito-ojs">Órgãos Julgadores (um por linha):</label>
+                    <textarea id="perito-ojs" rows="5" placeholder="Vara do Trabalho de Atibaia\nLIQ2 - Jundiaí"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" id="cancel-perito">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
