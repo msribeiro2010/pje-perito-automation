@@ -1,15 +1,18 @@
-# PJE Perito Automation
+# PJE Automation - Peritos e Servidores
 
-Sistema de automação para vinculação de peritos no PJE (Processo Judicial Eletrônico) com interface gráfica moderna e intuitiva.
+Sistema de automação para vinculação de peritos e servidores no PJE (Processo Judicial Eletrônico). com interface gráfica moderna e intuitiva.
 
 ## 🚀 Funcionalidades
 
 - **Interface Gráfica Moderna**: Interface desenvolvida com Electron para uma experiência de usuário profissional
 - **Gerenciamento de Peritos**: Adicione, edite e remova peritos com facilidade
+- **Gerenciamento de Servidores**: Configure e gerencie dados de servidores do sistema
+- **Seleção Múltipla de OJs**: Interface intuitiva para seleção de múltiplos órgãos julgadores
 - **Configuração Segura**: Configure credenciais e URL do PJE de forma segura
 - **Automação Inteligente**: Execute a vinculação de órgãos julgadores automaticamente
 - **Monitoramento em Tempo Real**: Acompanhe o progresso da automação com logs detalhados
-- **Seleção Flexível**: Escolha quais peritos processar em cada execução
+- **Seleção Flexível**: Escolha quais peritos ou servidores processar em cada execução
+- **Relatórios Detalhados**: Gere relatórios completos das operações realizadas
 
 ## 📋 Pré-requisitos
 
