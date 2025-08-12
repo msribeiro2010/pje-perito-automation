@@ -1,0 +1,18 @@
+[
+  {
+    "nome": "Marcelo",
+    "cpf": "53036140697",
+    "perfil": "Assessor",
+    "ojs": [
+      "1ª Vara do Trabalho de Ribeirão Preto"
+    ],
+    "vinculos": [
+      {
+        "papel": "Assessor",
+        "localizacao": "1ª Vara do Trabalho de Ribeirão Preto",
+        "dataInicial": "",
+        "dataFinal": ""
+      }
+    ]
+  }
+]

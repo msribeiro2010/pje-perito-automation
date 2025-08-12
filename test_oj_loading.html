@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste de Carregamento de OJs</title>
+</head>
+<body>
+    <h1>Teste de Carregamento de OJs</h1>
+    <div id="status">Carregando...</div>
+    <div id="search-container">
+        <input type="text" id="search" placeholder="Digite para buscar OJs..." style="width: 300px; padding: 10px;">
+        <div id="results" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;"></div>
+    </div>
+    <div id="debug" style="margin-top: 20px; font-family: monospace; font-size: 12px;"></div>
+
+    <script>
+        let ojList = [];
+        
+        function normalizeText(text) {
+            return text.toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9\s]/g, '')
+                .trim();
+        }
+        
+        function filterOJs(searchTerm) {
+            if (!searchTerm) {
+                return ojList.slice(0, 50);
+            }
+            
+            const normalizedSearch = normalizeText(searchTerm);
+            const searchWords = normalizedSearch.split(/\s+/).filter(word => word.length > 0);
+            
+            const filtered = ojList.filter(oj => {
+                const normalizedOJ = normalizeText(oj);
+                return searchWords.every(word => 
+                    normalizedOJ.split(/\s+/).some(ojWord => ojWord.startsWith(word))
+                );
+            });
+            
+            return filtered.slice(0, 50);
+        }
+        
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('results');
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<div style="color: #666;">Nenhum OJ encontrado</div>';
+            } else {
+                resultsDiv.innerHTML = results.map(oj => 
+                    `<div style="padding: 5px; border-bottom: 1px solid #eee;">${oj}</div>`
+                ).join('');
+                
+                if (results.length === 50) {
+                    resultsDiv.innerHTML += '<div style="color: #666; font-style: italic; padding: 5px;">... e mais resultados (refine a busca)</div>';
+                }
+            }
+        }
+        
+        async function loadOJs() {
+            try {
+                document.getElementById('status').textContent = 'Carregando dados...';
+                
+                const response = await fetch('./orgaos_pje.json');
+                const ojData = await response.json();
+                
+                document.getElementById('debug').innerHTML = `
+                    <strong>Estrutura do JSON:</strong><br>
+                    Tipo: ${typeof ojData}<br>
+                    Keys: ${Object.keys(ojData).slice(0, 10).join(', ')}...<br>
+                    Total de cidades: ${Object.keys(ojData).length}<br>
+                `;
+                
+                // Extract all OJs from all cities
+                const allOJs = [];
+                Object.keys(ojData).forEach(cidade => {
+                    if (Array.isArray(ojData[cidade])) {
+                        allOJs.push(...ojData[cidade]);
+                    }
+                });
+                
+                // Sort alphabetically
+                ojList = allOJs.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+                
+                document.getElementById('status').textContent = `${ojList.length} OJs carregados com sucesso!`;
+                document.getElementById('debug').innerHTML += `<br><strong>Total de OJs:</strong> ${ojList.length}<br>`;
+                document.getElementById('debug').innerHTML += `<br><strong>Primeiros 10 OJs:</strong><br>${ojList.slice(0, 10).join('<br>')}<br>`;
+                
+                // Test Campinas search
+                const campinasResults = filterOJs('Campinas');
+                document.getElementById('debug').innerHTML += `<br><strong>Busca por 'Campinas':</strong> ${campinasResults.length} resultados<br>`;
+                
+                displayResults(ojList.slice(0, 50));
+                
+            } catch (error) {
+                document.getElementById('status').textContent = 'Erro ao carregar dados: ' + error.message;
+                document.getElementById('debug').textContent = 'Erro: ' + error.stack;
+            }
+        }
+        
+        document.getElementById('search').addEventListener('input', (e) => {
+            const results = filterOJs(e.target.value);
+            displayResults(results);
+        });
+        
+        // Load data when page loads
+        loadOJs();
+    </script>
+</body>
+</html>

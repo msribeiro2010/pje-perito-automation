@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug OJ Modal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .debug-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .oj-selector {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .oj-selected {
+            min-height: 40px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #f9f9f9;
+            margin-bottom: 5px;
+        }
+        .oj-search {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 5px;
+        }
+        .oj-dropdown {
+            position: relative;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .oj-option {
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        .oj-option:hover {
+            background: #f0f0f0;
+        }
+        .oj-option.selected {
+            background: #007bff;
+            color: white;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Debug OJ Modal - Teste de Inicialização</h1>
+    
+    <div class="debug-section">
+        <h3>1. Teste de Container</h3>
+        <div id="oj-selector-v2" class="oj-selector">
+            <!-- Container será preenchido dinamicamente -->
+        </div>
+        <button onclick="testContainer()">Verificar Container</button>
+    </div>
+    
+    <div class="debug-section">
+        <h3>2. Teste de Inicialização</h3>
+        <button onclick="testInitialization()">Inicializar OJ Selector</button>
+        <button onclick="testModalOpen()">Simular Abertura do Modal</button>
+    </div>
+    
+    <div class="debug-section">
+        <h3>3. Log de Debug</h3>
+        <button onclick="clearLog()">Limpar Log</button>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        // Simular a lista de OJs
+        window.ojList = [
+            'LIQ2 - Bauru',
+            'Órgão Centralizador de Leilões Judiciais de Limeira',
+            'Órgão Centralizador de Leilões Judiciais de Araraquara',
+            'Vara do Trabalho de Ubatuba',
+            'EXE1 - São José dos Campos',
+            '1ª Vara Cível de São Paulo',
+            '2ª Vara Criminal de Campinas',
+            'Vara da Fazenda Pública de Santos'
+        ];
+        
+        window.ojSelectors = {};
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        function testContainer() {
+            const container = document.getElementById('oj-selector-v2');
+            log(`Container encontrado: ${!!container}`);
+            if (container) {
+                log(`Container ID: ${container.id}`);
+                log(`Container classes: ${container.className}`);
+                log(`Container innerHTML: ${container.innerHTML}`);
+            }
+        }
+        
+        function testInitialization() {
+            log('=== INICIANDO TESTE DE INICIALIZAÇÃO ===');
+            
+            try {
+                const containerId = 'oj-selector-v2';
+                const container = document.getElementById(containerId);
+                
+                log(`Container ID: ${containerId}`);
+                log(`Container encontrado: ${!!container}`);
+                log(`Lista de OJs: ${window.ojList ? window.ojList.length : 0} itens`);
+                
+                if (container && window.ojList && window.ojList.length > 0) {
+                    // Limpar seletor existente
+                    if (window.ojSelectors[containerId]) {
+                        delete window.ojSelectors[containerId];
+                        log('Seletor anterior removido');
+                    }
+                    
+                    // Criar novo seletor
+                    window.ojSelectors[containerId] = new OJSelector(containerId, window.ojList);
+                    log('OJ Selector criado com sucesso!');
+                } else {
+                    log('ERRO: Container não encontrado ou lista de OJs vazia');
+                }
+            } catch (error) {
+                log(`ERRO na inicialização: ${error.message}`);
+                console.error('Erro detalhado:', error);
+            }
+        }
+        
+        function testModalOpen() {
+            log('=== SIMULANDO ABERTURA DO MODAL ===');
+            
+            // Simular o que acontece quando o modal abre
+            const container = document.getElementById('oj-selector-v2');
+            if (container) {
+                container.style.display = 'block';
+                log('Container exibido');
+                
+                // Aguardar um pouco e então inicializar
+                setTimeout(() => {
+                    testInitialization();
+                }, 100);
+            } else {
+                log('ERRO: Container não encontrado para exibir');
+            }
+        }
+        
+        // Classe OJSelector simplificada para teste
+        class OJSelector {
+            constructor(containerId, ojList) {
+                log(`OJSelector constructor - ID: ${containerId}, OJs: ${ojList.length}`);
+                this.containerId = containerId;
+                this.ojList = ojList;
+                this.selectedOJs = [];
+                this.filteredOJs = [...ojList];
+                this.init();
+            }
+
+            init() {
+                log('OJSelector.init() chamado');
+                this.container = document.getElementById(this.containerId);
+                log(`Container encontrado: ${!!this.container}`);
+                
+                if (!this.container) {
+                    log(`ERRO: Container não encontrado: ${this.containerId}`);
+                    return;
+                }
+                
+                log('Criando HTML...');
+                this.createHTML();
+                
+                log('Buscando elementos...');
+                this.searchInput = this.container.querySelector('.oj-search');
+                this.selectedContainer = this.container.querySelector('.oj-selected');
+                this.dropdown = this.container.querySelector('.oj-dropdown');
+                this.optionsContainer = this.container.querySelector('.oj-options');
+                this.hiddenInput = this.container.querySelector('input[type="hidden"]');
+                
+                log(`Elementos encontrados:`);
+                log(`- searchInput: ${!!this.searchInput}`);
+                log(`- selectedContainer: ${!!this.selectedContainer}`);
+                log(`- dropdown: ${!!this.dropdown}`);
+                log(`- optionsContainer: ${!!this.optionsContainer}`);
+                log(`- hiddenInput: ${!!this.hiddenInput}`);
+                
+                if (!this.searchInput || !this.selectedContainer || !this.dropdown || !this.optionsContainer || !this.hiddenInput) {
+                    log('ERRO: Alguns elementos não foram encontrados');
+                    return;
+                }
+                
+                log('Configurando event listeners...');
+                this.setupEventListeners();
+                
+                log('Renderizando opções...');
+                this.renderOptions();
+                
+                log('Atualizando display...');
+                this.updateSelectedDisplay();
+                
+                log('=== OJSelector INICIALIZADO COM SUCESSO ===');
+            }
+            
+            createHTML() {
+                this.container.innerHTML = `
+                    <div class="oj-selected">Selecione um ou mais órgãos julgadores...</div>
+                    <input type="text" class="oj-search" placeholder="Buscar órgãos julgadores...">
+                    <div class="oj-dropdown" style="display: none;">
+                        <div class="oj-options"></div>
+                    </div>
+                    <input type="hidden" name="selected-ojs" value="">
+                `;
+                log('HTML criado');
+            }
+
+            setupEventListeners() {
+                this.searchInput.addEventListener('input', (e) => {
+                    this.filterOptions(e.target.value);
+                });
+
+                this.searchInput.addEventListener('focus', () => {
+                    this.showDropdown();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!this.container.contains(e.target)) {
+                        this.hideDropdown();
+                    }
+                });
+                
+                log('Event listeners configurados');
+            }
+            
+            filterOptions(searchTerm) {
+                this.filteredOJs = this.ojList.filter(oj => 
+                    oj.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+                this.renderOptions();
+            }
+            
+            renderOptions() {
+                this.optionsContainer.innerHTML = '';
+                
+                this.filteredOJs.forEach(oj => {
+                    const option = document.createElement('div');
+                    option.className = 'oj-option';
+                    option.textContent = oj;
+                    
+                    if (this.selectedOJs.includes(oj)) {
+                        option.classList.add('selected');
+                    }
+                    
+                    option.addEventListener('click', () => {
+                        this.toggleOJ(oj);
+                    });
+                    
+                    this.optionsContainer.appendChild(option);
+                });
+                
+                log(`${this.filteredOJs.length} opções renderizadas`);
+            }
+            
+            toggleOJ(oj) {
+                const index = this.selectedOJs.indexOf(oj);
+                if (index > -1) {
+                    this.selectedOJs.splice(index, 1);
+                } else {
+                    this.selectedOJs.push(oj);
+                }
+                
+                this.updateSelectedDisplay();
+                this.renderOptions();
+                log(`OJ ${index > -1 ? 'removido' : 'adicionado'}: ${oj}`);
+            }
+            
+            updateSelectedDisplay() {
+                if (this.selectedOJs.length === 0) {
+                    this.selectedContainer.textContent = 'Selecione um ou mais órgãos julgadores...';
+                } else {
+                    this.selectedContainer.innerHTML = `
+                        <strong>${this.selectedOJs.length} órgão(s) selecionado(s):</strong><br>
+                        ${this.selectedOJs.map(oj => `<span style="background: #e9ecef; padding: 2px 6px; margin: 2px; border-radius: 3px; display: inline-block;">${oj}</span>`).join('')}
+                    `;
+                }
+            }
+            
+            showDropdown() {
+                this.dropdown.style.display = 'block';
+                log('Dropdown exibido');
+            }
+            
+            hideDropdown() {
+                this.dropdown.style.display = 'none';
+                log('Dropdown ocultado');
+            }
+        }
+        
+        // Inicializar log
+        document.addEventListener('DOMContentLoaded', () => {
+            log('Página carregada - Debug OJ Modal');
+            log(`Lista de OJs disponível: ${window.ojList.length} itens`);
+        });
+    </script>
+</body>
+</html>

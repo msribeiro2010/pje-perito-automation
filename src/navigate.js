@@ -2,7 +2,7 @@ async function navegarParaCadastro(page, cpf) {
   const { loadConfig } = require('./util.js');
   
   // Configurar timeout maior
-  page.setDefaultTimeout(60000);
+  page.setDefaultTimeout(8000);
   
   const config = loadConfig();
   const baseUrl = (config.PJE_URL || 'https://pje.trt15.jus.br/primeirograu');
@@ -19,7 +19,7 @@ async function navegarParaCadastro(page, cpf) {
     console.log(`Navegou para: ${directUrl}`);
     
     // Aguardar a página carregar completamente
-    await page.waitForTimeout(400);
+  await page.waitForTimeout(200);
     
     // Verificar se a página carregou corretamente
     const currentUrl = page.url();
@@ -105,7 +105,7 @@ async function navegarViaMenu(page, cpf) {
   console.log('Clicou no menu completo');
   
   // Aguardar menu abrir
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(100);
   
   console.log('Procurando opção "Pessoa Física" no menu...');
   // Procurar e clicar na opção "Pessoa Física"
@@ -163,7 +163,7 @@ async function navegarViaMenu(page, cpf) {
   console.log('Clicou na opção "Pessoa Física"');
   
   // Aguardar navegação para a página de Pessoa Física
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(200);
   
   try {
     await page.waitForLoadState('networkidle', { timeout: 5000 });
@@ -188,7 +188,7 @@ async function processarPaginaPessoaFisica(page, cpf) {
   console.log('Aguardando carregamento da página com resultados...');
   
   // Aguardar página carregar completamente
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(300);
   
   // Aguardar tabela aparecer com timeout otimizado
   await page.waitForSelector('table', { timeout: 8000 });
@@ -297,7 +297,7 @@ async function processarPaginaPessoaFisica(page, cpf) {
   console.log('Clicou no ícone de edição');
   
   // Aguardar carregamento da página de edição
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(400);
   
   // Verificar se é um Perito ou Servidor
   console.log('🔍 Verificando tipo de usuário (Perito vs Servidor)...');
@@ -341,7 +341,116 @@ async function processarPaginaPessoaFisica(page, cpf) {
     }
     
     if (isServidor) {
-      throw new Error(`❌ ERRO: O CPF ${cpf} pertence a um SERVIDOR, não a um PERITO. Este sistema é específico para vinculação de PERITOS. Verifique o CPF informado.`);
+      console.log(`🔍 Detectado que o CPF ${cpf} pertence a um SERVIDOR.`);
+      
+      // Primeiro, tentar clicar na aba "Servidor" se ela existir
+      if (abaServidorExists) {
+        console.log('🔄 Clicando na aba "Servidor"...');
+        
+        const servidorSelectors = [
+          'text=Servidor',
+          'a[href*="servidor"]',
+          '.tab-servidor',
+          '[data-tab="servidor"]',
+          'button:has-text("Servidor")',
+          'a:has-text("Servidor")',
+          '[role="tab"]:has-text("Servidor")',
+          '.nav-tab:has-text("Servidor")',
+          'li:has-text("Servidor") a',
+          'li:has-text("Servidor") button',
+          '.tab:has-text("Servidor")',
+          '[data-toggle="tab"]:has-text("Servidor")',
+          'a[data-target*="servidor"]',
+          'button[data-target*="servidor"]'
+        ];
+        
+        let servidorTab = null;
+        
+        for (const selector of servidorSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 1000 });
+            servidorTab = selector;
+            console.log(`✅ Aba "Servidor" encontrada com seletor: ${selector}`);
+            break;
+          } catch (error) {
+            console.log(`DEBUG: Seletor aba Servidor ${selector} não encontrado`);
+          }
+        }
+        
+        if (servidorTab) {
+          await page.click(servidorTab);
+        console.log('✅ Clicou na aba "Servidor"');
+        await page.waitForTimeout(800);
+          
+          // Aguardar carregamento da aba Servidor
+          try {
+            await page.waitForLoadState('domcontentloaded', { timeout: 3000 });
+          } catch (error) {
+            console.log('Timeout aguardando carregamento da aba Servidor');
+          }
+          
+          console.log('✅ Aba "Servidor" carregada com sucesso');
+          return; // Sair da função pois já estamos na aba correta
+        } else {
+          console.log('⚠️ Não foi possível clicar na aba "Servidor"');
+        }
+      }
+      
+      // Se não conseguiu clicar na aba Servidor, tentar cadastrar como perito
+      console.log('🔍 Tentando cadastrar como perito... Procurando botão "Validar na Receita"...');
+      
+      const validarReceitaSelectors = [
+        'button:has-text("Validar na Receita")',
+        'input[value="Validar na Receita"]',
+        'button[value="Validar na Receita"]',
+        'a:has-text("Validar na Receita")',
+        'text=Validar na Receita',
+        '[title="Validar na Receita"]',
+        'button:contains("Validar")',
+        'input[type="button"]:contains("Validar")',
+        '.btn:contains("Validar")',
+        'button[onclick*="validar"]',
+        'input[onclick*="validar"]'
+      ];
+      
+      let validarButton = null;
+      
+      for (const selector of validarReceitaSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 1000 });
+          validarButton = selector;
+          console.log(`✅ Botão "Validar na Receita" encontrado com seletor: ${selector}`);
+          break;
+        } catch (error) {
+          console.log(`DEBUG: Seletor ${selector} não encontrado`);
+        }
+      }
+      
+      if (validarButton) {
+        console.log('🔄 Clicando no botão "Validar na Receita"...');
+        await page.click(validarButton);
+        await page.waitForTimeout(800);
+        console.log('✅ Clicou no botão "Validar na Receita"');
+        
+        // Aguardar processamento e possível redirecionamento
+        try {
+          await page.waitForLoadState('domcontentloaded', { timeout: 5000 });
+        } catch (error) {
+          console.log('Timeout aguardando carregamento após validação');
+        }
+        
+        // Verificar se agora apareceu a aba Perito
+        const abaPeritoAposValidacao = await page.locator('text=Perito').first().isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (abaPeritoAposValidacao) {
+          console.log('✅ Aba "Perito" apareceu após validação na Receita');
+          // Continuar com o fluxo normal para perito
+        } else {
+          console.log('⚠️ Aba "Perito" ainda não apareceu após validação. Continuando...');
+        }
+      } else {
+        console.log('⚠️ Botão "Validar na Receita" não encontrado. Tentando continuar...');
+      }
     }
     
     if (!abaPeritoExists) {
@@ -381,7 +490,7 @@ async function processarPaginaPessoaFisica(page, cpf) {
   console.log('Clicou na aba Perito');
   
   // Aguardar carregamento da aba
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(300);
   
   // Aguardar página carregar completamente
   try {

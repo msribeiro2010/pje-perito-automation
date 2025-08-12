@@ -1,11 +1,12 @@
 {
-  "name": "pje-perito-automation",
+  "name": "pje-automation-peritos-servidores",
   "version": "1.0.0",
-  "description": "Automação para vinculação de peritos no PJE",
+  "description": "Sistema de automação para vinculação de peritos e servidores no PJE",
   "main": "src/main.js",
   "scripts": {
     "start": "electron src/main.js",
     "dev": "electron src/main.js --dev",
+    "test": "node -c src/main.js && echo 'Main syntax OK' && node -c src/main/servidor-automation-v2.js && echo 'All syntax checks passed'",
     "build": "electron-builder"
   },
   "dependencies": {

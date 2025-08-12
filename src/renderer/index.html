@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PJE Perito Automation</title>
+    <title>PJE Automation - Peritos e Servidores</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1><i class="fas fa-gavel"></i> PJE Perito Automation</h1>
-            <p>Sistema de automação para vinculação de peritos no PJE</p>
+            <h1><i class="fas fa-gavel"></i> PJE Automation - Peritos e Servidores</h1>
+            <p>Sistema de automação para vinculação de peritos e servidores no PJE</p>
         </header>
 
         <nav class="tabs">
             <button class="tab-button active" data-tab="peritos">Peritos</button>
+            <button class="tab-button" data-tab="servidores">Servidores</button>
             <button class="tab-button" data-tab="config">Configurações</button>
             <button class="tab-button" data-tab="automation">Automação</button>
         </nav>
@@ -70,6 +71,56 @@
             </div>
         </div>
 
+        <!-- Aba Servidores -->
+        <div id="servidores" class="tab-content">
+            <div class="section-header">
+                <h2>Automação de Servidores</h2>
+            </div>
+
+            <!-- Seção de Automação -->
+            <div class="automation-controls">
+                <div class="selected-servidores">
+                    <h3>Servidores para Automação:</h3>
+                    <div id="selected-servidores-list" class="selected-list">
+                        <p class="no-selection">Nenhum servidor selecionado</p>
+                    </div>
+                    <div id="selected-servidores-display" class="selection-info">
+                        <small>0 de 0 servidores selecionados</small>
+                    </div>
+                </div>
+
+                <div class="automation-config">
+                    <div class="automation-buttons">
+                        <button id="startServidorAutomation" class="btn btn-success" disabled>
+                            <i class="fas fa-play"></i> Iniciar Automação
+                        </button>
+                        <button id="stopServidorAutomation" class="btn btn-danger" disabled>
+                            <i class="fas fa-stop"></i> Parar Automação
+                        </button>
+                        <button id="configServidorV2" class="btn btn-secondary">
+                            <i class="fas fa-cog"></i> Configurar Automação
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="progress-container" style="margin-bottom: 20px; display: none;" id="servidorProgressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="servidorProgress"></div>
+                </div>
+                <div class="progress-text" id="servidorProgressText">0% concluído</div>
+            </div>
+
+            <div class="info-message" style="margin-top: 20px; padding: 15px; background: #e8f4f8; border-radius: 8px; border-left: 4px solid #3498db;">
+                <h4 style="margin: 0 0 10px 0; color: #2c3e50;">ℹ️ Como usar a Automação</h4>
+                <p style="margin: 0; color: #5a6c7d;">
+                    1. Clique em <strong>"Configurar Automação"</strong> para definir CPF, perfil e órgãos julgadores<br>
+                    2. Após configurar, clique em <strong>"Iniciar Automação"</strong> para começar o processo<br>
+                    3. A automação vinculará automaticamente o servidor aos órgãos configurados
+                </p>
+            </div>
+        </div>
+
         <!-- Aba Configurações -->
         <div id="config" class="tab-content">
             <div class="section-header">
@@ -114,7 +165,7 @@
 
                 <div class="automation-buttons">
                     <button id="start-automation" class="btn btn-success" disabled>
-                        <i class="fas fa-play"></i> Iniciar Automação
+                        <i class="fas fa-play"></i> Iniciar Automação de Peritos
                     </button>
                     <button id="stop-automation" class="btn btn-danger" disabled>
                         <i class="fas fa-stop"></i> Parar Automação
@@ -156,6 +207,270 @@
                     <button type="submit" class="btn btn-primary">Salvar</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal para adicionar/editar servidor -->
+    <div id="servidor-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="servidor-modal-title">Órgão Julgador (OJ) o qual o servidor quer o perfil</h3>
+                <span class="close">&times;</span>
+            </div>
+            <form id="servidor-form">
+                <div class="form-group">
+                    <label for="servidor-nome">Nome:</label>
+                    <input type="text" id="servidor-nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="servidor-cpf">CPF:</label>
+                    <input type="text" id="servidor-cpf" placeholder="000.000.000-00" required>
+                </div>
+                <div class="form-group">
+                    <label for="servidor-perfil">Perfil *:</label>
+                    <select id="servidor-perfil" name="perfil" required>
+                        <option value="">Selecione...</option>
+                        <option value="Administrador">Administrador</option>
+                        <option value="Assessor">Assessor</option>
+                        <option value="Diretor de Central de Atendimento">Diretor de Central de Atendimento</option>
+                        <option value="Diretor de Secretaria">Diretor de Secretaria</option>
+                        <option value="Estagiário Conhecimento">Estagiário Conhecimento</option>
+                        <option value="Estagiário de Central de Atendimento">Estagiário de Central de Atendimento</option>
+                        <option value="Secretário de Audiência">Secretário de Audiência</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="oj-selector-main">Órgãos Julgadores:</label>
+                    <div class="oj-selector" id="oj-selector-main">
+                        <input type="text" class="oj-search" placeholder="Buscar OJ..." id="oj-search-main">
+                        <div class="oj-selected" id="oj-selected-main">
+                            <span class="oj-placeholder">Nenhum OJ selecionado</span>
+                        </div>
+                        <div class="oj-dropdown" id="oj-dropdown-main" style="display: none;">
+                            <div class="oj-options" id="oj-options-main">
+                                <!-- OJ options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                        <input type="hidden" name="localizacoes" id="servidor-localizacoes">
+                    </div>
+                    <select id="servidor-localizacao-hidden" name="localizacao" style="display: none;">
+                        <option value="">Selecione uma localização</option>
+                                        <option value="Vara do Trabalho de São Roque">Vara do Trabalho de São Roque</option>
+                                        <option value="Vara do Trabalho de Ourinhos">Vara do Trabalho de Ourinhos</option>
+                                        <option value="Vara do Trabalho de Lorena">Vara do Trabalho de Lorena</option>
+                                        <option value="Vara do Trabalho de Itararé">Vara do Trabalho de Itararé</option>
+                                        <option value="EXE2 - Sorocaba">EXE2 - Sorocaba</option>
+                                        <option value="EXE1 - Campinas">EXE1 - Campinas</option>
+                                        <option value="7ª Vara do Trabalho de Campinas">7ª Vara do Trabalho de Campinas</option>
+                                        <option value="EXE6 - Campinas">EXE6 - Campinas</option>
+                                        <option value="Assessoria de Execução II de Sertãozinho, Orlândia, Batatais e Franca">Assessoria de Execução II de Sertãozinho, Orlândia, Batatais e Franca</option>
+                                        <option value="4ª Vara do Trabalho de Ribeirão Preto">4ª Vara do Trabalho de Ribeirão Preto</option>
+                                        <option value="5ª Vara do Trabalho de Jundiaí">5ª Vara do Trabalho de Jundiaí</option>
+                                        <option value="EXE4 - São José do Rio Preto">EXE4 - São José do Rio Preto</option>
+                                        <option value="EXE3 - Campinas">EXE3 - Campinas</option>
+                                        <option value="LIQ1 - Campinas">LIQ1 - Campinas</option>
+                                        <option value="Órgão Centralizador de Leilões Judiciais de São José dos Campos">Órgão Centralizador de Leilões Judiciais de São José dos Campos</option>
+                                        <option value="Divisão de Execução de Taubaté">Divisão de Execução de Taubaté</option>
+                                        <option value="LIQ2 - Campinas">LIQ2 - Campinas</option>
+                                        <option value="LIQ1 - São José do Rio Preto">LIQ1 - São José do Rio Preto</option>
+                                        <option value="Vara do Trabalho de Itatiba">Vara do Trabalho de Itatiba</option>
+                                        <option value="CCP ARARAQUARA - Centro de Conciliação Pré Processual">CCP ARARAQUARA - Centro de Conciliação Pré Processual</option>
+                                        <option value="Vara do Trabalho de Salto">Vara do Trabalho de Salto</option>
+                                        <option value="CCP DE 2º GRAU - Centro de Conciliação Pré Processual">CCP DE 2º GRAU - Centro de Conciliação Pré Processual</option>
+                                        <option value="EXE1 - Sorocaba">EXE1 - Sorocaba</option>
+                                        <option value="CEJUSC TAUBATÉ - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC TAUBATÉ - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="CON2 - Sorocaba">CON2 - Sorocaba</option>
+                                        <option value="LIQ1 - Sorocaba">LIQ1 - Sorocaba</option>
+                                        <option value="CON1 - São José dos Campos">CON1 - São José dos Campos</option>
+                                        <option value="EXE1 - Presidente Prudente">EXE1 - Presidente Prudente</option>
+                                        <option value="EXE5 - Campinas">EXE5 - Campinas</option>
+                                        <option value="EXE4 - Araraquara">EXE4 - Araraquara</option>
+                                        <option value="DAM - Campinas">DAM - Campinas</option>
+                                        <option value="Vara do Trabalho de Tanabi">Vara do Trabalho de Tanabi</option>
+                                        <option value="Posto Avançado da Justiça do Trabalho de Amparo em Pedreira">Posto Avançado da Justiça do Trabalho de Amparo em Pedreira</option>
+                                        <option value="Vara do Trabalho de Rio Claro">Vara do Trabalho de Rio Claro</option>
+                                        <option value="Vara do Trabalho de Olímpia">Vara do Trabalho de Olímpia</option>
+                                        <option value="Vara do Trabalho de Lins">Vara do Trabalho de Lins</option>
+                                        <option value="Vara do Trabalho de Itápolis">Vara do Trabalho de Itápolis</option>
+                                        <option value="6ª Vara do Trabalho de Ribeirão Preto">6ª Vara do Trabalho de Ribeirão Preto</option>
+                                        <option value="EXE4 - Campinas">EXE4 - Campinas</option>
+                                        <option value="4ª Vara do Trabalho de Jundiaí">4ª Vara do Trabalho de Jundiaí</option>
+                                        <option value="1ª Vara do Trabalho de Catanduva">1ª Vara do Trabalho de Catanduva</option>
+                                        <option value="1ª Vara do Trabalho de Jaú">1ª Vara do Trabalho de Jaú</option>
+                                        <option value="1ª Vara do Trabalho de São Carlos">1ª Vara do Trabalho de São Carlos</option>
+                                        <option value="1ª Vara do Trabalho de Sorocaba">1ª Vara do Trabalho de Sorocaba</option>
+                                        <option value="DIVEX - Campinas">DIVEX - Campinas</option>
+                                        <option value="CEJUSC FRANCA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC FRANCA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="EXE2 - São José dos Campos">EXE2 - São José dos Campos</option>
+                                        <option value="CEJUSC PIRACICABA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC PIRACICABA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="2ª Vara do Trabalho de Araçatuba">2ª Vara do Trabalho de Araçatuba</option>
+                                        <option value="2ª Vara do Trabalho de Assis">2ª Vara do Trabalho de Assis</option>
+                                        <option value="2ª Vara do Trabalho de Catanduva">2ª Vara do Trabalho de Catanduva</option>
+                                        <option value="2ª Vara do Trabalho de Jaboticabal">2ª Vara do Trabalho de Jaboticabal</option>
+                                        <option value="2ª Vara do Trabalho de Jaú">2ª Vara do Trabalho de Jaú</option>
+                                        <option value="2ª Vara do Trabalho de Lençóis Paulista">2ª Vara do Trabalho de Lençóis Paulista</option>
+                                        <option value="2ª Vara do Trabalho de Piracicaba">2ª Vara do Trabalho de Piracicaba</option>
+                                        <option value="5ª Vara do Trabalho de Campinas">5ª Vara do Trabalho de Campinas</option>
+                                        <option value="Órgão Centralizador de Leilões Judiciais de Taubaté">Órgão Centralizador de Leilões Judiciais de Taubaté</option>
+                                        <option value="Vara do Trabalho de Santa Cruz do Rio Pardo">Vara do Trabalho de Santa Cruz do Rio Pardo</option>
+                                        <option value="Divisão de Execução de Franca">Divisão de Execução de Franca</option>
+                                        <option value="Vara do Trabalho de Teodoro Sampaio">Vara do Trabalho de Teodoro Sampaio</option>
+                                        <option value="2ª Vara do Trabalho de Marília">2ª Vara do Trabalho de Marília</option>
+                                        <option value="CEJUSC ARAÇATUBA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC ARAÇATUBA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="CEJUSC SJRIO PRETO - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC SJRIO PRETO - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="CEJUSC ARARAQUARA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC ARARAQUARA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="DIVEX - Bauru">DIVEX - Bauru</option>
+                                        <option value="CON2 - Campinas">CON2 - Campinas</option>
+                                        <option value="Vara do Trabalho de Fernandópolis">Vara do Trabalho de Fernandópolis</option>
+                                        <option value="Vara do Trabalho de São José do Rio Pardo">Vara do Trabalho de São José do Rio Pardo</option>
+                                        <option value="Vara do Trabalho de Registro">Vara do Trabalho de Registro</option>
+                                        <option value="Vara do Trabalho de Mogi Mirim">Vara do Trabalho de Mogi Mirim</option>
+                                        <option value="DIVEX - São José dos Campos">DIVEX - São José dos Campos</option>
+                                        <option value="4ª Vara do Trabalho de Sorocaba">4ª Vara do Trabalho de Sorocaba</option>
+                                        <option value="EXE2 - Bauru">EXE2 - Bauru</option>
+                                        <option value="3ª Vara do Trabalho de Sorocaba">3ª Vara do Trabalho de Sorocaba</option>
+                                        <option value="1ª Vara do Trabalho de Americana">1ª Vara do Trabalho de Americana</option>
+                                        <option value="1ª Vara do Trabalho de Franca">1ª Vara do Trabalho de Franca</option>
+                                        <option value="DAM - Jundiaí">DAM - Jundiaí</option>
+                                        <option value="Vara do Trabalho de Leme">Vara do Trabalho de Leme</option>
+                                        <option value="EXE2 - Campinas">EXE2 - Campinas</option>
+                                        <option value="CON2 - Piracicaba">CON2 - Piracicaba</option>
+                                        <option value="CEJUSC SJCAMPOS - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC SJCAMPOS - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="EXE2 - Piracicaba">EXE2 - Piracicaba</option>
+                                        <option value="2ª Vara do Trabalho de Araraquara">2ª Vara do Trabalho de Araraquara</option>
+                                        <option value="EXE3 - Piracicaba">EXE3 - Piracicaba</option>
+                                        <option value="2ª Vara do Trabalho de Limeira">2ª Vara do Trabalho de Limeira</option>
+                                        <option value="2ª Vara do Trabalho de Presidente Prudente">2ª Vara do Trabalho de Presidente Prudente</option>
+                                        <option value="2ª Vara do Trabalho de Ribeirão Preto">2ª Vara do Trabalho de Ribeirão Preto</option>
+                                        <option value="6ª Vara do Trabalho de Campinas">6ª Vara do Trabalho de Campinas</option>
+                                        <option value="4ª Vara do Trabalho de Campinas">4ª Vara do Trabalho de Campinas</option>
+                                        <option value="DIVEX - São José do Rio Preto">DIVEX - São José do Rio Preto</option>
+                                        <option value="2ª Vara do Trabalho de Jundiaí">2ª Vara do Trabalho de Jundiaí</option>
+                                        <option value="CEJUSC LIMEIRA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho">CEJUSC LIMEIRA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho</option>
+                                        <option value="DIVEX - Sorocaba">DIVEX - Sorocaba</option>
+                                        <option value="1ª Vara do Trabalho de Limeira">1ª Vara do Trabalho de Limeira</option>
+                                        <option value="PARA USO POSTERIOR">PARA USO POSTERIOR</option>
+                                        <option value="Vara do Trabalho de Itanhaém">Vara do Trabalho de Itanhaém</option>
+                                        <option value="2ª Vara do Trabalho de Jacareí">2ª Vara do Trabalho de Jacareí</option>
+                                        <option value="EXE2 - Presidente Prudente">EXE2 - Presidente Prudente</option>
+                                        <option value="2ª Vara do Trabalho de Paulínia">2ª Vara do Trabalho de Paulínia</option>
+                                        <option value="Divisão de Execução de Araçatuba">Divisão de Execução de Araçatuba</option>
+                                        <option value="Divisão de Execução de Limeira">Divisão de Execução de Limeira</option>
+                                        <option value="Vara do Trabalho de Presidente Venceslau">Vara do Trabalho de Presidente Venceslau</option>
+                                        <option value="CON1 - Campinas">CON1 - Campinas</option>
+                                        <option value="EXE4 - Piracicaba">EXE4 - Piracicaba</option>
+                                        <option value="Vara do Trabalho de Sumaré">Vara do Trabalho de Sumaré</option>
+                                        <option value="Vara do Trabalho de Caraguatatuba">Vara do Trabalho de Caraguatatuba</option>
+                                        <option value="DAM - Piracicaba">DAM - Piracicaba</option>
+                                        <option value="EXE4 - Sorocaba">EXE4 - Sorocaba</option>
+                                        <option value="EXE3 - Presidente Prudente">EXE3 - Presidente Prudente</option>
+                                        <option value="Vara do Trabalho de Itapetininga">Vara do Trabalho de Itapetininga</option>
+                                        <option value="Vara do Trabalho de Mogi Guaçu">Vara do Trabalho de Mogi Guaçu</option>
+                                        <option value="Vara do Trabalho de José Bonifácio">Vara do Trabalho de José Bonifácio</option>
+                                        <option value="Vara do Trabalho de Itapeva">Vara do Trabalho de Itapeva</option>
+                                        <option value="5ª Vara do Trabalho de São José dos Campos">5ª Vara do Trabalho de São José dos Campos</option>
+                                        <option value="4ª Vara do Trabalho de São José dos Campos">4ª Vara do Trabalho de São José dos Campos</option>
+                                        <option value="4ª Vara do Trabalho de Bauru">4ª Vara do Trabalho de Bauru</option>
+                                        <option value="1ª Vara do Trabalho de Araçatuba">1ª Vara do Trabalho de Araçatuba</option>
+                                        <option value="1ª Vara do Trabalho de Jaboticabal">1ª Vara do Trabalho de Jaboticabal</option>
+                                        <option value="1ª Vara do Trabalho de Paulínia">1ª Vara do Trabalho de Paulínia</option>
+                                        <option value="2ª Vara do Trabalho de Americana">2ª Vara do Trabalho de Americana</option>
+                                        <option value="Posto Avançado da Justiça do Trabalho de Andradina em Pereira Barreto">Posto Avançado da Justiça do Trabalho de Andradina em Pereira Barreto</option>
+                                        <option value="1ª Vara do Trabalho de Presidente Prudente">1ª Vara do Trabalho de Presidente Prudente</option>
+                                        <option value="Posto Avançado da Justiça do Trabalho de Jundiaí em Vinhedo">Posto Avançado da Justiça do Trabalho de Jundiaí em Vinhedo</option>
+                                        <option value="Posto Avançado da Justiça do Trabalho de Pindamonhangaba em Campos do Jordão">Posto Avançado da Justiça do Trabalho de Pindamonhangaba em Campos do Jordão</option>
+                                        <option value="Assessoria de Execução I de Sertãozinho, Orlândia, Batatais e Franca">Assessoria de Execução I de Sertãozinho, Orlândia, Batatais e Franca</option>
+                                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" id="cancel-servidor">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para configuração da Automação V2 -->
+    <div id="servidor-v2-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>Configuração da Automação - Servidores</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="servidor-v2-form">
+                    <div class="form-group">
+                        <label for="v2-cpf">CPF do Servidor:</label>
+                        <input type="text" id="v2-cpf" placeholder="000.000.000-00" required>
+                        <small>CPF do servidor que receberá os vínculos</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="v2-perfil">Perfil:</label>
+                        <select id="v2-perfil" required>
+                            <option value="">Selecione...</option>
+                            <option value="Administrador">Administrador</option>
+                            <option value="Assessor">Assessor</option>
+                            <option value="Diretor de Central de Atendimento">Diretor de Central de Atendimento</option>
+                            <option value="Diretor de Secretaria">Diretor de Secretaria</option>
+                            <option value="Estagiário Conhecimento">Estagiário Conhecimento</option>
+                            <option value="Estagiário de Central de Atendimento">Estagiário de Central de Atendimento</option>
+                            <option value="Secretário de Audiência" selected>Secretário de Audiência</option>
+                            <option value="Perito Judicial">Perito Judicial</option>
+                        </select>
+                        <small>Perfil do servidor no sistema</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Órgãos Julgadores:</label>
+                        <div class="orgaos-selector">
+                            <div id="oj-selector-v2" class="oj-selector">
+                                <!-- Estrutura será criada dinamicamente -->
+                            </div>
+                            <small>Selecione um ou mais órgãos julgadores do arquivo orgaos_pje.json</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <h4>Configurações Avançadas</h4>
+                        <div class="advanced-config">
+                            <label>
+                                <input type="checkbox" id="v2-production" checked>
+                                Modo Produção (headless)
+                            </label>
+                            <label>
+                                <input type="checkbox" id="v2-detailed-report" checked>
+                                Relatório Detalhado
+                            </label>
+                            <label>
+                                <input type="checkbox" id="v2-use-cache" checked>
+                                Usar Cache de OJs
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="v2-timeout">Timeout (segundos):</label>
+                        <input type="number" id="v2-timeout" value="30" min="10" max="120">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="v2-max-login-attempts">Máximo de Tentativas de Login:</label>
+                        <input type="number" id="v2-max-login-attempts" value="3" min="1" max="10">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="save-v2-config" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Salvar Configuração
+                </button>
+                <button type="button" id="test-v2-config" class="btn btn-secondary">
+                    <i class="fas fa-check"></i> Testar Configuração
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('servidor-v2-modal').style.display='none'">
+                    Cancelar
+                </button>
+            </div>
         </div>
     </div>
 

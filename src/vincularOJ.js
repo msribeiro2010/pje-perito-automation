@@ -1,13 +1,13 @@
-async function vincularOJ(page, nomeOJ) {
+async function vincularOJ(page, nomeOJ, papel = 'Diretor de Secretaria', visibilidade = 'Público') {
   // Verificar se a página está válida antes de começar
   if (page.isClosed()) {
     throw new Error('A página foi fechada antes de iniciar a vinculação');
   }
   
-  // Configurar timeout otimizado
-  page.setDefaultTimeout(15000);
+  // Configurar timeout otimizado para máxima velocidade
+  page.setDefaultTimeout(8000);
   
-  console.log('Procurando seção de Órgãos Julgadores...');
+  console.log(`Procurando seção de Órgãos Julgadores para vincular ${nomeOJ} com papel: ${papel}, visibilidade: ${visibilidade}...`);
   
   // Helper para garantir acordeon aberto e seção visível
   async function ensureAcordeonAberto() {
@@ -32,17 +32,17 @@ async function vincularOJ(page, nomeOJ) {
     for (const factory of headerAttempts) {
       try {
         const loc = factory();
-        await loc.waitFor({ timeout: 500 });
-        await loc.scrollIntoViewIfNeeded({ timeout: 300 });
+        await loc.waitFor({ timeout: 200 });
+        await loc.scrollIntoViewIfNeeded({ timeout: 150 });
         const aria = await loc.getAttribute('aria-expanded').catch(() => null);
         await loc.click({ force: true });
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(50);
         const afterVisible = await page.$('mat-select, [role="combobox"], select');
         if (afterVisible) return true;
         // Se tinha aria-expanded, e ainda falso, clicar de novo
         if (aria === 'false') {
           await loc.click({ force: true });
-          await page.waitForTimeout(100);
+          await page.waitForTimeout(50);
           const againVisible = await page.$('mat-select, [role="combobox"], select');
           if (againVisible) return true;
         }
@@ -57,7 +57,7 @@ async function vincularOJ(page, nomeOJ) {
       if (candidates.length > 0) {
         await candidates[0].scrollIntoViewIfNeeded();
         await candidates[0].click({ force: true });
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(30);
         const contentVisible = await page.$('mat-select, [role="combobox"], select');
         if (contentVisible) return true;
       }
@@ -82,6 +82,9 @@ async function vincularOJ(page, nomeOJ) {
 
   // Tentar acionar o fluxo de inclusão (Adicionar)
   const seletoresAdicionar = [
+    '#cdk-accordion-child-8 > div > div > button',
+    'button[aria-expanded]',
+    'button.mat-button-wrapper',
     'button:has-text("Adicionar Órgão Julgador ao Perito")',
     'button:has-text("Adicionar Órgão Julgador")',
     'button:has-text("Adicionar")',
@@ -91,7 +94,7 @@ async function vincularOJ(page, nomeOJ) {
   ];
   for (const s of seletoresAdicionar) {
     try {
-      await page.waitForSelector(s, { timeout: 300 });
+      await page.waitForSelector(s, { timeout: 150 });
       await page.click(s);
       console.log(`Clicou no botão Adicionar usando seletor: ${s}`);
       await page.waitForTimeout(100);
@@ -102,20 +105,20 @@ async function vincularOJ(page, nomeOJ) {
   // Tentar localizar campo pelo rótulo "Órgão Julgador" e achar o controle associado
   try {
     const label = page.locator('label:has-text("Órgão Julgador")').first();
-    await label.waitFor({ timeout: 300 });
+    await label.waitFor({ timeout: 150 });
     // Se existir atributo for, usar
     try {
       const forId = await label.getAttribute('for');
       if (forId) {
         const candidate = `#${forId}`;
-        await page.waitForSelector(candidate, { timeout: 300 });
+        await page.waitForSelector(candidate, { timeout: 150 });
         console.log(`Campo associado ao label via for/id: ${candidate}`);
       }
     } catch {}
     // Buscar em contêiner pai
     const container = label.locator('..');
     const nearControl = container.locator('mat-select, [role="combobox"], select, input').first();
-    await nearControl.waitFor({ timeout: 300 });
+    await nearControl.waitFor({ timeout: 150 });
     const handle = await nearControl.elementHandle();
     if (handle) {
       const tag = await handle.evaluate(el => el.tagName.toLowerCase());
@@ -125,6 +128,15 @@ async function vincularOJ(page, nomeOJ) {
 
   // Lista de seletores para o campo select (definida antes para tentar evitar colapsar/expandir indevidamente)
   const seletoresSelect = [
+    // Seletores específicos para modal de Localização/Visibilidade
+    '#mat-dialog-2 mat-select[placeholder="Órgão Julgador"]',
+    'pje-modal-localizacao-visibilidade mat-select[placeholder="Órgão Julgador"]',
+    '#mat-select-40',
+    'mat-select[aria-labelledby*="mat-form-field-label-95"]',
+    'mat-select[id="mat-select-40"]',
+    // Seletores específicos baseados no HTML fornecido
+    '.campo-orgao-julgador mat-select',
+    '.mat-form-field.campo-orgao-julgador mat-select',
     // Priorizar seletores específicos para órgão julgador
     'mat-select[name="idOrgaoJulgadorSelecionado"]',
     'mat-select[placeholder="Órgão Julgador"]',
@@ -181,7 +193,7 @@ async function vincularOJ(page, nomeOJ) {
       }
       
       console.log(`DEBUG: Testando seletor: ${seletor}`);
-      await page.waitForSelector(seletor, { timeout: 300 });
+      await page.waitForSelector(seletor, { timeout: 150 });
       
       // Verificar se o elemento encontrado é realmente para órgão julgador
       const elemento = await page.$(seletor);
@@ -275,7 +287,7 @@ async function vincularOJ(page, nomeOJ) {
             }
           }, seletor);
         } catch {}
-        await page.waitForSelector(seletor, { timeout: 500 });
+        await page.waitForSelector(seletor, { timeout: 250 });
         console.log(`DEBUG: Elemento encontrado, clicando: ${seletor}`);
         await page.click(seletor);
         console.log(`DEBUG: Clique realizado com sucesso no seletor: ${seletor}`);
@@ -298,10 +310,10 @@ async function vincularOJ(page, nomeOJ) {
     // Após expandir, tentar clicar em "Adicionar" novamente
     for (const s of seletoresAdicionar) {
       try {
-        await page.waitForSelector(s, { timeout: 300 });
+        await page.waitForSelector(s, { timeout: 150 });
         await page.click(s);
         console.log(`Clicou em Adicionar após expandir: ${s}`);
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(30);
         break;
       } catch {}
     }
@@ -314,7 +326,7 @@ async function vincularOJ(page, nomeOJ) {
           throw new Error('A página foi fechada durante a execução');
         }
         
-        await page.waitForSelector(seletor, { timeout: 500 });
+        await page.waitForSelector(seletor, { timeout: 250 });
         selectEncontrado = seletor;
         seletorUsado = seletor;
         console.log(`Select encontrado após expandir seção, seletor: ${seletor}`);
@@ -401,7 +413,7 @@ async function vincularOJ(page, nomeOJ) {
       console.log('DEBUG: Clique direto realizado');
     }
     console.log('DEBUG: Aguardando dropdown abrir...');
-    await page.waitForTimeout(150); // Aguardar dropdown abrir
+    await page.waitForTimeout(50); // Aguardar dropdown abrir
     console.log('DEBUG: Timeout concluído, procurando opções...');
     
     // Procurar pelas opções do mat-select
@@ -537,7 +549,7 @@ async function vincularOJ(page, nomeOJ) {
             const escolhido = candidates[0];
             // Clicar pela âncora de texto
             await page.click(`${os}:has-text("${escolhido.text}")`);
-            await page.waitForTimeout(100);
+            await page.waitForTimeout(30);
             selecaoFeita = true;
             break;
           }
@@ -597,54 +609,302 @@ async function vincularOJ(page, nomeOJ) {
     throw new Error(`Órgão julgador "${nomeOJ}" não encontrado nas opções disponíveis`);
   }
   
-  // Se chegou até aqui, procurar o botão de vincular
-  console.log('Procurando botão de vincular...');
+  // Aguardar modal de Localização/Visibilidade abrir
+  await aguardarModalLocalizacaoVisibilidade(page);
   
-  // Lista de seletores para o botão vincular
+  // Debug: analisar elementos após modal abrir
+  await debugElementosNaPagina(page, 'APÓS MODAL ABRIR');
+  
+  // Configurar papel/perfil do servidor
+  console.log(`Configurando papel: ${papel}...`);
+  await configurarPapel(page, papel);
+  
+  // Configurar visibilidade
+  console.log(`Configurando visibilidade: ${visibilidade}...`);
+  await configurarVisibilidade(page, visibilidade);
+  
+  // Debug: analisar elementos após configurar campos
+  await debugElementosNaPagina(page, 'APÓS CONFIGURAR CAMPOS');
+  
+  // Se chegou até aqui, procurar o botão de gravar/vincular
+  console.log('DEBUG: Procurando botão "Gravar" para finalizar vinculação...');
+  
+  // Aguardar que o modal esteja totalmente carregado e os campos preenchidos
+  await page.waitForTimeout(1000);
+  
+  // Verificar se estamos no modal correto e aguardar estabilização
+  let modalConfirmado = false;
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    try {
+      await page.waitForSelector('text=Localização/Visibilidade', { timeout: 1000 });
+      console.log('DEBUG: Modal de Localização/Visibilidade confirmado');
+      modalConfirmado = true;
+      break;
+    } catch (e) {
+      console.log(`DEBUG: Tentativa ${tentativa + 1}/5 - Modal de Localização/Visibilidade não encontrado, aguardando...`);
+      await page.waitForTimeout(300);
+    }
+  }
+  
+  if (!modalConfirmado) {
+    throw new Error('Modal de Localização/Visibilidade não foi encontrado após múltiplas tentativas');
+  }
+  
+  // Lista de seletores para o botão vincular/gravar
   const seletoresBotao = [
+    // Seletores prioritários para o botão "Vincular Órgão Julgador ao Perito"
     'button:has-text("Vincular Órgão Julgador ao Perito")',
+    'button .mat-button-wrapper:has-text("Vincular Órgão Julgador ao Perito")',
+    'button:has(.mat-button-wrapper:has-text("Vincular Órgão Julgador ao Perito"))',
+    '.mat-button-wrapper:has-text("Vincular Órgão Julgador ao Perito")',
+    'span.mat-button-wrapper:has-text("Vincular Órgão Julgador ao Perito")',
+    // Variações do texto do botão
+    'button:has-text("Vincular Orgao Julgador ao Perito")',
+    'button:has-text("Vincular Órgao Julgador ao Perito")',
+    'button:has-text("Vincular Orgão Julgador ao Perito")',
+    // Seletores específicos para o botão "Gravar" no modal de Localização/Visibilidade
+    'div[role="dialog"] button:has-text("Gravar")',
+    'div[role="dialog"] button span:has-text("Gravar")',
+    'mat-dialog-container button:has-text("Gravar")',
+    '.mat-dialog-container button:has-text("Gravar")',
+    '[aria-labelledby*="mat-dialog"] button:has-text("Gravar")',
+    // Seletores específicos para o botão "Gravar"
+    'button:has-text("Gravar")',
+    'button .mat-button-wrapper:has-text("Gravar")',
+    'button:has(.mat-button-wrapper:has-text("Gravar"))',
+    '.mat-button-wrapper:has-text("Gravar")',
+    'span.mat-button-wrapper:has-text("Gravar")',
+    // Seletores para a estrutura específica do Angular Material
+    'button:has(span.mat-button-wrapper:contains("Gravar"))',
+    'button span.mat-button-wrapper:contains("Gravar")',
+    'button[type="button"]:has(.mat-button-wrapper:has-text("Gravar"))',
+    'button[type="submit"]:has(.mat-button-wrapper:has-text("Gravar"))',
+    'input[type="submit"][value="Gravar"]',
+    'input[type="button"][value="Gravar"]',
+    'button[value="Gravar"]',
+    '.btn:has-text("Gravar")',
+    '[onclick*="gravar"]',
+    'button[onclick*="gravar"]',
+    'input[onclick*="gravar"]',
+    // Seletores para modal de Localização/Visibilidade
+    'mat-dialog-container button .mat-button-wrapper:has-text("Gravar")',
+    '.mat-dialog-container button .mat-button-wrapper:has-text("Gravar")',
+    '[role="dialog"] button .mat-button-wrapper:has-text("Gravar")',
+    // Seletores específicos para o formulário de Localização/Visibilidade
+    'form button:has-text("Gravar")',
+    'form input[type="submit"][value="Gravar"]',
+    'form button[type="submit"]:has-text("Gravar")',
+    // Seletores para botões em containers específicos
+    '.form-actions button:has-text("Gravar")',
+    '.button-container button:has-text("Gravar")',
+    '.actions button:has-text("Gravar")',
+    // Seletores genéricos para botões de ação em modais
+    'button[mat-dialog-close]',
+    'button.mat-primary',
+    'button.mat-raised-button',
+    'mat-dialog-actions button',
+    '.mat-dialog-actions button',
     'button:has-text("Vincular")',
+    'button:has-text("Salvar")',
+    'button:has-text("Confirmar")',
     'input[type="submit"][value*="Vincular"]',
     'button[type="submit"]',
     'input[type="button"][value*="Vincular"]',
     '.btn:has-text("Vincular")',
-    '[onclick*="vincular"]'
+    '[onclick*="vincular"]',
+    // Seletores mais específicos para modais
+    '[role="dialog"] button[type="submit"]',
+    'mat-dialog-container button[type="submit"]',
+    '.mat-dialog-container button[type="submit"]'
   ];
   
   let botaoEncontrado = false;
+  const inicioTentativas = Date.now();
+  const timeoutMaximo = 60000; // 60 segundos máximo (aumentado para páginas lentas)
+  
   for (const seletor of seletoresBotao) {
-    try {
-      console.log(`Tentando seletor de botão: ${seletor}`);
-      await page.waitForSelector(seletor, { timeout: 5000 });
-      await page.click(seletor);
-      console.log(`Clicou no botão usando seletor: ${seletor}`);
-      botaoEncontrado = true;
+    // Verificar timeout para evitar loop infinito
+    if (Date.now() - inicioTentativas > timeoutMaximo) {
+      console.log('DEBUG: Timeout atingido na busca do botão Gravar');
       break;
+    }
+    try {
+      // Verificar se a página ainda está válida
+      if (page.isClosed()) {
+        throw new Error('A página foi fechada durante a busca do botão vincular');
+      }
+      
+      console.log(`DEBUG: Tentando seletor do botão gravar/vincular: ${seletor}`);
+      
+      // Log específico para o botão "Vincular Órgão Julgador ao Perito"
+      if (seletor.includes('Vincular Órgão Julgador ao Perito') || seletor.includes('Vincular Orgao Julgador ao Perito')) {
+        console.log('DEBUG: *** Tentando encontrar botão "Vincular Órgão Julgador ao Perito" ***');
+      }
+      
+      // Verificar se o elemento existe antes de tentar clicar
+      const elemento = await page.$(seletor);
+      if (!elemento) {
+        console.log(`DEBUG: Botão não encontrado para seletor: ${seletor}`);
+        continue;
+      }
+      
+      // Verificar se o elemento é visível e clicável
+      const isVisible = await elemento.isVisible();
+      const isEnabled = await elemento.isEnabled();
+      
+      if (!isVisible) {
+        console.log(`DEBUG: Botão encontrado mas não visível para seletor: ${seletor}`);
+        continue;
+      }
+      
+      if (!isEnabled) {
+        console.log(`DEBUG: Botão encontrado mas não habilitado para seletor: ${seletor}`);
+        continue;
+      }
+      
+      console.log(`DEBUG: Botão encontrado, visível e habilitado, tentando clicar...`);
+      
+      // Log específico quando encontrar o botão "Vincular Órgão Julgador ao Perito"
+      if (seletor.includes('Vincular Órgão Julgador ao Perito') || seletor.includes('Vincular Orgao Julgador ao Perito')) {
+        console.log('DEBUG: *** SUCESSO! Botão "Vincular Órgão Julgador ao Perito" encontrado e será clicado ***');
+      }
+      
+      // Tentar diferentes estratégias de clique
+      try {
+        // Estratégia 1: Clique direto
+        await page.click(seletor, { force: true });
+        console.log(`DEBUG: Clique direto no botão realizado`);
+      } catch (e1) {
+        try {
+          // Estratégia 2: Se for mat-button-wrapper, tentar clicar no botão pai
+          if (seletor.includes('mat-button-wrapper')) {
+            const botaoPai = await page.evaluate((sel) => {
+              const wrapper = document.querySelector(sel);
+              return wrapper ? wrapper.closest('button') : null;
+            }, seletor);
+            if (botaoPai) {
+              await page.evaluate((wrapper) => {
+                const button = wrapper.closest('button');
+                if (button) button.click();
+              }, elemento);
+              console.log(`DEBUG: Clique no botão pai do mat-button-wrapper realizado`);
+            } else {
+              throw new Error('Botão pai não encontrado');
+            }
+          } else {
+            // Estratégia 3: Clique com JavaScript
+            await page.evaluate((sel) => {
+              const el = document.querySelector(sel);
+              if (el) el.click();
+            }, seletor);
+            console.log(`DEBUG: Clique via JavaScript no botão realizado`);
+          }
+        } catch (e2) {
+          try {
+            // Estratégia 4: Clique com JavaScript como último recurso
+            await page.evaluate((sel) => {
+              const el = document.querySelector(sel);
+              if (el) el.click();
+            }, seletor);
+            console.log(`DEBUG: Clique via JavaScript (último recurso) no botão realizado`);
+          } catch (e3) {
+            console.log(`DEBUG: Todas as estratégias de clique no botão falharam`);
+            continue;
+          }
+        }
+      }
+      
+      console.log(`DEBUG: Clicou no botão "Gravar" usando seletor: ${seletor}`);
+      
+      // Aguardar mais tempo para a ação ser processada
+      await page.waitForTimeout(1500);
+      
+      // Verificar múltiplas condições para confirmar sucesso
+      let sucessoConfirmado = false;
+      
+      // Verificação 1: Modal de Localização/Visibilidade fechou
+      const modalAindaPresente = await page.$('text=Localização/Visibilidade');
+      if (!modalAindaPresente) {
+        console.log('DEBUG: Modal de Localização/Visibilidade fechado - clique bem-sucedido');
+        sucessoConfirmado = true;
+      }
+      
+      // Verificação 2: Apareceu modal de confirmação
+      const modalConfirmacao = await page.$('text=Tem certeza que deseja vincular esse Órgão Julgador ao Perito?');
+      if (modalConfirmacao) {
+        console.log('DEBUG: Modal de confirmação apareceu - clique bem-sucedido');
+        sucessoConfirmado = true;
+      }
+      
+      // Verificação 3: Mensagem de sucesso apareceu
+      const mensagemSucesso = await page.$('text=sucesso, text=vinculado, text=vinculação');
+      if (mensagemSucesso) {
+        console.log('DEBUG: Mensagem de sucesso detectada - clique bem-sucedido');
+        sucessoConfirmado = true;
+      }
+      
+      // Verificação 4: Verificar se apareceu algum modal de erro ou aviso
+      const modalErro = await page.$('text=erro, text=falha, text=problema');
+      if (modalErro) {
+        console.log('DEBUG: Modal de erro detectado após clique');
+        const textoErro = await modalErro.textContent();
+        console.log(`DEBUG: Texto do erro: ${textoErro}`);
+      }
+      
+      // Verificação 5: Forçar sucesso se não há mais modal de Localização/Visibilidade
+      if (!modalAindaPresente && !modalConfirmacao && !mensagemSucesso) {
+        console.log('DEBUG: Modal fechou sem confirmação explícita - assumindo sucesso');
+        sucessoConfirmado = true;
+      }
+      
+      if (sucessoConfirmado) {
+        botaoEncontrado = true;
+        break;
+      } else {
+        console.log('DEBUG: Clique não teve efeito esperado, tentando próximo seletor...');
+        continue;
+      }
     } catch (error) {
-      console.log(`Seletor de botão ${seletor} não encontrado`);
+      console.log(`DEBUG: Seletor do botão gravar/vincular ${seletor} falhou: ${error.message}`);
+      
+      // Se a página foi fechada, parar imediatamente
+      if (error.message.includes('Target page, context or browser has been closed')) {
+        throw new Error('A página foi fechada durante a busca do botão vincular');
+      }
     }
   }
   
   if (!botaoEncontrado) {
-    console.log('Botão de vincular não encontrado, listando botões disponíveis:');
-    const botoes = await page.$$('button, input[type="submit"], input[type="button"]');
-    for (let i = 0; i < botoes.length; i++) {
-      const botaoInfo = await botoes[i].evaluate(el => ({
-        tagName: el.tagName,
-        type: el.type,
-        value: el.value,
-        textContent: el.textContent?.trim(),
-        onclick: el.onclick?.toString()
-      }));
-      console.log(`Botão ${i}:`, botaoInfo);
+    const tempoDecorrido = Date.now() - inicioTentativas;
+    console.log(`DEBUG: Botão "Gravar" não encontrado após ${tempoDecorrido}ms, listando botões disponíveis:`);
+    
+    try {
+      const botoes = await page.$$('button, input[type="submit"], input[type="button"]');
+      for (let i = 0; i < Math.min(botoes.length, 10); i++) { // Limitar a 10 botões para evitar spam
+        const botaoInfo = await botoes[i].evaluate(el => ({
+          tagName: el.tagName,
+          type: el.type,
+          value: el.value,
+          textContent: el.textContent?.trim().substring(0, 50), // Limitar texto
+          onclick: el.onclick?.toString().substring(0, 50) // Limitar onclick
+        }));
+        console.log(`DEBUG: Botão ${i}:`, botaoInfo);
+      }
+    } catch (debugError) {
+      console.log('DEBUG: Erro ao listar botões:', debugError.message);
     }
-    throw new Error('Botão de vincular não encontrado');
+    
+    const mensagemErro = tempoDecorrido >= timeoutMaximo 
+      ? `Timeout de ${timeoutMaximo/1000}s atingido na busca do botão "Gravar"` 
+      : 'Botão "Gravar" não encontrado no modal de Localização/Visibilidade';
+    
+    throw new Error(mensagemErro);
   }
   
   // Aguardar modal de confirmação aparecer
   console.log('Aguardando modal de confirmação...');
   try {
-    await page.waitForSelector('text=Tem certeza que deseja vincular esse Órgão Julgador ao Perito?', { timeout: 5000 });
+    await page.waitForSelector('text=Tem certeza que deseja vincular esse Órgão Julgador ao Perito?', { timeout: 2000 });
     console.log('Modal de confirmação detectado');
     
     // Procurar e clicar no botão "Sim"
@@ -666,7 +926,7 @@ async function vincularOJ(page, nomeOJ) {
         }
         
         console.log(`Tentando seletor do botão Sim: ${seletor}`);
-        await page.waitForSelector(seletor, { timeout: 600 });
+        await page.waitForSelector(seletor, { timeout: 300 });
         await page.click(seletor);
         console.log(`Clicou no botão Sim usando seletor: ${seletor}`);
         botaoSimEncontrado = true;
@@ -747,4 +1007,412 @@ async function vincularOJ(page, nomeOJ) {
   console.log('Vinculação concluída!');
 }
 
-module.exports = { vincularOJ };
+// Função auxiliar para configurar o papel/perfil do servidor
+async function configurarPapel(page, papel) {
+  console.log(`DEBUG: Iniciando configuração do papel: ${papel}`);
+  
+  // Aguardar um pouco para garantir que a modal carregou
+  await page.waitForTimeout(1000);
+  
+  // Timeout geral para evitar loop infinito
+  const startTime = Date.now();
+  const maxTimeout = 30000; // 30 segundos
+  
+  const seletoresPapel = [
+    // Seletores específicos para modal de Localização/Visibilidade
+    '#mat-dialog-2 mat-select[placeholder="Papel"]',
+    'pje-modal-localizacao-visibilidade mat-select[placeholder="Papel"]',
+    '#mat-select-42',
+    'mat-select[aria-labelledby*="mat-form-field-label-97"]',
+    'mat-select[id="mat-select-42"]',
+    '.ng-tns-c181-97.mat-select-required',
+    // Seletores genéricos mais amplos
+    'mat-dialog-container mat-select[placeholder="Papel"]',
+    '[role="dialog"] mat-select[placeholder="Papel"]',
+    '.mat-dialog-container mat-select[placeholder="Papel"]',
+    '.campo-papel mat-select',
+    'mat-select[placeholder="Papel"]',
+    '.mat-form-field.campo-papel mat-select',
+    'mat-select[placeholder*="Papel"]',
+    'mat-select[placeholder*="Perfil"]',
+    'mat-select[placeholder*="Função"]',
+    'mat-select[placeholder*="Cargo"]',
+    'select[name*="papel"]',
+    'select[name*="perfil"]',
+    'select[name*="funcao"]',
+    'select[name*="cargo"]',
+    'label:has-text("Papel") + * mat-select',
+    'label:has-text("Perfil") + * mat-select',
+    'label:has-text("Função") + * mat-select',
+    'label:has-text("Cargo") + * mat-select',
+    'label:has-text("Papel") ~ * mat-select',
+    'label:has-text("Perfil") ~ * mat-select',
+    '.mat-form-field:has(label:has-text("Papel")) mat-select',
+    '.mat-form-field:has(label:has-text("Perfil")) mat-select'
+  ];
+  
+  for (const seletor of seletoresPapel) {
+    // Verificar timeout
+    if (Date.now() - startTime > maxTimeout) {
+      console.log(`DEBUG: Timeout atingido (${maxTimeout}ms), interrompendo configuração de papel`);
+      break;
+    }
+    
+    try {
+      console.log(`DEBUG: Tentando configurar papel com seletor: ${seletor}`);
+      
+      // Verificar se o elemento existe antes de tentar clicar
+      const elemento = await page.$(seletor);
+      if (!elemento) {
+        console.log(`DEBUG: Elemento não encontrado para seletor: ${seletor}`);
+        continue;
+      }
+      
+      console.log(`DEBUG: Elemento encontrado, tentando clicar...`);
+      
+      // Verificar se é um mat-select
+      if (seletor.includes('mat-select')) {
+        // Tentar diferentes estratégias de clique
+        try {
+          // Estratégia 1: Clique direto
+          await page.click(seletor, { force: true });
+          console.log(`DEBUG: Clique direto realizado`);
+        } catch (e1) {
+          try {
+            // Estratégia 2: Clique no trigger
+            await page.click(`${seletor} .mat-select-trigger`, { force: true });
+            console.log(`DEBUG: Clique no trigger realizado`);
+          } catch (e2) {
+            try {
+              // Estratégia 3: Clique com JavaScript
+              await page.evaluate((sel) => {
+                const el = document.querySelector(sel);
+                if (el) el.click();
+              }, seletor);
+              console.log(`DEBUG: Clique via JavaScript realizado`);
+            } catch (e3) {
+              console.log(`DEBUG: Todas as estratégias de clique falharam`);
+              continue;
+            }
+          }
+        }
+        
+        // Aguardar dropdown abrir
+        await page.waitForTimeout(800);
+        
+        // Procurar pela opção do papel
+        const opcoesPapel = [
+          `mat-option:has-text("${papel}")`,
+          `mat-option[value="${papel}"]`,
+          `mat-option:has-text("Diretor de Secretaria")`,
+          `mat-option:has-text("Diretor")`,
+          `[role="option"]:has-text("${papel}")`,
+          `[role="option"]:has-text("Diretor de Secretaria")`,
+          `[role="option"]:has-text("Diretor")`
+        ];
+        
+        let opcaoSelecionada = false;
+        for (const opcao of opcoesPapel) {
+          try {
+            console.log(`DEBUG: Procurando opção: ${opcao}`);
+            await page.waitForSelector(opcao, { timeout: 2000 });
+            await page.click(opcao, { force: true });
+            console.log(`DEBUG: Papel configurado com sucesso: ${papel}`);
+            opcaoSelecionada = true;
+            return;
+          } catch (e) {
+            console.log(`DEBUG: Opção ${opcao} não encontrada: ${e.message}`);
+          }
+        }
+        
+        if (!opcaoSelecionada) {
+          // Listar opções disponíveis para debug
+          try {
+            const opcoes = await page.$$eval('mat-option, [role="option"]', options => 
+              options.map(opt => opt.textContent?.trim()).filter(text => text)
+            );
+            console.log(`DEBUG: Opções disponíveis no dropdown:`, opcoes);
+            
+            // Tentar selecionar a primeira opção disponível como fallback
+            if (opcoes.length > 0) {
+              console.log(`DEBUG: Tentando selecionar primeira opção como fallback: ${opcoes[0]}`);
+              await page.click('mat-option:first-child, [role="option"]:first-child', { force: true });
+              console.log(`DEBUG: Primeira opção selecionada como fallback`);
+              return;
+            }
+          } catch {}
+          
+          // Se chegou até aqui, fechar o dropdown e continuar
+          console.log(`DEBUG: Fechando dropdown e continuando sem configurar visibilidade`);
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(500);
+          return;
+        }
+        
+      } else {
+        // Select tradicional
+        await page.selectOption(seletor, papel);
+        console.log(`DEBUG: Papel configurado em select tradicional: ${papel}`);
+        return;
+      }
+    } catch (error) {
+      console.log(`DEBUG: Seletor de papel ${seletor} falhou: ${error.message}`);
+    }
+  }
+  
+  console.log('AVISO: Campo de papel não encontrado, continuando sem configurar...');
+}
+
+// Função auxiliar para configurar a visibilidade
+async function configurarVisibilidade(page, visibilidade) {
+  console.log(`DEBUG: Iniciando configuração da visibilidade: ${visibilidade}`);
+  
+  // Aguardar um pouco para garantir que a modal carregou
+  await page.waitForTimeout(1000);
+  
+  // Timeout geral para evitar loop infinito
+  const startTime = Date.now();
+  const maxTimeout = 30000; // 30 segundos
+  
+  const seletoresVisibilidade = [
+    // Seletores específicos para modal de Localização/Visibilidade
+    '#mat-dialog-2 mat-select[placeholder="Localização"]',
+    'pje-modal-localizacao-visibilidade mat-select[placeholder="Localização"]',
+    '#mat-select-44',
+    'mat-select[aria-labelledby*="mat-form-field-label-99"]',
+    'mat-select[id="mat-select-44"]',
+    // Seletores genéricos mais amplos
+    'mat-dialog-container mat-select[placeholder="Localização"]',
+    '[role="dialog"] mat-select[placeholder="Localização"]',
+    '.mat-dialog-container mat-select[placeholder="Localização"]',
+    '.campo-localizacao mat-select',
+    'mat-select[placeholder="Localização"]',
+    '.mat-form-field.campo-localizacao mat-select',
+    'mat-select[placeholder*="Visibilidade"]',
+    'mat-select[placeholder*="Localização"]',
+    'select[name*="visibilidade"]',
+    'select[name*="localizacao"]',
+    'label:has-text("Visibilidade") + * mat-select',
+    'label:has-text("Localização") + * mat-select',
+    'label:has-text("Visibilidade") ~ * mat-select',
+    'label:has-text("Localização") ~ * mat-select',
+    '.mat-form-field:has(label:has-text("Visibilidade")) mat-select',
+    '.mat-form-field:has(label:has-text("Localização")) mat-select'
+  ];
+  
+  for (const seletor of seletoresVisibilidade) {
+    // Verificar timeout
+    if (Date.now() - startTime > maxTimeout) {
+      console.log(`DEBUG: Timeout atingido (${maxTimeout}ms), interrompendo configuração de visibilidade`);
+      break;
+    }
+    
+    try {
+      console.log(`DEBUG: Tentando configurar visibilidade com seletor: ${seletor}`);
+      
+      // Verificar se o elemento existe antes de tentar clicar
+      const elemento = await page.$(seletor);
+      if (!elemento) {
+        console.log(`DEBUG: Elemento não encontrado para seletor: ${seletor}`);
+        continue;
+      }
+      
+      console.log(`DEBUG: Elemento encontrado, tentando clicar...`);
+      
+      // Verificar se é um mat-select
+      if (seletor.includes('mat-select')) {
+        // Tentar diferentes estratégias de clique
+        try {
+          // Estratégia 1: Clique direto
+          await page.click(seletor, { force: true });
+          console.log(`DEBUG: Clique direto realizado`);
+        } catch (e1) {
+          try {
+            // Estratégia 2: Clique no trigger
+            await page.click(`${seletor} .mat-select-trigger`, { force: true });
+            console.log(`DEBUG: Clique no trigger realizado`);
+          } catch (e2) {
+            try {
+              // Estratégia 3: Clique com JavaScript
+              await page.evaluate((sel) => {
+                const el = document.querySelector(sel);
+                if (el) el.click();
+              }, seletor);
+              console.log(`DEBUG: Clique via JavaScript realizado`);
+            } catch (e3) {
+              console.log(`DEBUG: Todas as estratégias de clique falharam`);
+              continue;
+            }
+          }
+        }
+        
+        // Aguardar dropdown abrir
+        await page.waitForTimeout(800);
+        
+        // Procurar pela opção de visibilidade
+        const opcoesVisibilidade = [
+          `mat-option:has-text("${visibilidade}")`,
+          `mat-option[value="${visibilidade}"]`,
+          `mat-option:has-text("Público")`,
+          `mat-option:has-text("Publico")`,
+          `[role="option"]:has-text("${visibilidade}")`,
+          `[role="option"]:has-text("Público")`,
+          `[role="option"]:has-text("Publico")`
+        ];
+        
+        let opcaoSelecionada = false;
+        for (const opcao of opcoesVisibilidade) {
+          try {
+            console.log(`DEBUG: Procurando opção: ${opcao}`);
+            await page.waitForSelector(opcao, { timeout: 2000 });
+            await page.click(opcao, { force: true });
+            console.log(`DEBUG: Visibilidade configurada com sucesso: ${visibilidade}`);
+            opcaoSelecionada = true;
+            return;
+          } catch (e) {
+            console.log(`DEBUG: Opção ${opcao} não encontrada: ${e.message}`);
+          }
+        }
+        
+        if (!opcaoSelecionada) {
+          // Listar opções disponíveis para debug
+          try {
+            const opcoes = await page.$$eval('mat-option, [role="option"]', options => 
+              options.map(opt => opt.textContent?.trim()).filter(text => text)
+            );
+            console.log(`DEBUG: Opções disponíveis no dropdown:`, opcoes);
+          } catch {}
+        }
+        
+      } else {
+        // Select tradicional
+        await page.selectOption(seletor, visibilidade);
+        console.log(`DEBUG: Visibilidade configurada em select tradicional: ${visibilidade}`);
+        return;
+      }
+    } catch (error) {
+      console.log(`DEBUG: Seletor de visibilidade ${seletor} falhou: ${error.message}`);
+    }
+  }
+  
+  console.log('AVISO: Campo de visibilidade não encontrado, continuando sem configurar...');
+}
+
+// Função auxiliar para aguardar a modal de Localização/Visibilidade
+async function aguardarModalLocalizacaoVisibilidade(page) {
+  const seletoresModal = [
+    '#mat-dialog-2',
+    'pje-modal-localizacao-visibilidade',
+    'mat-dialog-container',
+    '.mat-dialog-container',
+    '[role="dialog"]',
+    '.cdk-overlay-container [role="dialog"]',
+    '.cdk-overlay-pane',
+    'mat-dialog-content',
+    // Seletores adicionais para melhor detecção
+    '.mat-dialog-wrapper',
+    '.mat-dialog-content',
+    '[aria-labelledby*="mat-dialog"]'
+  ];
+  
+  console.log('DEBUG: Aguardando modal de Localização/Visibilidade abrir...');
+  
+  // Aguardar mais tempo para modal aparecer (páginas lentas)
+  await page.waitForTimeout(3000);
+  
+  for (const seletor of seletoresModal) {
+    try {
+      console.log(`DEBUG: Tentando encontrar modal com seletor: ${seletor}`);
+      await page.waitForSelector(seletor, { timeout: 5000 });
+      
+      // Verificar se a modal realmente contém campos de papel/localização
+      const temCampos = await page.evaluate((sel) => {
+        const modal = document.querySelector(sel);
+        if (!modal) return false;
+        
+        const texto = modal.textContent || '';
+        return texto.toLowerCase().includes('papel') || 
+               texto.toLowerCase().includes('localização') ||
+               texto.toLowerCase().includes('visibilidade') ||
+               modal.querySelector('mat-select[placeholder*="Papel"]') ||
+               modal.querySelector('mat-select[placeholder*="Localização"]');
+      }, seletor);
+      
+      if (temCampos) {
+        console.log(`DEBUG: Modal encontrada e validada com seletor: ${seletor}`);
+        
+        // Aguardar um pouco para a modal carregar completamente
+        await page.waitForTimeout(1500);
+        return;
+      } else {
+        console.log(`DEBUG: Modal encontrada mas não contém os campos esperados: ${seletor}`);
+      }
+    } catch (error) {
+      console.log(`DEBUG: Seletor de modal ${seletor} falhou: ${error.message}`);
+    }
+  }
+  
+  // Se não encontrou a modal, tentar listar todas as modais/dialogs presentes
+  try {
+    const modalsPresentes = await page.$$eval('[role="dialog"], mat-dialog-container, .mat-dialog-container', 
+      modals => modals.map(modal => ({
+        tagName: modal.tagName,
+        className: modal.className,
+        textContent: (modal.textContent || '').substring(0, 200)
+      }))
+    );
+    console.log('DEBUG: Modals/dialogs presentes na página:', modalsPresentes);
+  } catch {}
+  
+  console.log('AVISO: Modal de Localização/Visibilidade não detectada, continuando...');
+}
+
+// Função auxiliar para debug de elementos na página
+async function debugElementosNaPagina(page, contexto = '') {
+  try {
+    console.log(`DEBUG ${contexto}: Analisando elementos na página...`);
+    
+    // Listar mat-selects disponíveis
+    const matSelects = await page.$$eval('mat-select', selects => 
+      selects.map((select, index) => ({
+        index,
+        placeholder: select.getAttribute('placeholder') || '',
+        id: select.getAttribute('id') || '',
+        className: select.className || '',
+        visible: select.offsetParent !== null
+      }))
+    );
+    console.log(`DEBUG ${contexto}: Mat-selects encontrados:`, matSelects);
+    
+    // Listar botões disponíveis
+    const botoes = await page.$$eval('button, input[type="submit"], input[type="button"]', buttons => 
+      buttons.map((btn, index) => ({
+        index,
+        tagName: btn.tagName,
+        type: btn.type || '',
+        textContent: (btn.textContent || '').trim().substring(0, 50),
+        value: btn.value || '',
+        className: btn.className || '',
+        visible: btn.offsetParent !== null
+      }))
+    );
+    console.log(`DEBUG ${contexto}: Botões encontrados:`, botoes);
+    
+    // Listar modais/dialogs
+    const modals = await page.$$eval('[role="dialog"], mat-dialog-container, .mat-dialog-container', dialogs => 
+      dialogs.map((dialog, index) => ({
+        index,
+        tagName: dialog.tagName,
+        className: dialog.className || '',
+        textContent: (dialog.textContent || '').substring(0, 100),
+        visible: dialog.offsetParent !== null
+      }))
+    );
+    console.log(`DEBUG ${contexto}: Modais/dialogs encontrados:`, modals);
+    
+  } catch (error) {
+    console.log(`DEBUG ${contexto}: Erro ao analisar elementos:`, error.message);
+  }
+}
+
+module.exports = { vincularOJ, debugElementosNaPagina };

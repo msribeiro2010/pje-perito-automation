@@ -1,0 +1,17 @@
+{
+  "cpf": "530.361.406-97",
+  "perfil": "Diretor de Secretaria",
+  "url": "https://pje.trt15.jus.br/pje/",
+  "orgaos": [
+    "Vara do Trabalho de Rio Claro"
+  ],
+  "configuracoes": {
+    "timeoutPadrao": 15000,
+    "timeoutNavegacao": 30000,
+    "delayEntreTentativas": 2000,
+    "maxTentativasLogin": 3,
+    "modoProducao": false,
+    "gerarRelatorioDetalhado": true,
+    "usarCache": true
+  }
+}

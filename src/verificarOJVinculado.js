@@ -28,7 +28,7 @@ async function verificarOJJaVinculado(page, nomeOJ) {
           if (ariaExpanded === 'false') {
             console.log('📂 Abrindo acordeão de Órgãos Julgadores...');
             await elemento.click();
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(200);
           }
           break;
         }

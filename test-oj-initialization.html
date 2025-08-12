@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Inicialização do OJ Selector</title>
+    <link rel="stylesheet" href="src/renderer/styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Teste de Inicialização do OJ Selector</h1>
+        
+        <div class="form-group">
+            <label>Órgãos Julgadores:</label>
+            <div class="orgaos-selector">
+                <div id="oj-selector-test" class="oj-selector">
+                    <!-- Estrutura será criada dinamicamente -->
+                </div>
+                <small>Teste do seletor de órgãos julgadores</small>
+            </div>
+        </div>
+        
+        <button id="test-btn" onclick="testOJSelector()">Testar Inicialização</button>
+        <button id="reload-btn" onclick="reloadOJList()">Recarregar Lista</button>
+        
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        // Simular o ambiente da aplicação
+        window.ojSelectors = {};
+        window.ojList = [];
+        
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            logDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        // Classe OJSelector simplificada para teste
+        class OJSelector {
+            constructor(containerId, ojList) {
+                log(`Criando OJSelector para container: ${containerId}`);
+                this.containerId = containerId;
+                this.ojList = ojList;
+                this.selectedOJs = [];
+                this.filteredOJs = [...ojList];
+                this.init();
+            }
+
+            init() {
+                log(`Inicializando OJSelector...`);
+                this.container = document.getElementById(this.containerId);
+                log(`Container encontrado: ${!!this.container}`);
+                
+                if (!this.container) {
+                    log(`ERRO: Container não encontrado: ${this.containerId}`, 'error');
+                    return;
+                }
+                
+                // Criar estrutura HTML dinamicamente
+                this.createHTML();
+                
+                // Buscar os elementos criados
+                this.searchInput = this.container.querySelector('.oj-search');
+                this.selectedContainer = this.container.querySelector('.oj-selected');
+                this.dropdown = this.container.querySelector('.oj-dropdown');
+                this.optionsContainer = this.container.querySelector('.oj-options');
+                this.hiddenInput = this.container.querySelector('input[type="hidden"]');
+                
+                log(`Elementos encontrados:`);
+                log(`- searchInput: ${!!this.searchInput}`);
+                log(`- selectedContainer: ${!!this.selectedContainer}`);
+                log(`- dropdown: ${!!this.dropdown}`);
+                log(`- optionsContainer: ${!!this.optionsContainer}`);
+                log(`- hiddenInput: ${!!this.hiddenInput}`);
+                
+                if (!this.searchInput || !this.selectedContainer || !this.dropdown || !this.optionsContainer || !this.hiddenInput) {
+                    log('ERRO: Alguns elementos do OJSelector não foram encontrados', 'error');
+                    return;
+                }
+                
+                this.setupEventListeners();
+                this.renderOptions();
+                log('OJSelector inicializado com sucesso!', 'success');
+            }
+            
+            createHTML() {
+                log('Criando HTML do seletor...');
+                this.container.innerHTML = `
+                    <div class="oj-selected"></div>
+                    <input type="text" class="oj-search" placeholder="Buscar órgãos julgadores...">
+                    <div class="oj-dropdown" style="display: none;">
+                        <div class="oj-options"></div>
+                    </div>
+                    <input type="hidden" name="selected-ojs" value="">
+                `;
+                log('HTML criado');
+            }
+            
+            setupEventListeners() {
+                log('Configurando event listeners...');
+                
+                this.searchInput.addEventListener('input', (e) => {
+                    this.filterOptions(e.target.value);
+                });
+                
+                this.searchInput.addEventListener('focus', () => {
+                    this.showDropdown();
+                });
+                
+                document.addEventListener('click', (e) => {
+                    if (!this.container.contains(e.target)) {
+                        this.hideDropdown();
+                    }
+                });
+                
+                log('Event listeners configurados');
+            }
+            
+            renderOptions() {
+                log(`Renderizando ${this.filteredOJs.length} opções...`);
+                
+                if (!this.optionsContainer) {
+                    log('ERRO: optionsContainer não encontrado', 'error');
+                    return;
+                }
+                
+                this.optionsContainer.innerHTML = '';
+                
+                if (this.filteredOJs.length === 0) {
+                    this.optionsContainer.innerHTML = '<div class="oj-no-results">Nenhum órgão julgador encontrado</div>';
+                    return;
+                }
+                
+                this.filteredOJs.forEach(oj => {
+                    const option = document.createElement('div');
+                    option.className = 'oj-option';
+                    option.innerHTML = `
+                        <input type="checkbox" id="oj-${oj.replace(/\s+/g, '-')}" ${this.selectedOJs.includes(oj) ? 'checked' : ''}>
+                        <label for="oj-${oj.replace(/\s+/g, '-')}">${oj}</label>
+                    `;
+                    
+                    option.addEventListener('click', (e) => {
+                        if (e.target.type !== 'checkbox') {
+                            const checkbox = option.querySelector('input[type="checkbox"]');
+                            checkbox.checked = !checkbox.checked;
+                        }
+                        this.toggleOJ(oj);
+                    });
+                    
+                    this.optionsContainer.appendChild(option);
+                });
+                
+                log(`${this.filteredOJs.length} opções renderizadas`);
+            }
+            
+            filterOptions(searchTerm) {
+                log(`Filtrando por: "${searchTerm}"`);
+                this.filteredOJs = this.ojList.filter(oj => 
+                    oj.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+                this.renderOptions();
+            }
+            
+            toggleOJ(oj) {
+                log(`Toggle OJ: ${oj}`);
+                const index = this.selectedOJs.indexOf(oj);
+                if (index > -1) {
+                    this.selectedOJs.splice(index, 1);
+                } else {
+                    this.selectedOJs.push(oj);
+                }
+                this.updateSelectedDisplay();
+            }
+            
+            updateSelectedDisplay() {
+                log(`Atualizando display: ${this.selectedOJs.length} selecionados`);
+                if (!this.selectedContainer) return;
+                
+                if (this.selectedOJs.length === 0) {
+                    this.selectedContainer.innerHTML = '<div class="oj-placeholder">Nenhum órgão julgador selecionado</div>';
+                } else {
+                    this.selectedContainer.innerHTML = this.selectedOJs.map(oj => 
+                        `<span class="oj-tag">${oj} <button type="button" onclick="removeOJ('${oj}')">×</button></span>`
+                    ).join('');
+                }
+            }
+            
+            showDropdown() {
+                log('Mostrando dropdown');
+                if (this.dropdown) {
+                    this.dropdown.style.display = 'block';
+                }
+            }
+            
+            hideDropdown() {
+                log('Escondendo dropdown');
+                if (this.dropdown) {
+                    this.dropdown.style.display = 'none';
+                }
+            }
+        }
+        
+        async function loadOJList() {
+            log('Carregando lista de OJs...');
+            try {
+                const response = await fetch('./src/renderer/orgaos_pje.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const ojData = await response.json();
+                
+                // Extract all OJs from all cities
+                const allOJs = [];
+                Object.keys(ojData).forEach(cidade => {
+                    if (Array.isArray(ojData[cidade])) {
+                        allOJs.push(...ojData[cidade]);
+                    }
+                });
+                
+                // Sort alphabetically
+                window.ojList = allOJs.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+                log(`Lista carregada com sucesso: ${window.ojList.length} órgãos`, 'success');
+                return true;
+            } catch (error) {
+                log(`Erro ao carregar lista: ${error.message}`, 'error');
+                // Fallback
+                window.ojList = [
+                    'LIQ2 - Bauru',
+                    'Órgão Centralizador de Leilões Judiciais de Limeira',
+                    'Órgão Centralizador de Leilões Judiciais de Araraquara',
+                    'Vara do Trabalho de Ubatuba',
+                    'EXE1 - São José dos Campos'
+                ].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+                log(`Usando lista de fallback: ${window.ojList.length} órgãos`);
+                return false;
+            }
+        }
+        
+        async function testOJSelector() {
+            log('=== INICIANDO TESTE ===');
+            
+            // Limpar log anterior
+            document.getElementById('log').innerHTML = '';
+            
+            // Verificar se a lista está carregada
+            if (!window.ojList || window.ojList.length === 0) {
+                await loadOJList();
+            }
+            
+            // Verificar container
+            const container = document.getElementById('oj-selector-test');
+            log(`Container existe: ${!!container}`);
+            
+            if (!container) {
+                log('ERRO: Container oj-selector-test não encontrado!', 'error');
+                return;
+            }
+            
+            // Criar seletor
+            try {
+                window.ojSelectors['oj-selector-test'] = new OJSelector('oj-selector-test', window.ojList);
+                log('Teste concluído!', 'success');
+            } catch (error) {
+                log(`ERRO na criação do seletor: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+        
+        async function reloadOJList() {
+            window.ojList = [];
+            await loadOJList();
+        }
+        
+        function removeOJ(oj) {
+            const selector = window.ojSelectors['oj-selector-test'];
+            if (selector) {
+                selector.toggleOJ(oj);
+            }
+        }
+        
+        // Carregar lista ao inicializar
+        document.addEventListener('DOMContentLoaded', async () => {
+            log('Página carregada, carregando lista de OJs...');
+            await loadOJList();
+        });
+    </script>
+</body>
+</html>

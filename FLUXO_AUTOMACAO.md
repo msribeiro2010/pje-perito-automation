@@ -42,9 +42,12 @@ Este documento descreve o fluxo completo de automação implementado para o sist
 
 **Passos:**
 1. Procura e clica no botão "Adicionar"
-2. Preenche o campo de OJ
-3. Clica em "Salvar"
-4. Repete para cada OJ do perito
+2. Preenche o campo de OJ (Órgão Julgador)
+3. Configura o papel/perfil do servidor
+4. Configura a visibilidade
+5. Clica no botão "Gravar" para finalizar a vinculação
+6. Confirma a vinculação se necessário
+7. Repete para cada OJ do servidor
 
 ## Características Técnicas
 

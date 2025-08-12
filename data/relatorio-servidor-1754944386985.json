@@ -1,0 +1,36 @@
+{
+  "timestamp": "2025-08-11T20:33:06.985Z",
+  "config": {
+    "cpf": "530.361.406-97",
+    "perfil": "Assessor",
+    "totalOrgaos": 1
+  },
+  "results": [
+    {
+      "orgao": "Vara do Trabalho de Tatuí",
+      "status": "Sucesso",
+      "erro": null,
+      "timestamp": "2025-08-11T20:33:05.981Z"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "sucessos": 1,
+    "erros": 0,
+    "jaIncluidos": 0,
+    "totalValidos": 1,
+    "estatisticas": {
+      "percentualSucesso": 100,
+      "percentualJaExistiam": 0,
+      "percentualErros": 0
+    }
+  },
+  "detalhes": {
+    "orgaosCadastrados": [
+      "Vara do Trabalho de Tatuí"
+    ],
+    "orgaosJaExistiam": [],
+    "orgaosComErro": [],
+    "orgaosPulados": []
+  }
+}

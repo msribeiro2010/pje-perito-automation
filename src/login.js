@@ -12,7 +12,7 @@ async function login(page) {
   }
   
   // Aumentar timeout para 60 segundos
-  page.setDefaultTimeout(60000);
+  page.setDefaultTimeout(8000);
   
   console.log('Navegando para página inicial do PJe...');
   await page.goto(PJE_URL, { 
@@ -21,7 +21,7 @@ async function login(page) {
   });
   
   // Aguardar carregamento completo da página
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(300);
   
   console.log('Procurando botão "Entrar com PDPJ"...');
   

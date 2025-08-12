@@ -1,3 +1,6 @@
+// PJE Automation - Peritos e Servidores - Main Process
+// Sistema de automação para vinculação de peritos e servidores no PJE
+
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -7,11 +10,16 @@ const { navegarParaCadastro } = require('./navigate.js');
 const { vincularOJ } = require('./vincularOJ.js');
 const { verificarOJJaVinculado, listarOJsVinculados } = require('./verificarOJVinculado.js');
 const { loadConfig } = require('./util.js');
+// const ServidorAutomation = require('./main/servidor-automation'); // Removido V1
+const ServidorAutomationV2 = require('./main/servidor-automation-v2');
 
 // __dirname is already available in CommonJS
 
 let mainWindow;
 let activeBrowser = null;
+let automationInProgress = false;
+// let servidorAutomation = null; // Removido V1
+let servidorAutomationV2 = null;
 function sendStatus(type, message, progress = null, subtitle = null) {
   try {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -29,6 +37,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: 'PJE Automation - Peritos e Servidores',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -77,6 +86,36 @@ ipcMain.handle('save-peritos', async (event, peritos) => {
   }
 });
 
+// Handlers genéricos para dados
+ipcMain.handle('save-data', async (event, key, data) => {
+  try {
+    const dataDir = path.join(__dirname, '../data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    
+    const filePath = path.join(dataDir, `${key}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('load-data', async (event, key) => {
+  try {
+    const filePath = path.join(__dirname, '../data', `${key}.json`);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const data = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error(`Erro ao carregar dados para ${key}:`, error);
+    return null;
+  }
+});
+
 ipcMain.handle('load-config', async () => {
   try {
     return loadConfig();
@@ -113,15 +152,15 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
     // Configurações do browser com timeouts otimizados
     browser = await chromium.launch({ 
       headless: false,
-      slowMo: 20,
+      slowMo: 5,
       timeout: 15000
     });
     activeBrowser = browser;
     const page = await browser.newPage();
     
     // Configurar timeout padrão da página
-    page.setDefaultTimeout(12000);
-    page.setDefaultNavigationTimeout(12000);
+    page.setDefaultTimeout(10000);
+    page.setDefaultNavigationTimeout(8000);
     
     // Capturar logs do console para debug
     page.on('console', msg => {
@@ -150,7 +189,7 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
           throw new Error(`Falha no login após 3 tentativas: ${loginError.message}`);
         }
         sendStatus('warning', `Tentativa ${attempt} falhou, tentando novamente...`, currentStep, 'Reautenticando');
-        await page.waitForTimeout(800);
+        await page.waitForTimeout(500);
       }
     }
     
@@ -202,7 +241,7 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
           }
           
           // Pequena pausa entre OJs
-          await page.waitForTimeout(150);
+          await page.waitForTimeout(100);
         }
       } catch (peritoError) {
         sendStatus('error', `Erro ao processar perito ${perito.nome}: ${peritoError.message}`, currentStep, 'Erro no processamento');
@@ -210,7 +249,7 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
       
       // Pausa entre peritos
       if (i < selectedPeritos.length - 1) {
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(400);
       }
     }
 
@@ -245,6 +284,44 @@ ipcMain.handle('show-open-dialog', async () => {
   return result;
 });
 
+// Handlers para importação e exportação de arquivos
+ipcMain.handle('import-file', async (event, type) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      const data = fs.readFileSync(filePath, 'utf8');
+      return { success: true, data: JSON.parse(data) };
+    }
+    
+    return { success: false, canceled: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('export-file', async (event, data, filename) => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: filename || 'export.json',
+      filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    });
+    
+    if (!result.canceled && result.filePath) {
+      fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
+      return { success: true, filePath: result.filePath };
+    }
+    
+    return { success: false, canceled: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Handler para parar automação e fechar o navegador manualmente
 ipcMain.handle('stop-automation', async () => {
   try {
@@ -257,6 +334,127 @@ ipcMain.handle('stop-automation', async () => {
       message: 'Navegador fechado pelo usuário.'
     });
     return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Handlers V1 removidos - usando apenas V2
+
+// ===== HANDLERS PARA AUTOMAÇÃO V2 =====
+
+// Handler para iniciar automação de servidores V2 (moderna)
+ipcMain.handle('start-servidor-automation-v2', async (_, config) => {
+  try {
+    if (automationInProgress) {
+      throw new Error('Automação já está em execução');
+    }
+
+    automationInProgress = true;
+    
+    if (!servidorAutomationV2) {
+      servidorAutomationV2 = new ServidorAutomationV2();
+      servidorAutomationV2.setMainWindow(mainWindow);
+    }
+    
+    await servidorAutomationV2.startAutomation(config);
+    return { success: true, relatorio: servidorAutomationV2.getRelatorio() };
+    
+  } catch (error) {
+    console.error('Erro na automação de servidores V2:', error);
+    return { success: false, error: error.message };
+  } finally {
+    automationInProgress = false;
+  }
+});
+
+// Handler para parar automação de servidores V2
+ipcMain.handle('stop-servidor-automation-v2', async () => {
+  try {
+    if (servidorAutomationV2) {
+      await servidorAutomationV2.stopAutomation();
+    }
+    automationInProgress = false;
+    return { success: true };
+  } catch (error) {
+    console.error('Erro ao parar automação V2:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Handler para obter status da automação de servidores V2
+ipcMain.handle('get-servidor-automation-v2-status', async () => {
+  try {
+    if (servidorAutomationV2) {
+      return servidorAutomationV2.getStatus();
+    }
+    return { isRunning: false, progress: 0, totalOrgaos: 0, processedCount: 0 };
+  } catch (error) {
+    console.error('Erro ao obter status V2:', error);
+    return { isRunning: false, progress: 0, totalOrgaos: 0, processedCount: 0 };
+  }
+});
+
+// Handler para obter relatório da automação V2
+ipcMain.handle('get-servidor-automation-v2-report', async () => {
+  try {
+    if (servidorAutomationV2) {
+      return { success: true, relatorio: servidorAutomationV2.getRelatorio() };
+    }
+    return { success: false, error: 'Automação V2 não inicializada' };
+  } catch (error) {
+    console.error('Erro ao obter relatório V2:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Handler para carregar órgãos PJE
+ipcMain.handle('load-orgaos-pje', async () => {
+  try {
+    const orgaosPath = path.join(__dirname, 'renderer/orgaos_pje.json');
+    if (!fs.existsSync(orgaosPath)) {
+      throw new Error('Arquivo orgaos_pje.json não encontrado');
+    }
+    
+    const data = fs.readFileSync(orgaosPath, 'utf8');
+    const orgaosData = JSON.parse(data);
+    
+    // Extrair todos os órgãos de todas as cidades e juntar em um array único
+    const allOJs = [];
+    Object.keys(orgaosData).forEach(cidade => {
+      if (Array.isArray(orgaosData[cidade])) {
+        allOJs.push(...orgaosData[cidade]);
+      }
+    });
+    
+    // Ordenar alfabeticamente
+    const sortedOJs = allOJs.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    
+    return { success: true, orgaos: sortedOJs };
+  } catch (error) {
+    console.error('Erro ao carregar órgãos PJE:', error);
+    return { success: false, error: error.message, orgaos: [] };
+  }
+});
+
+// Handler para validar configuração V2
+ipcMain.handle('validate-servidor-config-v2', async (_, config) => {
+  try {
+    // Validações básicas
+    if (!config.cpf || !config.orgaos || !Array.isArray(config.orgaos)) {
+      throw new Error('Configuração inválida: CPF e lista de órgãos são obrigatórios');
+    }
+    
+    const cpfLimpo = config.cpf.replace(/\D/g, '');
+    if (cpfLimpo.length !== 11) {
+      throw new Error('CPF deve ter 11 dígitos');
+    }
+    
+    if (config.orgaos.length === 0) {
+      throw new Error('Lista de órgãos julgadores não pode estar vazia');
+    }
+    
+    return { success: true, message: 'Configuração válida' };
   } catch (error) {
     return { success: false, error: error.message };
   }
