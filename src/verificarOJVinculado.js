@@ -1,148 +1,64 @@
 // Função para verificar se um Órgão Julgador já está vinculado ao perito
 
-async function verificarOJJaVinculado(page, nomeOJ) {
-  console.log(`🔍 Verificando se OJ "${nomeOJ}" já está vinculado...`);
+const { NormalizadorTexto } = require('./utils/normalizacao');
+
+/**
+ * Verificação conservadora que busca por OJs exatamente vinculados
+ * para evitar falsos positivos
+ */
+async function verificacaoConservadoraOJ(page, nomeOJ) {
+  console.log(`🛡️ Verificação conservadora para: "${nomeOJ}"`);
   
   try {
-    // Garantir que o acordeão de Órgãos Julgadores esteja aberto
-    const possiveisAcordeons = [
-      'text=Órgãos Julgadores vinculados ao Perito',
-      'text=Órgãos Julgadores',
-      'text=Orgãos Julgadores',
-      'mat-expansion-panel-header:has-text("Órgão")',
-      '.mat-expansion-panel-header:has-text("Órgão")',
-      '[data-toggle="collapse"]:has-text("Órgão")',
-      '.panel-heading:has-text("Órgão")',
-      'h4:has-text("Órgão")',
-      'h3:has-text("Órgão")',
-      'span:has-text("Órgão")'
-    ];
-    
-    // Tentar abrir o acordeão se estiver fechado
-    for (const seletor of possiveisAcordeons) {
-      try {
-        const elemento = await page.locator(seletor).first();
-        if (await elemento.isVisible()) {
-          // Verificar se está expandido
-          const ariaExpanded = await elemento.getAttribute('aria-expanded').catch(() => null);
-          if (ariaExpanded === 'false') {
-            console.log('📂 Abrindo acordeão de Órgãos Julgadores...');
-            await elemento.click();
-            await page.waitForTimeout(200);
-          }
-          break;
-        }
-      } catch {
-        // Continuar tentando outros seletores
-      }
-    }
-    
-    // Normalizar o nome do OJ para comparação
-    const normalize = (text) => (text || '')
-      .normalize('NFD')
-      .replace(/\p{Diacritic}+/gu, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    
-    const nomeOJNormalizado = normalize(nomeOJ);
-    
-    // Procurar por listas de OJs já vinculados
-    const seletoresListaOJs = [
-      // Tabelas com OJs vinculados
+    // Procurar por tabelas com OJs vinculados de forma mais específica
+    const seletoresTabela = [
       'table tbody tr',
       '.mat-table .mat-row',
-      '.table tbody tr',
-      // Listas de itens
-      'ul li',
-      '.list-group-item',
-      '.mat-list-item',
-      // Cards ou painéis com OJs
-      '.card-body',
-      '.panel-body',
-      '.mat-expansion-panel-content',
-      // Divs genéricas que podem conter OJs
-      'div[class*="orgao"]',
-      'div[class*="julgador"]',
-      // Spans ou elementos de texto
-      'span:has-text("Vara")',
-      'span:has-text("Tribunal")',
-      'div:has-text("Vara")',
-      'div:has-text("Tribunal")'
+      '.table tbody tr'
     ];
     
-    console.log('🔍 Procurando OJs já vinculados na página...');
+    const nomeOJNormalizado = NormalizadorTexto.normalizar(nomeOJ);
     
-    for (const seletor of seletoresListaOJs) {
+    for (const seletor of seletoresTabela) {
       try {
-        const elementos = await page.locator(seletor).all();
+        const linhas = await page.locator(seletor).all();
         
-        for (const elemento of elementos) {
+        for (const linha of linhas) {
           try {
-            const texto = await elemento.textContent();
-            if (texto && texto.trim()) {
-              const textoNormalizado = normalize(texto);
+            const textoLinha = await linha.textContent();
+            if (textoLinha && textoLinha.trim()) {
+              const textoLinhaLimpo = textoLinha.trim();
+              const textoLinhaNormalizado = NormalizadorTexto.normalizar(textoLinhaLimpo);
               
-              // Verificar se o texto contém o nome do OJ
-              if (textoNormalizado.includes(nomeOJNormalizado) || 
-                  nomeOJNormalizado.includes(textoNormalizado)) {
+              // Verificação ultra-restritiva: 
+              // 1. Deve ter similaridade exata normalizada
+              // 2. OU ser exatamente igual após normalização
+              if (textoLinhaNormalizado === nomeOJNormalizado || 
+                  NormalizadorTexto.saoEquivalentes(nomeOJ, textoLinhaLimpo, 0.98)) {
                 
-                // Verificação mais rigorosa para evitar falsos positivos
-                const palavrasOJ = nomeOJNormalizado.split(' ').filter(p => p.length > 2);
-                const palavrasTexto = textoNormalizado.split(' ').filter(p => p.length > 2);
+                console.log(`🎯 MATCH CONSERVADOR encontrado!`);
+                console.log(`📄 Texto da linha: "${textoLinhaLimpo}"`);
+                console.log(`🔬 Normalizado: "${textoLinhaNormalizado}"`);
+                console.log(`🎯 Alvo normalizado: "${nomeOJNormalizado}"`);
                 
-                const correspondencias = palavrasOJ.filter(p => palavrasTexto.includes(p));
-                
-                // Se mais de 70% das palavras correspondem, considerar como já vinculado
-                if (correspondencias.length / palavrasOJ.length > 0.7) {
-                  console.log(`✅ OJ "${nomeOJ}" já está vinculado!`);
-                  console.log(`📄 Texto encontrado: "${texto.trim()}"`);
-                  return {
-                    jaVinculado: true,
-                    textoEncontrado: texto.trim(),
-                    elemento: elemento
-                  };
-                }
+                return {
+                  jaVinculado: true,
+                  textoEncontrado: textoLinhaLimpo,
+                  elemento: linha,
+                  tipoCorrespondencia: 'conservadora'
+                };
               }
             }
-          } catch {
-            // Continuar se houver erro ao ler o texto do elemento
+          } catch (error) {
+            // Continuar para próxima linha
           }
         }
-      } catch {
-        // Continuar tentando outros seletores
+      } catch (error) {
+        // Continuar para próximo seletor
       }
     }
     
-    // Verificar também por mensagens de erro específicas que indicam duplicata
-    const mensagensErro = [
-      'já vinculado',
-      'já cadastrado',
-      'duplicado',
-      'não é possível vincular',
-      'órgão julgador já existe',
-      'vínculo já existe'
-    ];
-    
-    for (const mensagem of mensagensErro) {
-      try {
-        const elemento = await page.locator(`text=${mensagem}`).first();
-        if (await elemento.isVisible()) {
-          const textoCompleto = await elemento.textContent();
-          console.log(`⚠️  Mensagem de duplicata encontrada: "${textoCompleto}"`);
-          return {
-            jaVinculado: true,
-            textoEncontrado: textoCompleto,
-            elemento: elemento
-          };
-        }
-      } catch {
-        // Mensagem não encontrada, continuar
-      }
-    }
-    
-    console.log(`❌ OJ "${nomeOJ}" não foi encontrado na lista de vinculados`);
+    console.log(`🛡️ Verificação conservadora: OJ "${nomeOJ}" NÃO encontrado`);
     return {
       jaVinculado: false,
       textoEncontrado: null,
@@ -150,7 +66,7 @@ async function verificarOJJaVinculado(page, nomeOJ) {
     };
     
   } catch (error) {
-    console.log(`❌ Erro ao verificar se OJ está vinculado: ${error.message}`);
+    console.log(`❌ Erro na verificação conservadora: ${error.message}`);
     return {
       jaVinculado: false,
       textoEncontrado: null,
@@ -160,14 +76,23 @@ async function verificarOJJaVinculado(page, nomeOJ) {
   }
 }
 
+async function verificarOJJaVinculado(page, nomeOJ) {
+  console.log(`🔍 Verificando se OJ "${nomeOJ}" já está vinculado...`);
+  
+  // Usar APENAS verificação conservadora para evitar falsos positivos
+  const verificacaoConservadora = await verificacaoConservadoraOJ(page, nomeOJ);
+  return verificacaoConservadora;
+}
+
 // Função para listar todos os OJs já vinculados
 async function listarOJsVinculados(page) {
   console.log('📋 Listando todos os OJs já vinculados...');
   
   try {
     const ojsVinculados = [];
+    const ojsNormalizados = new Set(); // Para evitar duplicatas
     
-    // Seletores para encontrar OJs vinculados
+    // Seletores otimizados para encontrar OJs vinculados
     const seletoresOJs = [
       'table tbody tr td',
       '.mat-table .mat-cell',
@@ -177,7 +102,22 @@ async function listarOJsVinculados(page) {
       '.mat-list-item .mat-line',
       '.card-body p',
       '.panel-body p',
-      '.mat-expansion-panel-content div'
+      '.mat-expansion-panel-content div',
+      // Seletores mais específicos para OJs
+      '[class*="orgao"]',
+      '[class*="julgador"]',
+      'div:has-text("Vara")',
+      'div:has-text("Tribunal")',
+      'span:has-text("Vara")',
+      'span:has-text("Tribunal")'
+    ];
+    
+    // Palavras-chave que indicam um órgão julgador
+    const palavrasChaveOJ = [
+      'vara', 'tribunal', 'juizado', 'turma', 'câmara', 'seção',
+      'comarca', 'foro', 'instância', 'supremo', 'superior',
+      'regional', 'federal', 'estadual', 'militar', 'eleitoral',
+      'trabalho', 'justiça'
     ];
     
     for (const seletor of seletoresOJs) {
@@ -189,41 +129,92 @@ async function listarOJsVinculados(page) {
             const texto = await elemento.textContent();
             if (texto && texto.trim()) {
               const textoLimpo = texto.trim();
+              const textoNormalizado = NormalizadorTexto.normalizar(textoLimpo);
               
-              // Verificar se parece ser um nome de órgão julgador
-              if ((textoLimpo.toLowerCase().includes('vara') || 
-                   textoLimpo.toLowerCase().includes('tribunal') ||
-                   textoLimpo.toLowerCase().includes('juizado')) &&
+              // Verificar se parece ser um nome de órgão julgador usando critérios mais robustos
+              const contemPalavraChave = palavrasChaveOJ.some(palavra => 
+                textoNormalizado.includes(palavra)
+              );
+              
+              if (contemPalavraChave && 
                   textoLimpo.length > 10 && 
-                  !ojsVinculados.includes(textoLimpo)) {
+                  textoLimpo.length < 200 && // Evitar textos muito longos
+                  !ojsNormalizados.has(textoNormalizado)) {
                 
-                ojsVinculados.push(textoLimpo);
+                // Verificar se não é duplicata usando similaridade
+                const ehDuplicata = ojsVinculados.some(ojExistente => 
+                  NormalizadorTexto.saoEquivalentes(textoLimpo, ojExistente, 0.90)
+                );
+                
+                if (!ehDuplicata) {
+                  ojsVinculados.push(textoLimpo);
+                  ojsNormalizados.add(textoNormalizado);
+                }
               }
             }
-          } catch {
+          } catch (error) {
             // Continuar se houver erro
           }
         }
-      } catch {
+      } catch (error) {
         // Continuar tentando outros seletores
       }
     }
     
-    if (ojsVinculados.length > 0) {
+    // Filtrar e validar os OJs encontrados
+    const ojsValidados = ojsVinculados.filter(oj => validarOrgaoJulgador(oj));
+    
+    if (ojsValidados.length > 0) {
       console.log('📋 OJs vinculados encontrados:');
-      ojsVinculados.forEach((oj, index) => {
+      ojsValidados.forEach((oj, index) => {
         console.log(`   ${index + 1}. ${oj}`);
       });
     } else {
       console.log('❌ Nenhum OJ vinculado encontrado');
     }
     
-    return ojsVinculados;
+    return ojsValidados;
     
   } catch (error) {
     console.log(`❌ Erro ao listar OJs vinculados: ${error.message}`);
     return [];
   }
+}
+
+// Função auxiliar para validar se um texto representa um órgão julgador válido
+function validarOrgaoJulgador(texto) {
+  if (!texto || typeof texto !== 'string') return false;
+  
+  const textoLimpo = texto.trim();
+  const textoNormalizado = NormalizadorTexto.normalizar(textoLimpo);
+  
+  // Critérios de validação
+  const criterios = {
+    // Tamanho adequado
+    tamanhoValido: textoLimpo.length >= 15 && textoLimpo.length <= 150,
+    
+    // Contém palavras-chave de órgão julgador
+    contemPalavraChave: /\b(vara|tribunal|juizado|turma|camara|secao|comarca|foro|instancia|supremo|superior|regional|federal|estadual|militar|eleitoral|trabalho|justica)\b/i.test(textoLimpo),
+    
+    // Não contém palavras que indicam que não é um OJ
+    naoContemExclusoes: !/\b(adicionar|vincular|selecionar|escolher|buscar|pesquisar|filtrar|ordenar|classificar|salvar|cancelar|confirmar|voltar|proximo|anterior|pagina|total|resultado|encontrado|nenhum|vazio|carregando|aguarde)\b/i.test(textoLimpo),
+    
+    // Não é apenas números ou caracteres especiais
+    naoEhApenasNumeros: !/^[\d\s\-\.\,\(\)]+$/.test(textoLimpo),
+    
+    // Contém pelo menos uma letra
+    contemLetras: /[a-zA-ZÀ-ÿ]/.test(textoLimpo)
+  };
+  
+  // Verificar se atende a todos os critérios
+  const valido = Object.values(criterios).every(criterio => criterio === true);
+  
+  if (!valido) {
+    console.log(`🚫 Texto rejeitado como OJ: "${textoLimpo}"`);
+    console.log(`📊 Critérios: ${JSON.stringify(criterios, null, 2)}`);
+  }
+  
+  return valido;
 }
 
 module.exports = {

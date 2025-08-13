@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Minimal OJ Selector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #007bff; }
+        .warning { color: #ffc107; }
+        
+        /* Estilos básicos para o seletor */
+        .oj-selector {
+            position: relative;
+            width: 100%;
+            margin: 10px 0;
+        }
+        
+        .oj-search {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .oj-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .oj-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .oj-option:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .oj-selected {
+            margin: 10px 0;
+        }
+        
+        .oj-tag {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 4px 8px;
+            margin: 2px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Teste Minimal - OJ Selector</h1>
+        
+        <div class="test-section">
+            <h3>1. Teste de Carregamento do JSON</h3>
+            <button onclick="testJSONLoad()">Testar Carregamento JSON</button>
+            <div id="json-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>2. Teste de Criação do Container</h3>
+            <div id="oj-selector-test"></div>
+            <button onclick="testContainerCreation()">Criar Container</button>
+            <div id="container-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>3. Teste Manual do Seletor</h3>
+            <button onclick="testManualSelector()">Criar Seletor Manual</button>
+            <div id="manual-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>4. Console Logs</h3>
+            <div id="console-log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // Capturar logs do console
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        function addToConsoleLog(message, type = 'info') {
+            const consoleLog = document.getElementById('console-log');
+            const timestamp = new Date().toLocaleTimeString();
+            consoleLog.innerHTML += `<div class="${type}">[${timestamp}] ${message}</div>`;
+            consoleLog.scrollTop = consoleLog.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToConsoleLog(args.join(' '), 'info');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToConsoleLog(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addToConsoleLog(args.join(' '), 'warning');
+        };
+        
+        // Função para adicionar log específico
+        function addLog(elementId, message, type = 'info') {
+            const logElement = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `<div class="${type}">[${timestamp}] ${message}</div>`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        // Teste 1: Carregamento do JSON
+        async function testJSONLoad() {
+            addLog('json-log', 'Iniciando teste de carregamento do JSON...', 'info');
+            
+            try {
+                const response = await fetch('./src/data/orgaos_pje.json');
+                addLog('json-log', `Response status: ${response.status}`, 'info');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                addLog('json-log', `JSON carregado com sucesso! Tribunais encontrados: ${Object.keys(data).length}`, 'success');
+                
+                // Contar total de OJs
+                let totalOJs = 0;
+                Object.values(data).forEach(tribunal => {
+                    if (tribunal.orgaos) {
+                        totalOJs += tribunal.orgaos.length;
+                    }
+                });
+                
+                addLog('json-log', `Total de OJs encontrados: ${totalOJs}`, 'success');
+                
+                // Mostrar alguns exemplos
+                const firstTribunal = Object.keys(data)[0];
+                const firstOrgaos = data[firstTribunal].orgaos?.slice(0, 3) || [];
+                addLog('json-log', `Exemplos do ${firstTribunal}: ${firstOrgaos.map(o => o.nome).join(', ')}`, 'info');
+                
+            } catch (error) {
+                addLog('json-log', `Erro ao carregar JSON: ${error.message}`, 'error');
+            }
+        }
+        
+        // Teste 2: Criação do Container
+        function testContainerCreation() {
+            addLog('container-log', 'Testando criação do container...', 'info');
+            
+            const container = document.getElementById('oj-selector-test');
+            if (!container) {
+                addLog('container-log', 'Container não encontrado!', 'error');
+                return;
+            }
+            
+            addLog('container-log', 'Container encontrado!', 'success');
+            
+            // Criar estrutura HTML básica
+            container.innerHTML = `
+                <div class="oj-selector">
+                    <input type="text" class="oj-search" placeholder="Digite para buscar órgãos julgadores...">
+                    <div class="oj-dropdown">
+                        <div class="oj-option">Teste - Órgão 1</div>
+                        <div class="oj-option">Teste - Órgão 2</div>
+                        <div class="oj-option">Teste - Órgão 3</div>
+                    </div>
+                    <div class="oj-selected">
+                        <span class="oj-tag">Órgão Selecionado Exemplo</span>
+                    </div>
+                </div>
+            `;
+            
+            addLog('container-log', 'Estrutura HTML criada!', 'success');
+            
+            // Testar eventos básicos
+            const searchInput = container.querySelector('.oj-search');
+            const dropdown = container.querySelector('.oj-dropdown');
+            
+            if (searchInput && dropdown) {
+                searchInput.addEventListener('focus', () => {
+                    dropdown.style.display = 'block';
+                    addLog('container-log', 'Dropdown mostrado no focus', 'info');
+                });
+                
+                searchInput.addEventListener('blur', () => {
+                    setTimeout(() => {
+                        dropdown.style.display = 'none';
+                        addLog('container-log', 'Dropdown escondido no blur', 'info');
+                    }, 200);
+                });
+                
+                addLog('container-log', 'Event listeners adicionados!', 'success');
+            } else {
+                addLog('container-log', 'Erro ao encontrar elementos do seletor', 'error');
+            }
+        }
+        
+        // Teste 3: Seletor Manual
+        async function testManualSelector() {
+            addLog('manual-log', 'Iniciando teste do seletor manual...', 'info');
+            
+            try {
+                // Simular dados de OJs
+                const mockOJs = [
+                    { codigo: '001', nome: 'Tribunal de Justiça do Estado de São Paulo', cidade: 'São Paulo' },
+                    { codigo: '002', nome: 'Tribunal Regional Federal da 3ª Região', cidade: 'São Paulo' },
+                    { codigo: '003', nome: 'Tribunal de Justiça do Estado do Rio de Janeiro', cidade: 'Rio de Janeiro' }
+                ];
+                
+                addLog('manual-log', `Dados mock criados: ${mockOJs.length} OJs`, 'success');
+                
+                // Criar um seletor simples
+                const container = document.getElementById('oj-selector-test');
+                if (!container) {
+                    throw new Error('Container não encontrado');
+                }
+                
+                // Limpar container
+                container.innerHTML = '';
+                
+                // Criar seletor manual
+                const selectorHTML = `
+                    <div class="oj-selector">
+                        <input type="text" class="oj-search" placeholder="Digite para buscar órgãos julgadores..." id="manual-search">
+                        <div class="oj-dropdown" id="manual-dropdown">
+                            ${mockOJs.map(oj => `<div class="oj-option" data-codigo="${oj.codigo}">${oj.nome} - ${oj.cidade}</div>`).join('')}
+                        </div>
+                        <div class="oj-selected" id="manual-selected"></div>
+                    </div>
+                `;
+                
+                container.innerHTML = selectorHTML;
+                addLog('manual-log', 'HTML do seletor criado', 'success');
+                
+                // Adicionar funcionalidade
+                const searchInput = document.getElementById('manual-search');
+                const dropdown = document.getElementById('manual-dropdown');
+                const selectedDiv = document.getElementById('manual-selected');
+                
+                if (searchInput && dropdown && selectedDiv) {
+                    // Evento de foco
+                    searchInput.addEventListener('focus', () => {
+                        dropdown.style.display = 'block';
+                        addLog('manual-log', 'Dropdown aberto', 'info');
+                    });
+                    
+                    // Evento de blur
+                    searchInput.addEventListener('blur', () => {
+                        setTimeout(() => {
+                            dropdown.style.display = 'none';
+                            addLog('manual-log', 'Dropdown fechado', 'info');
+                        }, 200);
+                    });
+                    
+                    // Evento de clique nas opções
+                    dropdown.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('oj-option')) {
+                            const codigo = e.target.dataset.codigo;
+                            const nome = e.target.textContent;
+                            
+                            selectedDiv.innerHTML = `<span class="oj-tag">${nome}</span>`;
+                            searchInput.value = '';
+                            dropdown.style.display = 'none';
+                            
+                            addLog('manual-log', `OJ selecionado: ${nome} (${codigo})`, 'success');
+                        }
+                    });
+                    
+                    addLog('manual-log', 'Seletor manual funcionando!', 'success');
+                } else {
+                    throw new Error('Elementos do seletor não encontrados');
+                }
+                
+            } catch (error) {
+                addLog('manual-log', `Erro no teste manual: ${error.message}`, 'error');
+            }
+        }
+        
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Página carregada - Teste Minimal OJ Selector');
+            addLog('console-log', 'Página carregada - Teste Minimal OJ Selector', 'success');
+        });
+    </script>
+</body>
+</html>

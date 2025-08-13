@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Simples - OJ Selector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .test-area {
+            border: 2px dashed #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        #oj-selector-v2 {
+            min-height: 100px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Teste Simples - Seletor de OJs V2</h1>
+        
+        <div class="log" id="log">Iniciando teste...
+</div>
+        
+        <button class="btn" onclick="testFetchJSON()">1. Testar Fetch JSON</button>
+        <button class="btn" onclick="testCreateContainer()">2. Testar Container</button>
+        <button class="btn" onclick="testCreateSelector()">3. Testar Seletor</button>
+        <button class="btn" onclick="clearLog()">Limpar Log</button>
+        
+        <div class="test-area">
+            <h3>Área de Teste:</h3>
+            <div id="oj-selector-v2">Container do seletor será criado aqui</div>
+        </div>
+    </div>
+
+    <script>
+        function log(message) {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.textContent += `[${timestamp}] ${message}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(message);
+        }
+        
+        function clearLog() {
+            document.getElementById('log').textContent = 'Log limpo...\n';
+        }
+        
+        async function testFetchJSON() {
+            log('=== TESTE 1: Fetch JSON ===');
+            
+            try {
+                log('Fazendo fetch para ./orgaos_pje.json...');
+                const response = await fetch('./orgaos_pje.json');
+                log(`Response status: ${response.status} ${response.statusText}`);
+                log(`Response headers: ${JSON.stringify([...response.headers.entries()])}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                log(`✅ JSON carregado com sucesso!`);
+                log(`Tipo de dados: ${typeof data}`);
+                log(`É array: ${Array.isArray(data)}`);
+                log(`Chaves principais: ${Object.keys(data).slice(0, 5).join(', ')}`);
+                log(`Total de cidades: ${Object.keys(data).length}`);
+                
+                // Testar extração de OJs
+                const allOJs = [];
+                let totalOJs = 0;
+                
+                Object.keys(data).forEach(cidade => {
+                    if (Array.isArray(data[cidade])) {
+                        allOJs.push(...data[cidade]);
+                        totalOJs += data[cidade].length;
+                        if (totalOJs <= 10) { // Log apenas as primeiras cidades
+                            log(`${cidade}: ${data[cidade].length} OJs`);
+                        }
+                    } else {
+                        log(`⚠️ ${cidade}: dados não são array`);
+                    }
+                });
+                
+                log(`Total de OJs extraídos: ${allOJs.length}`);
+                log(`Primeiros 3 OJs: ${allOJs.slice(0, 3).join(', ')}`);
+                
+                // Salvar globalmente para outros testes
+                window.testOJData = data;
+                window.testOJList = allOJs.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+                
+                log('✅ Teste de fetch concluído com sucesso!');
+                
+            } catch (error) {
+                log(`❌ Erro no fetch: ${error.message}`);
+                log(`Stack: ${error.stack}`);
+            }
+        }
+        
+        function testCreateContainer() {
+            log('=== TESTE 2: Container ===');
+            
+            const container = document.getElementById('oj-selector-v2');
+            log(`Container encontrado: ${!!container}`);
+            
+            if (container) {
+                log(`Container tagName: ${container.tagName}`);
+                log(`Container id: ${container.id}`);
+                log(`Container classList: ${container.classList.toString()}`);
+                log(`Container innerHTML length: ${container.innerHTML.length}`);
+                log(`Container offsetWidth: ${container.offsetWidth}`);
+                log(`Container offsetHeight: ${container.offsetHeight}`);
+                log(`Container parent: ${container.parentElement?.tagName}`);
+                log(`Container style.display: ${container.style.display}`);
+                
+                // Testar se podemos modificar o container
+                try {
+                    const originalHTML = container.innerHTML;
+                    container.innerHTML = '<p>Teste de modificação</p>';
+                    log('✅ Container pode ser modificado');
+                    container.innerHTML = originalHTML;
+                } catch (error) {
+                    log(`❌ Erro ao modificar container: ${error.message}`);
+                }
+                
+                log('✅ Teste de container concluído!');
+            } else {
+                log('❌ Container não encontrado!');
+                
+                // Listar todos os elementos com ID
+                log('Elementos com ID disponíveis:');
+                document.querySelectorAll('[id]').forEach(el => {
+                    log(`- ${el.id}: ${el.tagName}`);
+                });
+            }
+        }
+        
+        function testCreateSelector() {
+            log('=== TESTE 3: Criar Seletor ===');
+            
+            const container = document.getElementById('oj-selector-v2');
+            if (!container) {
+                log('❌ Container não encontrado!');
+                return;
+            }
+            
+            if (!window.testOJList || window.testOJList.length === 0) {
+                log('❌ Lista de OJs não carregada. Execute o Teste 1 primeiro.');
+                return;
+            }
+            
+            try {
+                log(`Criando seletor com ${window.testOJList.length} OJs...`);
+                
+                // Criar HTML básico do seletor
+                container.innerHTML = `
+                    <div style="border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+                        <input type="text" placeholder="Buscar OJ..." style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                        <div style="min-height: 40px; border: 1px solid #eee; padding: 5px; background: white;">
+                            <span style="color: #999;">Nenhum OJ selecionado</span>
+                        </div>
+                        <div style="display: none; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; background: white;">
+                            <!-- Opções serão adicionadas aqui -->
+                        </div>
+                    </div>
+                `;
+                
+                log('✅ HTML do seletor criado');
+                
+                const searchInput = container.querySelector('input');
+                if (searchInput) {
+                    log('✅ Input de busca encontrado');
+                    
+                    // Testar evento de input
+                    searchInput.addEventListener('input', (e) => {
+                        log(`Busca: "${e.target.value}"`);
+                        
+                        if (e.target.value.length > 0) {
+                            const filtered = window.testOJList.filter(oj => 
+                                oj.toLowerCase().includes(e.target.value.toLowerCase())
+                            );
+                            log(`Encontrados: ${filtered.length} resultados`);
+                        }
+                    });
+                    
+                    log('✅ Event listener adicionado');
+                } else {
+                    log('❌ Input de busca não encontrado');
+                }
+                
+                log('✅ Seletor básico criado com sucesso!');
+                log('Teste digitando algo no campo de busca...');
+                
+            } catch (error) {
+                log(`❌ Erro ao criar seletor: ${error.message}`);
+                log(`Stack: ${error.stack}`);
+            }
+        }
+        
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            log('Página carregada. Execute os testes na ordem: 1 → 2 → 3');
+        });
+    </script>
+</body>
+</html>

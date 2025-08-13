@@ -10,6 +10,7 @@ const { navegarParaCadastro } = require('./navigate.js');
 const { vincularOJ } = require('./vincularOJ.js');
 const { verificarOJJaVinculado, listarOJsVinculados } = require('./verificarOJVinculado.js');
 const { loadConfig } = require('./util.js');
+const { Logger } = require('./utils/index.js');
 // const ServidorAutomation = require('./main/servidor-automation'); // Removido V1
 const ServidorAutomationV2 = require('./main/servidor-automation-v2');
 
@@ -43,7 +44,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     },
-    icon: path.join(__dirname, '../assets/icon.png')
+    icon: path.join(__dirname, '../assets/icon.svg')
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
@@ -82,7 +83,7 @@ ipcMain.handle('save-peritos', async (event, peritos) => {
     fs.writeFileSync(path.join(__dirname, '../data/perito.json'), JSON.stringify(peritos, null, 2));
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -98,7 +99,7 @@ ipcMain.handle('save-data', async (event, key, data) => {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -133,7 +134,7 @@ ipcMain.handle('save-config', async (event, config) => {
     fs.writeFileSync(path.join(__dirname, '../.env'), envContent);
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -186,7 +187,8 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
         break;
       } catch (loginError) {
         if (attempt === 3) {
-          throw new Error(`Falha no login após 3 tentativas: ${loginError.message}`);
+          const loginErrorMsg = loginError && loginError.message ? loginError.message : 'Erro desconhecido';
+          throw new Error(`Falha no login após 3 tentativas: ${loginErrorMsg}`);
         }
         sendStatus('warning', `Tentativa ${attempt} falhou, tentando novamente...`, currentStep, 'Reautenticando');
         await page.waitForTimeout(500);
@@ -195,12 +197,37 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
     
     sendStatus('success', 'Login realizado com sucesso!', currentStep++, 'Sistema autenticado');
 
+    // Criar instância do Logger para navegação
+    const logger = new Logger('PJE-Automation');
+    
+    // Relatório de resultados
+    const relatorio = {
+      totalPeritos: selectedPeritos.length,
+      peritosProcessados: 0,
+      totalOJs: 0,
+      ojsVinculados: 0,
+      ojsJaVinculados: 0,
+      ojsNaoEncontrados: [],
+      ojsComErro: [],
+      detalhes: []
+    };
+
     for (let i = 0; i < selectedPeritos.length; i++) {
       const perito = selectedPeritos[i];
+      const resultadoPerito = {
+        nome: perito.nome,
+        cpf: perito.cpf,
+        ojsProcessados: 0,
+        ojsVinculados: 0,
+        ojsJaVinculados: 0,
+        ojsNaoEncontrados: [],
+        ojsComErro: []
+      };
+      
       try {
         sendStatus('info', `Processando perito ${i + 1}/${selectedPeritos.length}: ${perito.nome}`, currentStep++, `Buscando perito por CPF: ${perito.cpf}`);
         
-        await navegarParaCadastro(page, perito.cpf);
+        await navegarParaCadastro(page, perito.cpf, logger);
         
         sendStatus('success', `Navegação para ${perito.nome} concluída`, currentStep, 'Perito localizado no sistema');
         
@@ -212,39 +239,123 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
           sendStatus('info', `OJs já vinculados encontrados: ${ojsJaVinculados.length}`, currentStep, 'Vínculos existentes identificados');
         }
         
+        relatorio.totalOJs += perito.ojs.length;
+        
         for (let j = 0; j < perito.ojs.length; j++) {
           const oj = perito.ojs[j];
+          resultadoPerito.ojsProcessados++;
+          
           try {
-            sendStatus('info', `Vinculando OJ ${j + 1}/${perito.ojs.length}: ${oj}`, currentStep++, 'Processando órgão julgador');
+            sendStatus('info', `Processando OJ ${j + 1}/${perito.ojs.length}: ${oj}`, currentStep++, 'Analisando órgão julgador');
             
-            // Verificar se o OJ já está vinculado
+            // 1. Verificar se o OJ já está vinculado (apenas verificação conservadora)
+            console.log(`\n=== PROCESSANDO OJ: "${oj}" ===`);
             const verificacao = await verificarOJJaVinculado(page, oj);
             
             if (verificacao.jaVinculado) {
-              sendStatus('warning', `OJ "${oj}" já está vinculado - pulando vinculação`, currentStep, 'Vínculo já existe');
+              // Log detalhado para debug
+              console.log(`✅ OJ JÁ VINCULADO:`);
+              console.log(`   - OJ: "${oj}"`);
+              console.log(`   - Texto encontrado: "${verificacao.textoEncontrado}"`);
+              console.log(`   - Tipo: ${verificacao.tipoCorrespondencia || 'padrão'}`);
+              
+              sendStatus('warning', `OJ "${oj}" já está vinculado - pulando`, currentStep, 'Vínculo já existe');
+              resultadoPerito.ojsJaVinculados++;
+              relatorio.ojsJaVinculados++;
               continue;
+            } else {
+              console.log(`🔄 OJ "${oj}" NÃO está vinculado - tentando vincular...`);
             }
             
+            // 2. Tentar vincular o OJ
+            sendStatus('info', `Vinculando OJ: ${oj}`, currentStep, 'Executando vinculação');
             await vincularOJ(page, oj);
             
             sendStatus('success', `OJ ${oj} vinculado com sucesso`, currentStep, 'Vínculo criado');
+            resultadoPerito.ojsVinculados++;
+            relatorio.ojsVinculados++;
+            console.log(`✅ SUCESSO: OJ "${oj}" vinculado!`);
+            
           } catch (ojError) {
-            // Verificar se o erro indica que o OJ já está vinculado
-            const errorMsg = ojError.message.toLowerCase();
-            if (errorMsg.includes('já vinculado') || 
-                errorMsg.includes('já cadastrado') || 
-                errorMsg.includes('duplicado')) {
-              sendStatus('warning', `OJ "${oj}" já está vinculado: ${ojError.message}`, currentStep, 'Vínculo duplicado detectado');
+            console.log(`❌ ERRO ao processar OJ "${oj}":`, ojError.message);
+            console.log(`   - Código: ${ojError.code || 'DESCONHECIDO'}`);
+            
+            // Verificar tipo específico de erro
+            if (ojError && ojError.code === 'OJ_NAO_ENCONTRADO') {
+              // OJ não encontrado na relação de opções
+              console.log(`⚠️ OJ "${oj}" NÃO CONSTA na lista de opções disponíveis`);
+              sendStatus('warning', `OJ "${oj}" não existe no sistema - pulando`, currentStep, 'OJ inexistente');
+              
+              const ojNaoEncontrado = {
+                nome: oj,
+                perito: perito.nome,
+                motivo: 'Não encontrado na relação de opções disponíveis',
+                opcoesDisponiveis: ojError.opcoesDisponiveis || []
+              };
+              
+              resultadoPerito.ojsNaoEncontrados.push(ojNaoEncontrado);
+              relatorio.ojsNaoEncontrados.push(ojNaoEncontrado);
+              
+            } else if (ojError && ojError.code === 'TIMEOUT_GLOBAL') {
+              // Timeout na vinculação - pular e continuar
+              console.log(`⏰ TIMEOUT ao processar OJ "${oj}" (mais de 60 segundos)`);
+              sendStatus('error', `Timeout ao vincular OJ "${oj}" - pulando`, currentStep, 'Operação demorou muito');
+              
+              const ojComErro = {
+                nome: oj,
+                perito: perito.nome,
+                erro: `Timeout após 60 segundos: ${ojError.message}`,
+                codigo: 'TIMEOUT_GLOBAL'
+              };
+              
+              resultadoPerito.ojsComErro.push(ojComErro);
+              relatorio.ojsComErro.push(ojComErro);
+              
             } else {
-              sendStatus('warning', `Erro ao vincular OJ ${oj}: ${ojError.message}`, currentStep, 'Erro na vinculação');
+              // Outros tipos de erro
+              const ojErrorMsg = ojError && ojError.message ? ojError.message : 'Erro desconhecido';
+              const errorMsg = ojErrorMsg.toLowerCase();
+              
+              if (errorMsg.includes('já vinculado') || 
+                  errorMsg.includes('já cadastrado') || 
+                  errorMsg.includes('duplicado')) {
+                console.log(`⚠️ OJ "${oj}" já estava vinculado (detectado durante vinculação)`);
+                sendStatus('warning', `OJ "${oj}" já vinculado - pulando`, currentStep, 'Vínculo duplicado');
+                resultadoPerito.ojsJaVinculados++;
+                relatorio.ojsJaVinculados++;
+              } else {
+                console.log(`💥 ERRO GERAL ao vincular OJ "${oj}": ${ojErrorMsg}`);
+                sendStatus('error', `Erro ao vincular OJ ${oj}: ${ojErrorMsg}`, currentStep, 'Erro na vinculação');
+                
+                const ojComErro = {
+                  nome: oj,
+                  perito: perito.nome,
+                  erro: ojErrorMsg,
+                  codigo: ojError.code || 'ERRO_DESCONHECIDO'
+                };
+                
+                resultadoPerito.ojsComErro.push(ojComErro);
+                relatorio.ojsComErro.push(ojComErro);
+              }
             }
           }
           
           // Pequena pausa entre OJs
           await page.waitForTimeout(100);
         }
+        
+        relatorio.peritosProcessados++;
+        relatorio.detalhes.push(resultadoPerito);
+        
       } catch (peritoError) {
-        sendStatus('error', `Erro ao processar perito ${perito.nome}: ${peritoError.message}`, currentStep, 'Erro no processamento');
+        const errorMessage = peritoError && peritoError.message ? peritoError.message : (peritoError ? String(peritoError) : 'Erro desconhecido');
+        sendStatus('error', `Erro ao processar perito ${perito.nome}: ${errorMessage}`, currentStep, 'Erro no processamento');
+        
+        // Adicionar erro do perito ao relatório
+        relatorio.detalhes.push({
+          ...resultadoPerito,
+          erroProcessamento: errorMessage
+        });
       }
       
       // Pausa entre peritos
@@ -252,19 +363,24 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
         await page.waitForTimeout(400);
       }
     }
+    
+    // Enviar relatório final
+    enviarRelatorioFinal(relatorio);
 
     // Não fechar o navegador automaticamente; manter no PJe para revisão
-    sendStatus('success', 'Automação concluída! Navegador permanecerá aberto para revisão. Clique em Parar Automação para fechar.', totalSteps, 'Processo finalizado');
+    const mensagemFinal = gerarMensagemFinal(relatorio);
+    sendStatus('success', mensagemFinal, totalSteps, 'Processo finalizado');
     
     return { success: true };
   } catch (error) {
-    const errorMessage = error.message && error.message.includes('Timeout') 
+    const safeErrorMessage = error && error.message ? error.message : 'Erro desconhecido';
+    const errorMessage = error && error.message && error.message.includes('Timeout') 
       ? 'Timeout: A página demorou muito para carregar. Verifique sua conexão e tente novamente.'
-      : `Erro na automação: ${error.message}`;
+      : `Erro na automação: ${safeErrorMessage}`;
     
     sendStatus('error', `${errorMessage} Navegador permanecerá aberto para inspeção.`, currentStep, 'Falha na execução');
     
-    return { success: false, error: error.message };
+    return { success: false, error: safeErrorMessage };
   }
 });
 
@@ -300,7 +416,7 @@ ipcMain.handle('import-file', async (event, type) => {
     
     return { success: false, canceled: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -318,7 +434,7 @@ ipcMain.handle('export-file', async (event, data, filename) => {
     
     return { success: false, canceled: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -335,7 +451,7 @@ ipcMain.handle('stop-automation', async () => {
     });
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -362,7 +478,7 @@ ipcMain.handle('start-servidor-automation-v2', async (_, config) => {
     
   } catch (error) {
     console.error('Erro na automação de servidores V2:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   } finally {
     automationInProgress = false;
   }
@@ -378,7 +494,7 @@ ipcMain.handle('stop-servidor-automation-v2', async () => {
     return { success: true };
   } catch (error) {
     console.error('Erro ao parar automação V2:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -404,7 +520,7 @@ ipcMain.handle('get-servidor-automation-v2-report', async () => {
     return { success: false, error: 'Automação V2 não inicializada' };
   } catch (error) {
     console.error('Erro ao obter relatório V2:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
 
@@ -433,7 +549,7 @@ ipcMain.handle('load-orgaos-pje', async () => {
     return { success: true, orgaos: sortedOJs };
   } catch (error) {
     console.error('Erro ao carregar órgãos PJE:', error);
-    return { success: false, error: error.message, orgaos: [] };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido', orgaos: [] };
   }
 });
 
@@ -456,6 +572,84 @@ ipcMain.handle('validate-servidor-config-v2', async (_, config) => {
     
     return { success: true, message: 'Configuração válida' };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
   }
 });
+
+// Função para enviar relatório final detalhado
+function enviarRelatorioFinal(relatorio) {
+  try {
+    console.log('=== RELATÓRIO FINAL DE VINCULAÇÃO ===');
+    console.log(`Total de peritos: ${relatorio.totalPeritos}`);
+    console.log(`Peritos processados: ${relatorio.peritosProcessados}`);
+    console.log(`Total de OJs: ${relatorio.totalOJs}`);
+    console.log(`OJs vinculados: ${relatorio.ojsVinculados}`);
+    console.log(`OJs já vinculados: ${relatorio.ojsJaVinculados}`);
+    console.log(`OJs não encontrados: ${relatorio.ojsNaoEncontrados.length}`);
+    console.log(`OJs com erro: ${relatorio.ojsComErro.length}`);
+    
+    // Enviar relatório para a interface
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('automation-report', {
+        type: 'final-report',
+        relatorio: relatorio
+      });
+    }
+    
+    // Se houver OJs não encontrados, listar detalhadamente
+    if (relatorio.ojsNaoEncontrados.length > 0) {
+      console.log('\n=== OJs NÃO ENCONTRADOS ===');
+      relatorio.ojsNaoEncontrados.forEach((oj, index) => {
+        console.log(`${index + 1}. ${oj.nome} (Perito: ${oj.perito})`);
+        console.log(`   Motivo: ${oj.motivo}`);
+        if (oj.opcoesDisponiveis && oj.opcoesDisponiveis.length > 0) {
+          console.log(`   Opções disponíveis (primeiras 10): ${oj.opcoesDisponiveis.slice(0, 10).join(', ')}`);
+        }
+      });
+    }
+    
+    // Se houver OJs com erro, listar
+    if (relatorio.ojsComErro.length > 0) {
+      console.log('\n=== OJs COM ERRO ===');
+      relatorio.ojsComErro.forEach((oj, index) => {
+        console.log(`${index + 1}. ${oj.nome} (Perito: ${oj.perito})`);
+        console.log(`   Erro: ${oj.erro}`);
+        console.log(`   Código: ${oj.codigo}`);
+      });
+    }
+    
+  } catch (error) {
+    console.error('Erro ao gerar relatório final:', error);
+  }
+}
+
+// Função para gerar mensagem final resumida
+function gerarMensagemFinal(relatorio) {
+  const total = relatorio.totalOJs;
+  const vinculados = relatorio.ojsVinculados;
+  const jaVinculados = relatorio.ojsJaVinculados;
+  const naoEncontrados = relatorio.ojsNaoEncontrados.length;
+  const comErro = relatorio.ojsComErro.length;
+  
+  let mensagem = `Automação concluída! `;
+  mensagem += `${vinculados} OJs vinculados, `;
+  mensagem += `${jaVinculados} já vinculados`;
+  
+  if (naoEncontrados > 0) {
+    mensagem += `, ${naoEncontrados} não encontrados`;
+  }
+  
+  if (comErro > 0) {
+    mensagem += `, ${comErro} com erro`;
+  }
+  
+  mensagem += ` (${total} total). `;
+  
+  if (naoEncontrados > 0 || comErro > 0) {
+    mensagem += `Verifique o console para detalhes dos problemas. `;
+  }
+  
+  mensagem += `Navegador permanece aberto para revisão.`;
+  
+  return mensagem;
+}

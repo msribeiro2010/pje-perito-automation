@@ -1,0 +1,36 @@
+{
+  "timestamp": "2025-08-13T11:40:14.099Z",
+  "config": {
+    "cpf": "530.361.406-97",
+    "perfil": "Secretário de Audiência",
+    "totalOrgaos": 1
+  },
+  "results": [
+    {
+      "orgao": "Vara do Trabalho de Ourinhos",
+      "status": "Sucesso",
+      "erro": null,
+      "timestamp": "2025-08-13T11:40:13.090Z"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "sucessos": 1,
+    "erros": 0,
+    "jaIncluidos": 0,
+    "totalValidos": 1,
+    "estatisticas": {
+      "percentualSucesso": 100,
+      "percentualJaExistiam": 0,
+      "percentualErros": 0
+    }
+  },
+  "detalhes": {
+    "orgaosCadastrados": [
+      "Vara do Trabalho de Ourinhos"
+    ],
+    "orgaosJaExistiam": [],
+    "orgaosComErro": [],
+    "orgaosPulados": []
+  }
+}

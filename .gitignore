@@ -132,6 +132,13 @@ temp/
 # Test coverage
 coverage/
 .nyc_output/
+jest-coverage/
+
+# ESLint cache
+.eslintcache
+
+# Prettier cache
+.prettiercache
 
 # Lock files (keep package-lock.json for consistency)
 # yarn.lock

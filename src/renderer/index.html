@@ -237,6 +237,8 @@
                         <option value="Estagiário Conhecimento">Estagiário Conhecimento</option>
                         <option value="Estagiário de Central de Atendimento">Estagiário de Central de Atendimento</option>
                         <option value="Secretário de Audiência">Secretário de Audiência</option>
+                        <option value="Servidor">Servidor</option>
+                        <option value="Perito Judicial">Perito Judicial</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -416,18 +418,20 @@
                             <option value="Estagiário Conhecimento">Estagiário Conhecimento</option>
                             <option value="Estagiário de Central de Atendimento">Estagiário de Central de Atendimento</option>
                             <option value="Secretário de Audiência" selected>Secretário de Audiência</option>
+                            <option value="Servidor">Servidor</option>
                             <option value="Perito Judicial">Perito Judicial</option>
                         </select>
                         <small>Perfil do servidor no sistema</small>
                     </div>
                     
                     <div class="form-group">
-                        <label>Órgãos Julgadores:</label>
-                        <div class="orgaos-selector">
-                            <div id="oj-selector-v2" class="oj-selector">
-                                <!-- Estrutura será criada dinamicamente -->
-                            </div>
-                            <small>Selecione um ou mais órgãos julgadores do arquivo orgaos_pje.json</small>
+                        <label for="v2-orgaos">Órgãos Julgadores (um por linha):</label>
+                        <textarea id="v2-orgaos" rows="6" placeholder="Digite os órgãos julgadores, um por linha:&#10;&#10;Exemplo:&#10;1ª Vara do Trabalho de Campinas&#10;2ª Vara do Trabalho de Campinas&#10;Vara do Trabalho de Jundiaí"></textarea>
+                        <div style="margin-top: 5px;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.loadExampleOJsV2()">
+                                <i class="fas fa-lightbulb"></i> Carregar Exemplos
+                            </button>
+                            <small style="margin-left: 10px;">Digite cada órgão julgador em uma linha separada</small>
                         </div>
                     </div>
                     

@@ -1,162 +1,196 @@
 # CLAUDE.md
 
-Este arquivo fornece orientações ao Claude Code (claude.ai/code) ao trabalhar com código neste repositório.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Visão Geral do Projeto
 
 Este é um sistema de automação para o PJE (Processo Judicial Eletrônico) construído com Electron, projetado para automatizar o processo de vinculação de peritos e servidores aos órgãos julgadores do sistema judiciário brasileiro. A aplicação oferece uma interface gráfica moderna para gerenciar e executar fluxos automatizados usando Playwright para automação do navegador.
 
-## Comandos Essenciais de Desenvolvimento
+## Essential Development Commands
 
 ```bash
-# Instalar dependências
+# Install dependencies
 npm install
 
-# Iniciar aplicação em modo de desenvolvimento
+# Start application in development mode (opens DevTools)
 npm run dev
 
-# Iniciar aplicação em modo produção
+# Start application in production mode
 npm start
 
-# Construir aplicação para distribuição
+# Build application for distribution
 npm run build
+
+# Testing commands
+npm test                 # Run all tests
+npm run test:unit        # Run unit tests only
+npm run test:integration # Run integration tests only  
+npm run test:e2e         # Run end-to-end tests only
+npm run test:watch       # Run tests in watch mode
+npm run test:coverage    # Run tests with coverage report
+
+# Code quality commands
+npm run lint             # Run ESLint
+npm run lint:fix         # Run ESLint with auto-fix
+npm run format           # Format code with Prettier
+npm run syntax-check     # Check syntax of main files
+
+# Setup and utilities
+npm run setup            # Install deps and create desktop shortcut
+npm run create-shortcut  # Create desktop shortcut only
 ```
 
-## Visão Geral da Arquitetura
+## Testing Framework
 
-### Componentes Principais
+The project uses Jest with a multi-project configuration for different test types:
 
-**Processo Principal do Electron (`src/main.js`)**:
-- Ponto de entrada que cria a janela principal e gerencia comunicação IPC
-- Orquestra automação do navegador usando Playwright
-- Gerencia persistência de dados para peritos e servidores
-- Manipula funcionalidade de import/export de arquivos
-- Contém dois motores de automação: legado (v1) e moderno (v2)
+- **Unit Tests**: `src/tests/unit/` - Test individual modules in isolation
+- **Integration Tests**: `src/tests/integration/` - Test module interactions
+- **E2E Tests**: `src/tests/e2e/` - Test complete user workflows
+- **Coverage**: Excludes renderer files and main.js from coverage reports
+- **Test Timeout**: 30 seconds to accommodate browser automation tests
 
-**Processo Renderer (`src/renderer/`)**:
-- `index.html`: Interface principal com abas (Peritos, Servidores, Configurações, Automação)
-- `script.js`: Lógica frontend para gerenciamento de formulários, exibição de dados e controles de automação
-- `styles.css`: Estilização CSS moderna com aparência profissional
+## Code Architecture Overview
 
-**Módulos de Automação**:
-- `login.js`: Gerencia autenticação PDPJ com 9 estratégias de seletor diferentes
-- `navigate.js`: Navega para gerenciamento de pessoas com 13 seletores de menu e 29 seletores de ícone de edição
-- `vincularOJ.js`: Vincula órgãos julgadores aos usuários com lógica de retry
-- `verificarOJVinculado.js`: Verifica vínculos existentes para prevenir duplicatas
-- `util.js`: Gerenciamento de configuração e funções utilitárias
+### Core Components
 
-**Automação de Servidores**:
-- `src/main/servidor-automation.js`: Motor de automação legado para servidores (v1)
-- `src/main/servidor-automation-v2.js`: Motor de automação moderno com tratamento de erro aprimorado e relatórios
+**Electron Main Process (`src/main.js`)**:
+- Entry point that creates main window and manages IPC communication
+- Orchestrates browser automation using Playwright
+- Manages data persistence for experts and court staff
+- Handles file import/export functionality
+- Contains two automation engines: legacy (v1) and modern (v2)
 
-### Estrutura de Dados
+**Renderer Process (`src/renderer/`)**:
+- `index.html`: Main interface with tabs (Experts, Staff, Settings, Automation)
+- `script.js`: Frontend logic for form management, data display and automation controls
+- `styles.css`: Modern CSS styling with professional appearance
 
-**Dados de Peritos (`data/perito.json`)**:
+**Automation Modules**:
+- `login.js`: Manages PDPJ authentication with 9 different selector strategies
+- `navigate.js`: Navigates to people management with 13 menu selectors and 29 edit icon selectors
+- `vincularOJ.js`: Links judging bodies to users with retry logic
+- `verificarOJVinculado.js`: Checks existing links to prevent duplicates
+- `util.js`: Configuration management and utility functions
+
+**Server Automation**:
+- `src/main/servidor-automation.js`: Legacy automation engine for servers (v1)
+- `src/main/servidor-automation-v2.js`: Modern automation engine with improved error handling and reporting
+
+### Data Structure
+
+**Expert Data (`data/perito.json`)**:
 ```json
 [
   {
     "cpf": "000.000.000-00",
-    "nome": "Nome do Perito",
-    "ojs": ["Órgão Julgador 1", "Órgão Julgador 2"]
+    "nome": "Expert Name",
+    "ojs": ["Judging Body 1", "Judging Body 2"]
   }
 ]
 ```
 
-**Dados de Servidores (`data/servidores.json`)**:
+**Server Data (`data/servidores.json`)**:
 ```json
 [
   {
-    "nome": "Nome do Servidor",
+    "nome": "Server Name",
     "cpf": "000.000.000-00",
-    "perfil": "Secretário de Audiência",
-    "localizacoes": ["Localização do Tribunal"]
+    "perfil": "Hearing Secretary",
+    "localizacoes": ["Court Location"]
   }
 ]
 ```
 
-## Padrões Técnicos Principais
+## Key Technical Patterns
 
-### Estratégia de Automação do Navegador
-O sistema usa múltiplos seletores de fallback para máxima compatibilidade:
-- **Login**: 9 seletores PDPJ + 8 seletores de botão de login
-- **Navegação**: 13 seletores de menu + 11 seletores de pessoa
-- **Edição**: 29 seletores diferentes de ícone de edição (evitando ícones de exclusão)
-- **Debug**: Captura automática de elementos quando seletores falham
+### Browser Automation Strategy
+The system uses multiple fallback selectors for maximum compatibility:
+- **Login**: 9 PDPJ selectors + 8 login button selectors
+- **Navigation**: 13 menu selectors + 11 person selectors
+- **Editing**: 29 different edit icon selectors (avoiding delete icons)
+- **Debug**: Automatic element capture when selectors fail
 
-### Tratamento de Erros e Resiliência
-- Lógica de retry para login (3 tentativas)
-- Gerenciamento de timeout (10-60 segundos baseado na operação)
-- Detecção e prevenção de duplicatas
-- Relatórios de status em tempo real com rastreamento de progresso
-- Modo não-headless para debug (navegador permanece aberto)
+### Error Handling and Resilience
+- Retry logic for login (3 attempts)
+- Timeout management (10-60 seconds based on operation)
+- Duplicate detection and prevention
+- Real-time status reporting with progress tracking
+- Non-headless mode for debugging (browser stays open)
 
-### Comunicação IPC
-O processo principal expõe handlers para:
-- `load-peritos`, `save-peritos`: Gerenciamento de dados de peritos
-- `load-data`, `save-data`: Persistência genérica de dados
-- `start-automation`, `stop-automation`: Controle de automação de peritos
-- `start-servidor-automation-v2`: Automação moderna de servidores
-- `import-file`, `export-file`: Import/export de dados
+### IPC Communication
+Main process exposes handlers for:
+- `load-peritos`, `save-peritos`: Expert data management
+- `load-data`, `save-data`: Generic data persistence
+- `start-automation`, `stop-automation`: Expert automation control
+- `start-servidor-automation-v2`: Modern server automation
+- `import-file`, `export-file`: Data import/export
 
-### Implementação de Segurança
-- Isolamento de contexto habilitado (`contextIsolation: true`)
-- Integração com Node desabilitada (`nodeIntegration: false`)
-- Credenciais armazenadas em arquivo `.env` (não commitado)
-- Script preload seguro para comunicação IPC
+### Security Implementation
+- Context isolation enabled (`contextIsolation: true`)
+- Node integration disabled (`nodeIntegration: false`)
+- Credentials stored in `.env` file (not committed)
+- Secure preload script for IPC communication
 
-## Fluxo de Desenvolvimento
+## Development Workflow
 
-### Adicionando Novas Funcionalidades de Automação
-1. Criar módulo no diretório `src/` seguindo padrões existentes
-2. Adicionar múltiplas estratégias de seletor para robustez
-3. Implementar logging de debug e captura de elementos
-4. Adicionar handlers IPC em `main.js`
-5. Atualizar interface renderer em `script.js`
+### Adding New Automation Features
+1. Create module in `src/` directory following existing patterns
+2. Add multiple selector strategies for robustness
+3. Implement debug logging and element capture
+4. Add IPC handlers in `main.js`
+5. Update renderer interface in `script.js`
 
-### Testando Automação
-- Usar modo de desenvolvimento (`npm run dev`) para abrir DevTools
-- Automação do navegador roda em modo visível para debug
-- Verificar logs do console para informações de debug de seletores
-- Painel de status fornece feedback em tempo real
+### Testing Automation
+- Use development mode (`npm run dev`) to open DevTools
+- Browser automation runs in visible mode for debugging
+- Check console logs for selector debug information
+- Status panel provides real-time feedback
 
-### Gerenciamento de Dados
-- Arquivos JSON no diretório `data/` para persistência
-- Funcionalidade de import/export para backup e migração
-- Handlers genéricos de dados suportam múltiplos tipos de dados
+### Data Management
+- JSON files in `data/` directory for persistence
+- Import/export functionality for backup and migration
+- Generic data handlers support multiple data types
 
-## Gerenciamento de Configuração
+### Running Tests
+- Use `npm run test:watch` for continuous testing during development
+- Run `npm run test:e2e` to test complete automation workflows
+- Use `npm run test:coverage` to ensure adequate test coverage
+- Individual test suites can be run separately (unit/integration/e2e)
 
-**Variáveis de Ambiente (`.env`)**:
+## Configuration Management
+
+**Environment Variables (`.env`)**:
 ```env
 PJE_URL=https://pje.trt15.jus.br/primeirograu/login.seam
-LOGIN=seu_cpf
-PASSWORD=sua_senha
+LOGIN=your_cpf
+PASSWORD=your_password
 ```
 
-**Órgãos Julgadores**: Definidos em `src/renderer/orgaos_pje.json` com 400+ localizações de tribunais
+**Judging Bodies**: Defined in `src/renderer/orgaos_pje.json` with 400+ court locations
 
-## Fluxo de Automação
+## Automation Flow
 
-1. **Autenticação**: Login PDPJ com manipulação automática de credenciais
-2. **Navegação**: Travessia de menu para seção de gerenciamento de pessoas
-3. **Busca**: Navegação direta por URL com filtro de CPF
-4. **Modo de Edição**: Clicar ícone de edição e navegar para aba de perito/servidor
-5. **Vinculação**: Adicionar associações de órgãos julgadores com configuração de papel
-6. **Validação**: Verificar vínculos existentes para prevenir duplicatas
-7. **Relatórios**: Gerar relatórios detalhados de sucesso/falha
+1. **Authentication**: PDPJ login with automatic credential handling
+2. **Navigation**: Menu traversal to people management section
+3. **Search**: Direct URL navigation with CPF filtering
+4. **Edit Mode**: Click edit icon and navigate to expert/server tab
+5. **Linking**: Add judging body associations with role configuration
+6. **Validation**: Check existing links to prevent duplicates
+7. **Reporting**: Generate detailed success/failure reports
 
-## Considerações de Performance
+## Performance Considerations
 
-- Timeouts otimizados (5ms slowMo, 10-60s esperas de elementos)
-- Processamento paralelo para múltiplos usuários
-- Consultas DOM eficientes com estratégias de fallback
-- Rastreamento de progresso para operações de longa duração
-- Gerenciamento de recursos do navegador (instância única, fechamento manual)
+- Optimized timeouts (5ms slowMo, 10-60s element waits)
+- Parallel processing for multiple users
+- Efficient DOM queries with fallback strategies
+- Progress tracking for long-running operations
+- Browser resource management (single instance, manual closure)
 
-## Debug e Solução de Problemas
+## Debugging and Troubleshooting
 
-- Habilitar flag `--dev` para acesso ao DevTools
-- Logging do console captura todas as interações do navegador
-- Sistema de debug de elementos mostra seletores disponíveis quando falhas ocorrem
-- Sistema de relatório de status fornece feedback detalhado da operação
-- Navegador permanece aberto após conclusão para inspeção manual
+- Enable `--dev` flag for DevTools access
+- Console logging captures all browser interactions
+- Element debug system shows available selectors when failures occur
+- Status reporting system provides detailed operation feedback
+- Browser remains open after completion for manual inspection

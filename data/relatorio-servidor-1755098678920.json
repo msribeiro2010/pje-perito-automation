@@ -1,0 +1,69 @@
+{
+  "timestamp": "2025-08-13T15:24:38.920Z",
+  "config": {
+    "cpf": "459.139.568-50",
+    "perfil": "Estagiário Conhecimento",
+    "totalOrgaos": 4
+  },
+  "results": [
+    {
+      "orgao": "EXE1 - São José do Rio Preto",
+      "status": "Erro",
+      "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade",
+      "timestamp": "2025-08-13T15:19:54.987Z"
+    },
+    {
+      "orgao": "EXE2 - São José do Rio Preto",
+      "status": "Erro",
+      "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade",
+      "timestamp": "2025-08-13T15:21:36.182Z"
+    },
+    {
+      "orgao": "EXE3 - São José do Rio Preto",
+      "status": "Erro",
+      "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade",
+      "timestamp": "2025-08-13T15:23:16.128Z"
+    },
+    {
+      "orgao": "EXE4 - São José do Rio Preto",
+      "status": "Erro",
+      "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade",
+      "timestamp": "2025-08-13T15:24:25.746Z"
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "sucessos": 0,
+    "erros": 4,
+    "jaIncluidos": 0,
+    "totalValidos": 4,
+    "estatisticas": {
+      "percentualSucesso": 0,
+      "percentualJaExistiam": 0,
+      "percentualErros": 100
+    }
+  },
+  "detalhes": {
+    "orgaosCadastrados": [],
+    "orgaosJaExistiam": [],
+    "orgaosComErro": [
+      {
+        "orgao": "EXE1 - São José do Rio Preto",
+        "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade"
+      },
+      {
+        "orgao": "EXE2 - São José do Rio Preto",
+        "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade"
+      },
+      {
+        "orgao": "EXE3 - São José do Rio Preto",
+        "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade"
+      },
+      {
+        "orgao": "EXE4 - São José do Rio Preto",
+        "erro": "Botão \"Gravar\" não encontrado no modal de Localização/Visibilidade"
+      }
+    ],
+    "orgaosPulados": []
+  }
+}

@@ -1,169 +1,211 @@
-async function navegarParaCadastro(page, cpf) {
-  const { loadConfig } = require('./util.js');
-  
-  // Configurar timeout maior
-  page.setDefaultTimeout(8000);
-  
-  const config = loadConfig();
-  const baseUrl = (config.PJE_URL || 'https://pje.trt15.jus.br/primeirograu');
-  const origin = (() => { try { return new URL(baseUrl).origin; } catch { return 'https://pje.trt15.jus.br'; } })();
-  const cpfNumerico = (cpf || '').replace(/\D/g, '');
+// Importar utilitários otimizados
+const { 
+  buscarElemento, 
+  obterTimeoutAdaptativo, 
+  obterTimeoutProgressivo,
+  aguardarElemento, 
+  clicarElemento,
+  aguardarTempo,
+  Logger 
+} = require('./utils/index.js');
+const { NormalizadorTexto } = require('./utils/normalizacao.js');
 
-  console.log(`Navegando diretamente para a página de pessoa física com CPF: ${cpfNumerico}`);
-  
-  // Navegar diretamente para o link fornecido com o CPF específico
-  const directUrl = `${origin}/pjekz/pessoa-fisica?pagina=1&tamanhoPagina=10&cpf=${cpfNumerico}&situacao=1`;
-  
+async function navegarParaCadastro(page, cpf, logger) {
   try {
-    await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    console.log(`Navegou para: ${directUrl}`);
+    logger.info(`Iniciando navegação para cadastro do CPF: ${NormalizadorTexto.formatarCPF(cpf)}`);
     
-    // Aguardar a página carregar completamente
-  await page.waitForTimeout(200);
+    // Carregar configuração para obter a URL base
+    const { loadConfig } = require('./util.js');
+    const cfg = loadConfig();
+    const baseUrl = (cfg.PJE_URL || 'https://pje.trt15.jus.br/primeirograu');
+    const origin = (() => { 
+      try { 
+        return new URL(baseUrl).origin; 
+      } catch (error) { 
+        return 'https://pje.trt15.jus.br'; 
+      } 
+    })();
+    
+    // Navegação direta para página de pessoa física do TRT15 com CPF preenchido
+    const urlComCpf = `${origin}/pjekz/pessoa-fisica?pagina=1&tamanhoPagina=10&cpf=${cpf}&situacao=1`;
+    
+    logger.info(`Navegando diretamente para: ${urlComCpf}`);
+    await page.goto(urlComCpf, { 
+      waitUntil: 'domcontentloaded',
+      timeout: obterTimeoutAdaptativo('navegacao', 'normal')
+    });
+    
+    // Aguardar carregamento da página
+    await aguardarTempo(page, 'aguardarProcessamento');
+    
+    // Verificar se chegou na página correta
+    const urlAtual = page.url();
+    logger.debug(`URL atual após navegação: ${urlAtual}`);
     
     // Verificar se a página carregou corretamente
-    const currentUrl = page.url();
-    console.log(`URL atual: ${currentUrl}`);
+    const paginaCarregada = await page.evaluate(() => {
+      return document.readyState === 'complete' && document.body && document.body.textContent.length > 0;
+    });
     
-    // Verificar se não foi redirecionado para login (indicaria que a sessão expirou)
-    if (currentUrl.includes('login') || currentUrl.includes('auth')) {
-      throw new Error('Sessão expirou, foi redirecionado para login');
+    if (!paginaCarregada) {
+      logger.warn('Página não carregou completamente, aguardando mais tempo...');
+      await aguardarTempo(page, 'aguardarProcessamento');
     }
     
-    console.log('Página de pessoa física carregada com sucesso!');
-    
-    // Processar a página para encontrar e clicar no ícone do lápis
-    await processarPaginaPessoaFisica(page, cpf);
-    return;
+    logger.success('Navegação direta concluída, processando página...');
+    await processarPaginaPessoaFisica(page, cpf, logger);
     
   } catch (error) {
-    console.log(`Erro ao navegar diretamente: ${error.message}`);
-    console.log('Tentando método alternativo via menu...');
-    
-    // Fallback: tentar o método original via menu
-    await navegarViaMenu(page, cpfNumerico);
+    logger.error(`Erro na navegação para cadastro: ${error.message}`);
+    throw new Error(`Falha na navegação para página de pessoa física: ${error.message}`);
   }
 }
 
 // Função auxiliar para navegação via menu (método original)
-async function navegarViaMenu(page, cpf) {
-  console.log('Procurando menu completo...');
-  // Procurar e clicar no menu completo no canto superior esquerdo
+async function navegarViaMenu(page, cpf, logger) {
+  logger.info('Procurando menu completo...');
+  
+  // Seletores otimizados para o menu completo
   const menuSelectors = [
+    // Seletores específicos e mais prováveis
     'button:has-text("Menu completo")',
     'a:has-text("Menu completo")',
-    'button:has-text("menu completo")',
-    'a:has-text("menu completo")',
     'button[title*="Menu completo"]',
     'a[title*="Menu completo"]',
+    
+    // Seletores por classe/ID
     '.menu-completo',
     '#menu-completo',
+    '.btn-menu-completo',
+    
+    // Seletores genéricos de menu
     'button:has-text("Menu")',
     'a:has-text("Menu")',
-    '[onclick*="menu"]',
     '.btn:has-text("Menu")',
-    'button[aria-label*="Menu"]'
+    'button[aria-label*="Menu"]',
+    '[onclick*="menu"]',
+    
+    // Fallbacks case-insensitive
+    'button:has-text("menu completo")',
+    'a:has-text("menu completo")',
+    'button[title*="menu completo"]',
+    'a[title*="menu completo"]'
   ];
   
-  let menuButton = null;
-  for (const selector of menuSelectors) {
-    try {
-      await page.waitForSelector(selector, { timeout: 3000 });
-      menuButton = selector;
-      console.log(`DEBUG: Menu completo encontrado com seletor: ${selector}`);
-      break;
-    } catch (error) {
-      console.log(`DEBUG: Seletor menu ${selector} não encontrado`);
-    }
-  }
-  
-  if (!menuButton) {
-    // Debug: capturar todos os elementos de menu da página
-    console.log('=== DEBUG: Elementos de menu disponíveis ===');
-    try {
-      const menuElements = await page.$$eval('button, a, [class*="menu"], [id*="menu"]', elements => 
-        elements.map(el => ({
-          tagName: el.tagName,
-          textContent: el.textContent?.trim().substring(0, 50),
-          title: el.title,
-          className: el.className,
-          id: el.id,
-          onclick: el.onclick?.toString().substring(0, 100)
-        }))
-      );
-      console.log('Elementos de menu encontrados:', JSON.stringify(menuElements, null, 2));
-    } catch (debugError) {
-      console.log('Erro ao capturar elementos de menu para debug:', debugError.message);
-    }
-    console.log('=== FIM DEBUG ===');
+  // Usar utilitário otimizado para buscar e clicar no menu
+  try {
+    const menuButton = await buscarElemento(page, menuSelectors, {
+      timeout: obterTimeoutAdaptativo('interacao', 'normal'),
+      retries: 2,
+      categoria: 'navegacao'
+    });
     
-    throw new Error('Menu completo não encontrado na página');
+    if (!menuButton) {
+      logger.warn('Menu completo não encontrado. Listando elementos disponíveis...');
+      const availableElements = await page.evaluate(() => {
+        const elements = [];
+        document.querySelectorAll('button, a').forEach(el => {
+          if (el.textContent.toLowerCase().includes('menu')) {
+            elements.push({
+              tag: el.tagName,
+              text: el.textContent.trim(),
+              id: el.id,
+              className: el.className,
+              title: el.title
+            });
+          }
+        });
+        return elements;
+      });
+      logger.debug('Elementos com "menu" encontrados:', availableElements);
+      throw new Error('Menu completo não encontrado');
+    }
+
+    await clicarElemento(page, menuButton, {
+      aguardarNavegacao: false,
+      timeout: obterTimeoutAdaptativo('interacao', 'normal')
+    });
+    logger.success('Menu completo clicado');
+    await aguardarTempo(page, 'aguardarModal');
+    
+  } catch (error) {
+    logger.error(`Erro ao clicar no menu: ${error.message}`);
+    throw error;
   }
   
-  // Clicar no menu completo
-  await page.click(menuButton);
-  console.log('Clicou no menu completo');
+  logger.info('Procurando opção "Pessoa Física" no menu...');
   
-  // Aguardar menu abrir
-  await page.waitForTimeout(100);
-  
-  console.log('Procurando opção "Pessoa Física" no menu...');
-  // Procurar e clicar na opção "Pessoa Física"
+  // Seletores otimizados para "Pessoa Física"
   const pessoaFisicaSelectors = [
+    // Seletores específicos e mais prováveis
     'a:has-text("Pessoa Física")',
     'button:has-text("Pessoa Física")',
-    'a:has-text("pessoa física")',
-    'button:has-text("pessoa física")',
     'a[title*="Pessoa Física"]',
     'button[title*="Pessoa Física"]',
     'a[href*="pessoa-fisica"]',
+    
+    // Seletores por classe/ID
+    '.pessoa-fisica',
+    '#pessoa-fisica',
+    '.btn-pessoa-fisica',
+    
+    // Seletores genéricos
+    'a:has-text("Pessoa")',
+    'button:has-text("Pessoa")',
     'button[onclick*="pessoa-fisica"]',
+    '[onclick*="pessoa"]',
     '.menu-item:has-text("Pessoa Física")',
     'li:has-text("Pessoa Física") a',
-    'li:has-text("Pessoa Física") button'
-  ];
-  
-  let pessoaFisicaOption = null;
-  for (const selector of pessoaFisicaSelectors) {
-    try {
-      await page.waitForSelector(selector, { timeout: 3000 });
-      pessoaFisicaOption = selector;
-      console.log(`DEBUG: Pessoa Física encontrada com seletor: ${selector}`);
-      break;
-    } catch (error) {
-      console.log(`DEBUG: Seletor Pessoa Física ${selector} não encontrado`);
-    }
-  }
-  
-  if (!pessoaFisicaOption) {
-    // Debug: capturar todas as opções do menu
-    console.log('=== DEBUG: Opções do menu disponíveis ===');
-    try {
-      const menuOptions = await page.$$eval('a, button, .menu-item, li', elements => 
-        elements.map(el => ({
-          tagName: el.tagName,
-          textContent: el.textContent?.trim().substring(0, 50),
-          href: el.href,
-          title: el.title,
-          className: el.className
-        }))
-        .filter(el => el.textContent && el.textContent.length > 0)
-      );
-      console.log('Opções do menu encontradas:', JSON.stringify(menuOptions, null, 2));
-    } catch (debugError) {
-      console.log('Erro ao capturar opções do menu para debug:', debugError.message);
-    }
-    console.log('=== FIM DEBUG ===');
+    'li:has-text("Pessoa Física") button',
     
-    throw new Error('Opção "Pessoa Física" não encontrada no menu');
+    // Fallbacks case-insensitive
+    'a:has-text("pessoa física")',
+    'button:has-text("pessoa física")',
+    'a[title*="pessoa física"]',
+    'button[title*="pessoa física"]'
+  ];
+
+  try {
+    const pessoaFisicaButton = await buscarElemento(page, pessoaFisicaSelectors, {
+      timeout: obterTimeoutAdaptativo('interacao', 'normal'),
+      retries: 2,
+      categoria: 'navegacao'
+    });
+    
+    if (!pessoaFisicaButton) {
+      logger.warn('Opção "Pessoa Física" não encontrada. Listando elementos disponíveis...');
+      const availableElements = await page.evaluate(() => {
+        const elements = [];
+        document.querySelectorAll('a, button, .menu-item, li').forEach(el => {
+          if (el.textContent && el.textContent.toLowerCase().includes('pessoa')) {
+            elements.push({
+              tagName: el.tagName,
+              textContent: el.textContent?.trim().substring(0, 50),
+              href: el.href,
+              title: el.title,
+              className: el.className
+            });
+          }
+        });
+        return elements;
+      });
+      logger.debug('Elementos com "pessoa" encontrados:', availableElements);
+      throw new Error('Opção "Pessoa Física" não encontrada no menu');
+    }
+
+    await clicarElemento(page, pessoaFisicaButton, {
+      aguardarNavegacao: true,
+      timeout: obterTimeoutAdaptativo('navegacao', 'normal')
+    });
+    logger.success('Clicou na opção "Pessoa Física"');
+    
+    // Aguardar a página carregar completamente
+    await aguardarTempo(page, 'aguardarProcessamento');
+    
+  } catch (error) {
+    logger.error(`Erro ao clicar em Pessoa Física: ${error.message}`);
+    throw error;
   }
-  
-  // Clicar na opção Pessoa Física
-  await page.click(pessoaFisicaOption);
-  console.log('Clicou na opção "Pessoa Física"');
-  
-  // Aguardar navegação para a página de Pessoa Física
-  await page.waitForTimeout(200);
   
   try {
     await page.waitForLoadState('networkidle', { timeout: 5000 });
@@ -171,24 +213,42 @@ async function navegarViaMenu(page, cpf) {
     await page.waitForLoadState('domcontentloaded', { timeout: 2000 });
   }
   
-  // Agora navegar diretamente para a página com o CPF já filtrado
-  const { loadConfig } = require('./util.js');
-  const cfg = loadConfig();
-  const baseUrl = (cfg.PJE_URL || 'https://pje.trt15.jus.br/primeirograu');
-  const origin = (() => { try { return new URL(baseUrl).origin; } catch { return 'https://pje.trt15.jus.br'; } })();
-  console.log(`Navegando para página com CPF ${cpf} filtrado...`);
-  const urlComCpf = `${origin}/pjekz/pessoa-fisica?pagina=1&tamanhoPagina=10&cpf=${cpf}&situacao=1`;
-  await page.goto(urlComCpf, { waitUntil: 'domcontentloaded' });
-  
-  await processarPaginaPessoaFisica(page, cpf);
+  // Processar a página atual sem navegação adicional
+  await processarPaginaPessoaFisica(page, cpf, logger);
 }
 
 // Função auxiliar para processar a página de pessoa física
-async function processarPaginaPessoaFisica(page, cpf) {
-  console.log('Aguardando carregamento da página com resultados...');
+async function processarPaginaPessoaFisica(page, cpf, logger) {
+  logger.info(`Processando página de pessoa física para CPF: ${NormalizadorTexto.formatarCPF(cpf)}`);
+  // Função auxiliar para tentar múltiplos seletores
+  const tentarMultiplosSeletores = async (seletores, opcoes = {}) => {
+    const { timeout = 5000 } = opcoes;
+    
+    for (const seletor of seletores) {
+      try {
+        console.log(`Tentando seletor: ${seletor}`);
+        await page.waitForSelector(seletor, { timeout: timeout / seletores.length });
+        const elemento = await page.$(seletor);
+        if (elemento) {
+          const isVisible = await elemento.isVisible();
+          if (isVisible) {
+            console.log(`✓ Elemento encontrado e visível: ${seletor}`);
+            return elemento;
+          }
+        }
+      } catch (error) {
+        console.log(`✗ Seletor falhou: ${seletor} - ${error.message}`);
+      }
+    }
+    return null;
+  };
   
-  // Aguardar página carregar completamente
-  await page.waitForTimeout(300);
+  // Extrair apenas números do CPF
+  const cpfNumerico = NormalizadorTexto.extrairNumeros(cpf);
+  logger.info(`Procurando CPF ${cpfNumerico} na página...`);
+  
+  // Aguardar a página carregar completamente
+  await aguardarTempo(page, 'aguardarProcessamento');
   
   // Aguardar tabela aparecer com timeout otimizado
   await page.waitForSelector('table', { timeout: 8000 });
@@ -211,193 +271,264 @@ async function processarPaginaPessoaFisica(page, cpf) {
   // Procurar e clicar no ícone do lápis (editar)
   console.log('Procurando ícone de edição (lápis)...');
   
-  const editSelectors = [
-    // Seletores específicos para o ícone do lápis (editar) - EVITAR lixeira
-    'button[title="Alterar pessoa"]',
-    'a[title="Alterar pessoa"]',
-    'button[title*="Editar"]:not([title*="Excluir"]):not([title*="Remover"])',
-    'a[title*="Editar"]:not([title*="Excluir"]):not([title*="Remover"])',
-    'button[title*="Alterar"]:not([title*="Excluir"]):not([title*="Remover"])',
-    'a[title*="Alterar"]:not([title*="Excluir"]):not([title*="Remover"])',
+  // Lista abrangente e melhorada de seletores para o ícone de edição (lápis)
+  const editIconSelectors = [
+    // Seletores específicos para PJE
+    'a[href*="editar"]',
+    'a[href*="edit"]',
+    'button[onclick*="editar"]',
+    'button[onclick*="edit"]',
     
-    // Ícones FontAwesome específicos para edição (não exclusão)
+    // Seletores por título/tooltip
+    '[title="Editar"]',
+    '[title="Editar dados"]', 
+    '[title="Editar cadastro"]',
+    '[title="Alterar"]',
+    '[title="Modificar"]',
+    '[alt="Editar"]',
+    
+    // Seletores por ícones FontAwesome e outros ícones
+    '.fa-edit',
+    '.fa-pencil',
+    '.fa-pencil-alt', 
+    '.fas.fa-edit',
+    '.fas.fa-pencil-alt',
+    '.far.fa-edit',
     'i.fa-edit',
     'i.fa-pencil',
-    'i.fa-pen',
-    '.fa-edit',
-    '.fa-pencil', 
-    '.fa-pen',
+    'i.fa-pencil-alt',
     
-    // Botões com ícones de edição (evitar lixeira)
-    'button:has(i.fa-edit)',
-    'button:has(i.fa-pencil)',
-    'a:has(i.fa-edit)',
-    'a:has(i.fa-pencil)',
+    // Seletores por posição na tabela
+    'tr td:last-child button',
+    'tr td:last-child a',
+    'tr td:last-child .btn',
+    'tbody tr td:last-child button',
+    'tbody tr td:last-child a',
+    'tr td:nth-last-child(1) button',
+    'tr td:nth-last-child(1) a',
+    'tr td:nth-last-child(2) button',
+    'tr td:nth-last-child(2) a',
     
-    // Seletores por posição - primeiro botão/link (geralmente editar vem antes de excluir)
-    'td:nth-last-child(2) button', // Penúltima coluna
-    'td:nth-last-child(2) a',
-    'tr td:nth-child(6) button', // Coluna específica baseada na imagem
-    'tr td:nth-child(6) a',
+    // Seletores por classes comuns de botões de edição
+    '.btn-edit',
+    '.btn-editar', 
+    '.edit-btn',
+    '.editar-btn',
+    '.action-edit',
+    '.acao-editar',
+    '.btn-primary',
+    '.btn-secondary',
     
-    // Seletores genéricos com filtros para evitar exclusão
-    'button[onclick*="editar"]:not([onclick*="excluir"]):not([onclick*="remover"])',
-    'a[onclick*="editar"]:not([onclick*="excluir"]):not([onclick*="remover"])',
-    'button[onclick*="alterar"]:not([onclick*="excluir"]):not([onclick*="remover"])',
-    'a[onclick*="alterar"]:not([onclick*="excluir"]):not([onclick*="remover"])',
+    // Seletores por atributos onclick
+    '[onclick*="edit"]',
+    '[onclick*="editar"]',
+    '[onclick*="alterar"]',
+    '[onclick*="modificar"]',
+    '[onclick*="form"]',
     
-    // Classes específicas de edição
-    '.btn-edit:not(.btn-delete):not(.btn-remove)',
-    '.icon-edit:not(.icon-delete):not(.icon-remove)',
-    '.edit-icon:not(.delete-icon):not(.remove-icon)',
+    // Seletores genéricos para botões em tabelas
+    'table button',
+    'table a.btn',
+    '.table button',
+    '.table a.btn',
+    'table a[href]',
+    '.table a[href]',
     
-    // Fallback - último recurso
-    'td:last-child button:first-child',
-    'td:last-child a:first-child'
+    // Seletores por texto do botão (usando contains para maior compatibilidade)
+    'button:contains("Editar")',
+    'a:contains("Editar")',
+    'button:contains("Alterar")',
+    'a:contains("Alterar")',
+    'button:contains("✏")',
+    'a:contains("✏")',
+    
+    // Seletores por data attributes
+    '[data-action="edit"]',
+    '[data-action="editar"]',
+    '[data-toggle="edit"]',
+    '[data-function="edit"]',
+    
+    // Seletores mais específicos para sistemas PJE
+    '.rich-table-cell button',
+    '.rich-table-cell a',
+    '.rf-dt-c button',
+    '.rf-dt-c a',
+    '.rich-table button',
+    '.rich-table a',
+    
+    // Seletores por imagem de ícone
+    'img[src*="edit"]',
+    'img[src*="pencil"]',
+    'img[src*="lapis"]',
+    'img[alt*="Editar"]',
+    
+    // Seletores genéricos como último recurso
+    'button',
+    'a[href]:not([href="#"]):not([href="javascript:void(0)"])',
+    'input[type="button"]',
+    'input[type="submit"]'
   ];
   
-  let editButton = null;
-  
-  for (const selector of editSelectors) {
-    try {
-      await page.waitForSelector(selector, { timeout: 1500 });
-      editButton = selector;
-      console.log(`DEBUG: Ícone de edição encontrado com seletor: ${selector}`);
-      break;
-    } catch (error) {
-      console.log(`DEBUG: Seletor de edição ${selector} não encontrado`);
-    }
-  }
-  
-  if (!editButton) {
-    // Debug: capturar todos os elementos clicáveis da página
-    console.log('=== DEBUG: Elementos clicáveis na página ===');
-    try {
-      const clickableElements = await page.$$eval('button, a, [onclick]', elements => 
-        elements.map(el => ({
-          tagName: el.tagName,
-          title: el.title,
-          textContent: el.textContent?.trim().substring(0, 50),
-          className: el.className,
-          onclick: el.onclick?.toString().substring(0, 100),
-          href: el.href
-        }))
-      );
-      console.log('Elementos clicáveis encontrados:', JSON.stringify(clickableElements, null, 2));
-    } catch (debugError) {
-      console.log('Erro ao capturar elementos para debug:', debugError.message);
-    }
-    console.log('=== FIM DEBUG ===');
+  try {
     
-    throw new Error('Ícone de edição (lápis) não encontrado na página');
+    const editButton = await tentarMultiplosSeletores(editIconSelectors, {
+      timeout: obterTimeoutAdaptativo('interacao', 'normal')
+    });
+    
+    if (!editButton) {
+      logger.warn('Ícone de edição não encontrado. Verificando se o CPF existe na página...');
+      
+      // Verificar se o CPF está presente na página
+      const cpfFormatado = NormalizadorTexto.formatarCPF(cpfNumerico);
+      
+      const cpfEncontrado = await page.evaluate((cpfNum, cpfForm) => {
+        const pageText = document.body.textContent || document.body.innerText || '';
+        return pageText.includes(cpfNum) || pageText.includes(cpfForm);
+      }, cpfNumerico, cpfFormatado);
+      
+      if (!cpfEncontrado) {
+        throw new Error(`CPF ${cpf} não encontrado na página. Verifique se o CPF está correto ou se já está cadastrado.`);
+      }
+      
+      // Debug: listar elementos clicáveis disponíveis
+      logger.debug('Listando elementos clicáveis disponíveis...');
+      const clickableElements = await page.evaluate(() => {
+        const elements = [];
+        document.querySelectorAll('button, a, i[class*="fa-"], [onclick]').forEach(el => {
+          if (el.title || el.className.includes('fa-') || el.onclick) {
+            elements.push({
+              tagName: el.tagName,
+              textContent: el.textContent?.trim().substring(0, 30),
+              title: el.title,
+              className: el.className,
+              onclick: el.onclick?.toString().substring(0, 50)
+            });
+          }
+        });
+        return elements;
+      });
+      logger.debug('Elementos clicáveis encontrados:', clickableElements);
+      
+      throw new Error('Ícone de edição (lápis) não encontrado na página');
+    }
+    
+    // Clicar no ícone de edição
+    await editButton.click();
+    
+    // Aguardar navegação se necessário
+    try {
+      await page.waitForNavigation({ 
+        timeout: obterTimeoutAdaptativo('interacao', 'normal'),
+        waitUntil: 'domcontentloaded'
+      });
+    } catch (error) {
+      // Navegação pode não ocorrer, continuar
+      logger.debug('Navegação não detectada após clique no ícone de edição');
+    }
+    logger.success('Clicou no ícone de edição');
+    
+    // Aguardar a página de edição carregar
+    await aguardarTempo(page, 'aguardarProcessamento');
+    
+  } catch (error) {
+    logger.error(`Erro ao clicar no ícone de edição: ${error.message}`);
+    throw error;
   }
-  
-  // Clicar no ícone de edição
-  await page.click(editButton);
-  console.log('Clicou no ícone de edição');
-  
-  // Aguardar carregamento da página de edição
-  await page.waitForTimeout(400);
   
   // Verificar se é um Perito ou Servidor
-  console.log('🔍 Verificando tipo de usuário (Perito vs Servidor)...');
+  logger.info('Verificando tipo de usuário (Perito vs Servidor)...');
   
   try {
-    // Aguardar um pouco para a página carregar
-    await page.waitForLoadState('domcontentloaded', { timeout: 3000 });
+    // Aguardar a página carregar completamente
+    await aguardarTempo(page, 'aguardarProcessamento');
     
-    // Verificar se existe a aba "Perito"
-    const abaPeritoExists = await page.locator('text=Perito').first().isVisible({ timeout: 3000 }).catch(() => false);
+    // Seletores otimizados para abas
+    const seletoresAbaPerito = [
+      'text=Perito',
+      'a[href*="perito"]',
+      'button:has-text("Perito")',
+      '.tab:has-text("Perito")',
+      '[role="tab"]:has-text("Perito")',
+      '.nav-link:has-text("Perito")',
+      '[data-tab="perito"]'
+    ];
     
-    // Verificar se existe a aba "Servidor" ou indicações de que é um servidor
-    const abaServidorExists = await page.locator('text=Servidor').first().isVisible({ timeout: 1000 }).catch(() => false);
+    const seletoresAbaServidor = [
+      'text=Servidor',
+      'a[href*="servidor"]',
+      'button:has-text("Servidor")',
+      '.tab:has-text("Servidor")',
+      '[role="tab"]:has-text("Servidor")',
+      '.nav-link:has-text("Servidor")',
+      '[data-tab="servidor"]'
+    ];
+    
+    // Verificar se existem abas usando utilitários
+    const abaPeritoExists = await tentarMultiplosSeletores(seletoresAbaPerito, {
+      timeout: obterTimeoutAdaptativo('interacao', 'validacao')
+    }) !== null;
+    
+    const abaServidorExists = await tentarMultiplosSeletores(seletoresAbaServidor, {
+      timeout: obterTimeoutAdaptativo('interacao', 'validacao')
+    }) !== null;
     
     // Verificar outros indicadores de servidor
     const indicadoresServidor = [
-      'text=Dados do Servidor',
-      'text=Informações do Servidor', 
-      'text=Cadastro de Servidor',
-      'text=Servidor Público',
-      'text=Matrícula',
-      'text=Cargo',
-      'text=Lotação'
+      'Dados do Servidor',
+      'Informações do Servidor', 
+      'Cadastro de Servidor',
+      'Servidor Público',
+      'Matrícula',
+      'Cargo',
+      'Lotação'
     ];
     
     let isServidor = abaServidorExists;
     
     if (!isServidor) {
+      const pageText = await page.evaluate(() => document.body.textContent || '');
+      const pageTextNormalizado = NormalizadorTexto.normalizar(pageText);
+      
       for (const indicador of indicadoresServidor) {
-        try {
-          const elemento = await page.locator(indicador).first().isVisible({ timeout: 500 });
-          if (elemento) {
-            isServidor = true;
-            console.log(`🔍 Indicador de servidor encontrado: ${indicador}`);
-            break;
-          }
-        } catch {
-          // Continuar verificando outros indicadores
+        const indicadorNormalizado = NormalizadorTexto.normalizar(indicador);
+        if (pageTextNormalizado.includes(indicadorNormalizado)) {
+          isServidor = true;
+          logger.debug(`Indicador de servidor encontrado: ${indicador}`);
+          break;
         }
       }
     }
     
     if (isServidor) {
-      console.log(`🔍 Detectado que o CPF ${cpf} pertence a um SERVIDOR.`);
+      logger.info(`Detectado que o CPF ${cpf} pertence a um SERVIDOR.`);
       
       // Primeiro, tentar clicar na aba "Servidor" se ela existir
       if (abaServidorExists) {
-        console.log('🔄 Clicando na aba "Servidor"...');
+        logger.info('Clicando na aba "Servidor"...');
         
-        const servidorSelectors = [
-          'text=Servidor',
-          'a[href*="servidor"]',
-          '.tab-servidor',
-          '[data-tab="servidor"]',
-          'button:has-text("Servidor")',
-          'a:has-text("Servidor")',
-          '[role="tab"]:has-text("Servidor")',
-          '.nav-tab:has-text("Servidor")',
-          'li:has-text("Servidor") a',
-          'li:has-text("Servidor") button',
-          '.tab:has-text("Servidor")',
-          '[data-toggle="tab"]:has-text("Servidor")',
-          'a[data-target*="servidor"]',
-          'button[data-target*="servidor"]'
-        ];
-        
-        let servidorTab = null;
-        
-        for (const selector of servidorSelectors) {
-          try {
-            await page.waitForSelector(selector, { timeout: 1000 });
-            servidorTab = selector;
-            console.log(`✅ Aba "Servidor" encontrada com seletor: ${selector}`);
-            break;
-          } catch (error) {
-            console.log(`DEBUG: Seletor aba Servidor ${selector} não encontrado`);
-          }
-        }
-        
-        if (servidorTab) {
-          await page.click(servidorTab);
-        console.log('✅ Clicou na aba "Servidor"');
-        await page.waitForTimeout(800);
+        try {
+          const abaServidor = await tentarMultiplosSeletores(seletoresAbaServidor, {
+            timeout: obterTimeoutAdaptativo('interacao', 'normal')
+          });
           
-          // Aguardar carregamento da aba Servidor
-          try {
-            await page.waitForLoadState('domcontentloaded', { timeout: 3000 });
-          } catch (error) {
-            console.log('Timeout aguardando carregamento da aba Servidor');
+          if (abaServidor) {
+            await abaServidor.click();
+            logger.success('Clicou na aba "Servidor"');
+            await aguardarTempo(page, 'aguardarModal');
+            
+            // Aguardar carregamento da aba Servidor
+            await aguardarTempo(page, 'aguardarProcessamento');
+            
+            logger.success('Aba "Servidor" carregada com sucesso');
+            return; // Sair da função pois já estamos na aba correta
           }
-          
-          console.log('✅ Aba "Servidor" carregada com sucesso');
-          return; // Sair da função pois já estamos na aba correta
-        } else {
-          console.log('⚠️ Não foi possível clicar na aba "Servidor"');
+        } catch (error) {
+          logger.warn(`Erro ao clicar na aba "Servidor": ${error.message}`);
         }
       }
       
       // Se não conseguiu clicar na aba Servidor, tentar cadastrar como perito
-      console.log('🔍 Tentando cadastrar como perito... Procurando botão "Validar na Receita"...');
+      logger.info('Tentando cadastrar como perito... Procurando botão "Validar na Receita"...');
       
       const validarReceitaSelectors = [
         'button:has-text("Validar na Receita")',
@@ -413,92 +544,109 @@ async function processarPaginaPessoaFisica(page, cpf) {
         'input[onclick*="validar"]'
       ];
       
-      let validarButton = null;
-      
-      for (const selector of validarReceitaSelectors) {
-        try {
-          await page.waitForSelector(selector, { timeout: 1000 });
-          validarButton = selector;
-          console.log(`✅ Botão "Validar na Receita" encontrado com seletor: ${selector}`);
-          break;
-        } catch (error) {
-          console.log(`DEBUG: Seletor ${selector} não encontrado`);
-        }
-      }
-      
-      if (validarButton) {
-        console.log('🔄 Clicando no botão "Validar na Receita"...');
-        await page.click(validarButton);
-        await page.waitForTimeout(800);
-        console.log('✅ Clicou no botão "Validar na Receita"');
+      try {
+        const validarButton = await tentarMultiplosSeletores(validarReceitaSelectors, {
+          timeout: obterTimeoutAdaptativo('interacao', 'normal')
+        });
         
-        // Aguardar processamento e possível redirecionamento
-        try {
-          await page.waitForLoadState('domcontentloaded', { timeout: 5000 });
-        } catch (error) {
-          console.log('Timeout aguardando carregamento após validação');
-        }
-        
-        // Verificar se agora apareceu a aba Perito
-        const abaPeritoAposValidacao = await page.locator('text=Perito').first().isVisible({ timeout: 3000 }).catch(() => false);
-        
-        if (abaPeritoAposValidacao) {
-          console.log('✅ Aba "Perito" apareceu após validação na Receita');
-          // Continuar com o fluxo normal para perito
+        if (validarButton) {
+          logger.info('Clicando no botão "Validar na Receita"...');
+          await validarButton.click();
+          
+          // Aguardar navegação se necessário
+          try {
+            await page.waitForNavigation({ 
+              timeout: obterTimeoutAdaptativo('interacao', 'normal'),
+              waitUntil: 'domcontentloaded'
+            });
+          } catch (error) {
+            // Navegação pode não ocorrer, continuar
+            logger.debug('Navegação não detectada após clique no botão Validar na Receita');
+          }
+          logger.success('Clicou no botão "Validar na Receita"');
+          
+          // Aguardar processamento
+          await aguardarTempo(page, 'aguardarProcessamento');
+          
+          // Verificar se agora apareceu a aba Perito
+          const abaPeritoAposValidacao = await tentarMultiplosSeletores(seletoresAbaPerito, {
+            timeout: obterTimeoutAdaptativo('interacao', 'validacao')
+          }) !== null;
+          
+          if (abaPeritoAposValidacao) {
+            logger.success('Aba "Perito" apareceu após validação na Receita');
+          } else {
+            logger.warn('Aba "Perito" ainda não apareceu após validação. Continuando...');
+          }
         } else {
-          console.log('⚠️ Aba "Perito" ainda não apareceu após validação. Continuando...');
+          logger.warn('Botão "Validar na Receita" não encontrado. Tentando continuar...');
         }
-      } else {
-        console.log('⚠️ Botão "Validar na Receita" não encontrado. Tentando continuar...');
+      } catch (error) {
+        logger.warn(`Erro ao validar na Receita: ${error.message}`);
       }
     }
     
     if (!abaPeritoExists) {
       // Se não é servidor mas também não tem aba Perito, pode ser outro tipo de usuário
-      console.log('⚠️ Aba "Perito" não encontrada. Verificando se é outro tipo de usuário...');
+      logger.warn('Aba "Perito" não encontrada. Verificando se é outro tipo de usuário...');
       
       // Capturar todas as abas disponíveis para debug
       try {
-        const abasDisponiveis = await page.$$eval('[role="tab"], .tab, .nav-tab, a[href*="tab"], button[data-tab]', 
-          elements => elements.map(el => el.textContent?.trim()).filter(text => text && text.length > 0)
-        );
+        const abasDisponiveis = await page.evaluate(() => {
+          const abas = Array.from(document.querySelectorAll('a, button, .tab, [role="tab"]'));
+          return abas.map(aba => aba.textContent?.trim()).filter(texto => texto && texto.length > 0);
+        });
         
         if (abasDisponiveis.length > 0) {
-          console.log('📋 Abas disponíveis encontradas:', abasDisponiveis);
-          throw new Error(`❌ ERRO: O CPF ${cpf} não parece ser de um PERITO. Abas disponíveis: ${abasDisponiveis.join(', ')}. Verifique se o CPF está correto.`);
+          logger.debug('Abas disponíveis encontradas:', abasDisponiveis);
+          throw new Error(`ERRO: O CPF ${cpf} não parece ser de um PERITO. Abas disponíveis: ${abasDisponiveis.join(', ')}. Verifique se o CPF está correto.`);
         }
       } catch (debugError) {
-        console.log('Debug de abas falhou:', debugError.message);
+        logger.debug('Debug de abas falhou:', debugError.message);
       }
       
-      throw new Error(`❌ ERRO: O CPF ${cpf} não possui aba "Perito" disponível. Verifique se o CPF pertence a um perito cadastrado no sistema.`);
+      throw new Error(`ERRO: O CPF ${cpf} não possui aba "Perito" disponível. Verifique se o CPF pertence a um perito cadastrado no sistema.`);
     }
     
-    console.log('✅ Confirmado: Usuário é um PERITO');
+    logger.success('Confirmado: Usuário é um PERITO');
     
   } catch (error) {
     if (error.message.includes('ERRO:')) {
       throw error; // Re-lançar erros específicos de validação
     }
-    console.log('⚠️ Erro na verificação de tipo de usuário:', error.message);
+    logger.warn(`Erro na verificação de tipo de usuário: ${error.message}`);
     // Continuar mesmo com erro na verificação, assumindo que é perito
   }
   
   // Aguardar aba Perito aparecer e clicar
-  await page.waitForSelector('text=Perito', { timeout: 6000 });
-  await page.click('text=Perito');
-  console.log('Clicou na aba Perito');
+  const seletoresAbaPerito = [
+    'text=Perito',
+    'a[href*="perito"]',
+    'button:has-text("Perito")',
+    '.tab:has-text("Perito")',
+    '[role="tab"]:has-text("Perito")',
+    '.nav-link:has-text("Perito")',
+    '[data-tab="perito"]'
+  ];
+  
+  const abaPerito = await tentarMultiplosSeletores(seletoresAbaPerito, {
+    timeout: obterTimeoutAdaptativo('interacao', 'critico')
+  });
+  
+  if (!abaPerito) {
+    throw new Error('Aba Perito não encontrada após verificações');
+  }
+  
+  await abaPerito.click();
+  logger.success('Clicou na aba Perito');
   
   // Aguardar carregamento da aba
-  await page.waitForTimeout(300);
+  await aguardarTempo(page, 'aguardarModal');
   
   // Aguardar página carregar completamente
-  try {
-    await page.waitForLoadState('networkidle', { timeout: 6000 });
-  } catch (error) {
-    // Se networkidle falhar, aguardar domcontentloaded
-    await page.waitForLoadState('domcontentloaded', { timeout: 3000 });
-  }
+  await aguardarTempo(page, 'aguardarProcessamento');
+  
+  logger.success(`Navegação para página do perito CPF ${NormalizadorTexto.formatarCPF(cpf)} concluída com sucesso`);
 }
 
 module.exports = { navegarParaCadastro };

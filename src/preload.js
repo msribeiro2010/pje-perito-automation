@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('automation-progress', (event, data) => callback(data));
   },
   
+  onAutomationReport: (callback) => {
+    ipcRenderer.on('automation-report', (event, data) => callback(data));
+  },
+  
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);
   },
