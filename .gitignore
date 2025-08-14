@@ -172,12 +172,14 @@ releases/
 *.p12
 *.pfx
 
-# Local data
+# Local data and user files
 data/local/
 data/temp/
 data/cache/
+data/relatorio-*.json
+data/relatorio-*.csv
 
-# Screenshots and recordings
+# Screenshots and recordings  
 screenshots/
 recordings/
 *.png
@@ -193,3 +195,68 @@ recordings/
 *.so
 *.dylib
 *.dll
+
+# Security and sensitive files
+*.env*
+.env.*
+credentials.json
+secrets.json
+auth.json
+config.json
+private.json
+
+# User data files that might contain sensitive info
+data/perito.json
+data/servidores.json
+data/*.json
+!data/example.json
+
+# Debug and test files
+debug-*.html
+test-*.html
+*-debug.html
+*-test.html
+*.debug.js
+*.test.js.tmp
+
+# Electron app data
+userData/
+appData/
+localStorage/
+
+# Browser automation artifacts
+.playwright/
+playwright-report/
+test-results/
+
+# Temporary automation files
+automation-*.json
+selenium-*.log
+chromedriver*.log
+
+# macOS specific
+.AppleDouble
+.LSOverride
+Icon?
+
+# Windows specific  
+Desktop.ini
+ehthumbs_vista.db
+
+# Editor specific
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/extensions.json
+
+# Git specific
+.git/
+.gitattributes
+
+# Backup and temporary
+*~
+*.swp
+*.swo
+*.orig
+.tmp/
+.temp/
