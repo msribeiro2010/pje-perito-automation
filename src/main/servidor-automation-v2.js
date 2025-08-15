@@ -73,19 +73,18 @@ class ServidorAutomationV2 {
 
     this.isRunning = true;
     this.config = config;
-    this.totalOrgaos = config.orgaos ? config.orgaos.length : 0;
     this.currentProgress = 0;
     this.results = [];
 
     try {
-      this.sendStatus('info', 'Iniciando automação moderna...', 0, 'Configurando ambiente');
-            
-      await this.initializeBrowser();
-      await this.performLogin();
-      await this.navigateDirectlyToPerson(config.cpf);
-      await this.navigateToServerTab();
-      await this.processOrgaosJulgadores();
-      await this.generateReport();
+      // Suporte para processamento em lote de múltiplos servidores
+      if (config.servidores && config.servidores.length > 0) {
+        await this.processMultipleServidores(config);
+      } else {
+        // Modo compatibilidade - processar servidor único
+        this.totalOrgaos = config.orgaos ? config.orgaos.length : 0;
+        await this.processSingleServidor(config);
+      }
             
       this.sendStatus('success', 'Automação concluída com sucesso!', 100, 'Processo finalizado');
             
@@ -97,6 +96,66 @@ class ServidorAutomationV2 {
       await this.cleanup();
       this.isRunning = false;
     }
+  }
+
+  async processMultipleServidores(config) {
+    const servidores = config.servidores;
+    this.totalOrgaos = servidores.reduce((total, servidor) => total + (servidor.orgaos ? servidor.orgaos.length : 0), 0);
+    
+    this.sendStatus('info', `Iniciando automação para ${servidores.length} servidores...`, 0, 'Configurando ambiente');
+    
+    await this.initializeBrowser();
+    await this.performLogin();
+    
+    // Processar cada servidor na mesma sessão
+    for (let i = 0; i < servidores.length; i++) {
+      const servidor = servidores[i];
+      
+      this.sendStatus('info', `Processando servidor ${i + 1}/${servidores.length}: ${servidor.nome}`, 
+        (i / servidores.length) * 90, `CPF: ${servidor.cpf}`);
+      
+      try {
+        // Configurar dados do servidor atual
+        this.config.cpf = servidor.cpf;
+        this.config.perfil = servidor.perfil;
+        this.config.orgaos = servidor.orgaos || [];
+        
+        await this.navigateDirectlyToPerson(servidor.cpf);
+        await this.navigateToServerTab();
+        await this.processOrgaosJulgadores();
+        
+        // Adicionar resultado do servidor
+        const servidorResults = this.results.filter(r => r.cpf === servidor.cpf);
+        this.sendStatus('success', `Servidor ${servidor.nome} processado: ${servidorResults.filter(r => r.status === 'Incluído com Sucesso').length} sucessos`, 
+          ((i + 1) / servidores.length) * 90);
+        
+      } catch (error) {
+        this.sendStatus('error', `Erro ao processar servidor ${servidor.nome}: ${error.message}`, 
+          ((i + 1) / servidores.length) * 90);
+        
+        // Adicionar resultado de erro
+        this.results.push({
+          servidor: servidor.nome,
+          cpf: servidor.cpf,
+          status: 'Erro',
+          erro: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+    
+    await this.generateReport();
+  }
+
+  async processSingleServidor(config) {
+    this.sendStatus('info', 'Iniciando automação moderna...', 0, 'Configurando ambiente');
+            
+    await this.initializeBrowser();
+    await this.performLogin();
+    await this.navigateDirectlyToPerson(config.cpf);
+    await this.navigateToServerTab();
+    await this.processOrgaosJulgadores();
+    await this.generateReport();
   }
 
   async initializeBrowser() {
@@ -440,9 +499,10 @@ class ServidorAutomationV2 {
         await this.processOrgaoJulgador(orgao);
         this.results.push({
           orgao,
-          status: 'Sucesso',
+          status: 'Incluído com Sucesso',
           erro: null,
           perfil: this.config.perfil,
+          cpf: this.config.cpf,
           timestamp: new Date().toISOString()
         });
         this.sendStatus('success', 'OJ processado com sucesso', progress, orgao);
@@ -452,6 +512,7 @@ class ServidorAutomationV2 {
           orgao,
           status: 'Erro',
           erro: error.message,
+          cpf: this.config.cpf,
           timestamp: new Date().toISOString()
         });
         this.sendStatus('error', `Erro ao processar OJ: ${error.message}`, progress, orgao);
@@ -472,6 +533,7 @@ class ServidorAutomationV2 {
           status: 'Já Incluído',
           erro: null,
           perfil: this.config.perfil,
+          cpf: this.config.cpf,
           timestamp: new Date().toISOString()
         });
       }
@@ -561,6 +623,7 @@ class ServidorAutomationV2 {
         status: 'Já Incluído',
         erro: null,
         perfil: this.config.perfil,
+        cpf: this.config.cpf,
         timestamp: new Date().toISOString()
       });
       return; // Skip processamento

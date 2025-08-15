@@ -200,7 +200,7 @@ class PeritoApp {
 
   async loadPeritos() {
     try {
-      this.peritos = await window.electronAPI.loadPeritos();
+      this.peritos = await window.electronAPI.loadData('perito.json') || [];
       this.renderPeritosTable();
     } catch (error) {
       console.error('Erro ao carregar peritos:', error);
@@ -210,7 +210,7 @@ class PeritoApp {
 
   async savePeritos() {
     try {
-      const result = await window.electronAPI.savePeritos(this.peritos);
+      const result = await window.electronAPI.saveData('perito.json', this.peritos);
       if (result.success) {
         this.showNotification('Peritos salvos com sucesso!', 'success');
       } else {
@@ -287,6 +287,13 @@ class PeritoApp {
   updateAutomationButton() {
     const startButton = document.getElementById('start-automation');
     startButton.disabled = this.selectedPeritos.length === 0 || this.isAutomationRunning;
+  }
+
+  updateServidorAutomationButton() {
+    const startButton = document.getElementById('start-servidor-automation');
+    if (startButton) {
+      startButton.disabled = this.selectedServidores.length === 0 || this.isAutomationRunning;
+    }
   }
 
   updateSelectedPeritosDisplay() {
@@ -450,8 +457,17 @@ class PeritoApp {
     this.servidores.forEach((servidor, index) => {
       const isSelected = this.selectedServidores && this.selectedServidores.includes(index);
       const row = document.createElement('tr');
-      row.innerHTML = `
-        <td><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="app.toggleServidorSelection(${index})"></td>
+      
+      // Create checkbox with event listener
+      const checkboxCell = document.createElement('td');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isSelected;
+      checkbox.addEventListener('change', () => this.toggleServidorSelection(index));
+      checkboxCell.appendChild(checkbox);
+      
+      row.appendChild(checkboxCell);
+      row.innerHTML += `
         <td>${servidor.nome}</td>
         <td>${servidor.cpf}</td>
         <td>${servidor.perfil}</td>
@@ -623,6 +639,9 @@ class PeritoApp {
     if (displayElement) {
       displayElement.innerHTML = `<small>${this.selectedServidores.length} de ${this.servidores.length} servidores selecionados</small>`;
     }
+    
+    // Update automation button state
+    this.updateServidorAutomationButton();
   }
 
   // ===== AUTOMATION METHODS =====
@@ -712,29 +731,39 @@ class PeritoApp {
     this.addStatusMessage('info', 'Iniciando automação de servidores...');
         
     try {
-      // Usar a automação V2 com os dados dos servidores selecionados
-      for (const index of this.selectedServidores) {
+      // Preparar lista de servidores para processar em uma única sessão
+      const servidoresParaProcessar = this.selectedServidores.map(index => {
         const servidor = this.servidores[index];
-        
-        const config = {
+        return {
+          nome: servidor.nome,
           cpf: servidor.cpf,
           perfil: servidor.perfil,
-          orgaos: servidor.ojs ? servidor.ojs.join('\n') : '',
-          production: true,
-          detailedReport: true,
-          useCache: true,
-          timeout: 30,
-          maxLoginAttempts: 3
+          orgaos: servidor.ojs || []
         };
-        
-        this.addStatusMessage('info', `Processando servidor: ${servidor.nome}`);
-        
-        const result = await window.electronAPI.invoke('start-servidor-automation-v2', config);
-        
-        if (!result || !result.success) {
-          this.addStatusMessage('error', `Erro na automação do servidor ${servidor.nome}: ${result && result.error ? result.error : 'Erro desconhecido'}`);
-        } else {
-          this.addStatusMessage('success', `Automação do servidor ${servidor.nome} concluída com sucesso`);
+      });
+      
+      this.addStatusMessage('info', `Processando ${servidoresParaProcessar.length} servidores em uma única sessão`);
+      
+      const config = {
+        servidores: servidoresParaProcessar,
+        production: true,
+        detailedReport: true,
+        useCache: true,
+        timeout: 30,
+        maxLoginAttempts: 3
+      };
+      
+      const result = await window.electronAPI.startServidorAutomationV2(config);
+      
+      if (!result || !result.success) {
+        this.addStatusMessage('error', `Erro na automação em lote: ${result && result.error ? result.error : 'Erro desconhecido'}`);
+      } else {
+        this.addStatusMessage('success', `Automação de ${servidoresParaProcessar.length} servidores concluída com sucesso`);
+        // Mostrar resultados individuais se disponíveis
+        if (result.relatorio && result.relatorio.servidores) {
+          result.relatorio.servidores.forEach(relatorioServidor => {
+            this.addStatusMessage('info', `${relatorioServidor.nome}: ${relatorioServidor.sucessos || 0} sucessos, ${relatorioServidor.erros || 0} erros`);
+          });
         }
       }
     } catch (error) {
