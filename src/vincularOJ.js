@@ -1162,102 +1162,17 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
             }
         }
         
-        // Estratégia 2: Busca específica para Araras (se aplicável)
-        if (!opcaoSelecionada && alvoOJ.toLowerCase().includes('araras') && Date.now() - startTime < TIMEOUT_TOTAL) {
-            try {
-                console.log('🎯 Estratégia 2: Busca específica para Araras...');
-                // Buscar por "Vara" + "Trabalho" + "Araras" em qualquer ordem
-                const opcaoAraras = page.locator('mat-option').filter({ hasText: /vara.*trabalho.*araras|araras.*vara.*trabalho|trabalho.*vara.*araras/i });
-                if (await opcaoAraras.first().isVisible({ timeout: 1500 })) {
-                    const textoOpcao = await opcaoAraras.first().textContent();
-                    console.log(`✓ Opção específica Araras encontrada: "${textoOpcao}"`);
-                    await opcaoAraras.first().click({ force: true });
-                    opcaoSelecionada = true;
-                    estrategias.push('araras_especifica');
-                } else {
-                    // Tentar apenas com "Araras"
-                    const opcaoApenasAraras = page.locator('mat-option').filter({ hasText: /araras/i });
-                    if (await opcaoApenasAraras.first().isVisible({ timeout: 1500 })) {
-                        const textoOpcao = await opcaoApenasAraras.first().textContent();
-                        console.log(`✓ Opção com Araras encontrada: "${textoOpcao}"`);
-                        await opcaoApenasAraras.first().click({ force: true });
-                        opcaoSelecionada = true;
-                        estrategias.push('araras_parcial');
-                    }
-                }
-            } catch (error) {
-                console.log('❌ Busca específica Araras falhou:', error.message);
-            }
-        }
+        // REMOVIDO: Busca específica para Araras - MUITO PERIGOSA
+        // Mesmo sendo específica, pode pegar OJs errados que contenham apenas "Araras"
         
-        // Estratégia 3: Buscar opção que contém as palavras principais
-        if (!opcaoSelecionada && Date.now() - startTime < TIMEOUT_TOTAL) {
-            try {
-                console.log('🎯 Estratégia 3: Busca por palavras-chave...');
-                // Extrair palavras principais do nome do OJ
-                const palavrasChave = alvoOJ.split(' ').filter(palavra => 
-                    palavra.length > 2 && 
-                    !['de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no', 'e'].includes(palavra.toLowerCase())
-                );
-                
-                if (palavrasChave.length > 0) {
-                    const regexPalavras = new RegExp(palavrasChave.join('.*'), 'i');
-                    const opcaoParcial = page.locator('mat-option').filter({ hasText: regexPalavras });
-                    
-                    if (await opcaoParcial.first().isVisible({ timeout: 2000 })) {
-                        console.log('✓ Opção parcial encontrada por palavras-chave, clicando...');
-                        await opcaoParcial.first().click({ force: true });
-                        opcaoSelecionada = true;
-                        estrategias.push('palavras_chave');
-                    }
-                }
-            } catch (error) {
-                console.log('❌ Opção por palavras-chave não encontrada:', error.message);
-            }
-        }
+        // REMOVIDO: Estratégia 3 - Busca por palavras principais - EXTREMAMENTE PERIGOSA
+        // Esta busca pode pegar qualquer OJ que contenha palavras similares
+        // TODO O CÓDIGO PERIGOSO FOI REMOVIDO
+        // Agora só aceita correspondência EXATA
         
-        // Estratégia 4: Buscar opção que contém o texto (mais flexível)
-        if (!opcaoSelecionada) {
-            try {
-                console.log('🎯 Estratégia 4: Busca parcial...');
-                const opcaoParcial = page.locator('mat-option').filter({ hasText: new RegExp(alvoOJ, 'i') });
-                if (await opcaoParcial.first().isVisible({ timeout: 2000 })) {
-                    console.log('✓ Opção parcial encontrada, clicando...');
-                    await opcaoParcial.first().click({ force: true });
-                    opcaoSelecionada = true;
-                    estrategias.push('parcial');
-                }
-            } catch (error) {
-                console.log('❌ Opção parcial não encontrada:', error.message);
-            }
-        }
-        
-        // Estratégia 5: Filtrar por teclado (última tentativa)
-        if (!opcaoSelecionada) {
-            console.log('🎯 Estratégia 5: Filtro por teclado...');
-            try {
-                // Focar no mat-select e digitar
-                await matSelectEspecifico.focus();
-                await page.keyboard.type(alvoOJ, { delay: 100 });
-                await page.waitForTimeout(2000); // Aguardar filtro aplicar
-                
-                // Tentar encontrar a opção filtrada
-                const opcaoFiltrada = page.locator('mat-option').first();
-                if (await opcaoFiltrada.isVisible({ timeout: 2000 })) {
-                    console.log('✓ Opção filtrada encontrada, clicando...');
-                    await opcaoFiltrada.click({ force: true });
-                    opcaoSelecionada = true;
-                    estrategias.push('teclado');
-                } else {
-                    // Se não encontrou, tentar Enter
-                    console.log('Tentando Enter...');
-                    await page.keyboard.press('Enter');
-                    opcaoSelecionada = true;
-                }
-            } catch (error) {
-                console.log('Erro na filtragem por teclado:', error.message);
-            }
-        }
+        // REMOVIDO: Estratégia 5 - Filtro por teclado - EXTREMAMENTE PERIGOSA
+        // Esta estratégia digitava o texto e aceitava a primeira opção que aparecia
+        // Pode selecionar qualquer OJ que comece com letra similar
         
         if (!opcaoSelecionada) {
             // Listar opções disponíveis para debug final
@@ -1471,45 +1386,13 @@ async function selecionarOrgaoJulgadorNoModal(page, alvoOJ) {
         }
         
         // Estratégia 2: Busca parcial
-        if (!opcaoSelecionada) {
-            try {
-                console.log('🎯 Estratégia 2: Busca parcial...');
-                const opcaoParcial = page.locator('mat-option').filter({ hasText: new RegExp(alvoOJ, 'i') });
-                if (await opcaoParcial.count() > 0 && await opcaoParcial.first().isVisible({ timeout: 2000 })) {
-                    console.log('✅ Opção parcial encontrada');
-                    await opcaoParcial.first().click({ force: true });
-                    opcaoSelecionada = true;
-                    estrategias.push('parcial');
-                }
-            } catch (error) {
-                console.log('❌ Busca parcial falhou:', error.message);
-            }
-        }
+        // REMOVIDO: Estratégia de busca parcial - EXTREMAMENTE PERIGOSA
+        // Esta busca pode pegar qualquer OJ que contenha parte do texto
+        // Exemplo: "Adamantina" poderia pegar "CEJUSC LIMEIRA" se contiver "a" ou "m"
         
-        // Estratégia 3: Busca por palavras-chave
-        if (!opcaoSelecionada) {
-            try {
-                console.log('🎯 Estratégia 3: Busca por palavras-chave...');
-                const palavrasChave = alvoOJ.split(' ').filter(palavra => 
-                    palavra.length > 2 && 
-                    !['de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no', 'e'].includes(palavra.toLowerCase())
-                );
-                
-                if (palavrasChave.length > 0) {
-                    const regexPalavras = new RegExp(palavrasChave.join('.*'), 'i');
-                    const opcaoPalavras = page.locator('mat-option').filter({ hasText: regexPalavras });
-                    
-                    if (await opcaoPalavras.count() > 0 && await opcaoPalavras.first().isVisible({ timeout: 2000 })) {
-                        console.log('✅ Opção por palavras-chave encontrada');
-                        await opcaoPalavras.first().click({ force: true });
-                        opcaoSelecionada = true;
-                        estrategias.push('palavras_chave');
-                    }
-                }
-            } catch (error) {
-                console.log('❌ Busca por palavras-chave falhou:', error.message);
-            }
-        }
+        // REMOVIDO: Estratégia de busca por palavras-chave - EXTREMAMENTE PERIGOSA
+        // Esta busca poderia pegar qualquer OJ que contenha palavras similares
+        // Exemplo: "Adamantina" poderia pegar "CEJUSC LIMEIRA" porque ambos têm palavras comuns
         
         if (!opcaoSelecionada) {
             // Debug: listar opções disponíveis
@@ -1616,163 +1499,53 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiên
         throw new Error('PERITO FLOW: Não foi possível clicar em nenhum mat-select');
       }
       
-      // Aguardar dropdown aparecer
+      // Aguardar dropdown aparecer - UMA VEZ SÓ
       console.log('🔄 PERITO FLOW: Aguardando dropdown aparecer...');
-      await page.waitForTimeout(waitTimeout(1000));
+      await page.waitForTimeout(2000); // Timeout maior para garantir
       
-      // Digitar OJ
-      console.log(`🔄 PERITO: Digitando "${nomeOJ}"`);
-      try {
-        let digitacaoOK = false;
+      // NOVA LÓGICA SIMPLES: Procurar opção exata IMEDIATAMENTE
+      console.log(`🔍 PERITO: Procurando opção exata "${nomeOJ}"...`);
+      
+      // Aguardar opções carregarem
+      await page.waitForTimeout(1000);
+      
+      // Procurar opção exata APENAS
+      const opcaoExata = page.locator('mat-option').filter({ hasText: new RegExp(`^\\s*${nomeOJ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i') });
+      const countOpcaoExata = await opcaoExata.count();
+      
+      if (countOpcaoExata > 0) {
+        console.log(`✅ Opção exata encontrada: ${nomeOJ}`);
+        await opcaoExata.first().click();
+        console.log('✅ Opção selecionada com sucesso');
+      } else {
+        // FECHAR DROPDOWN IMEDIATAMENTE e listar opções disponíveis
+        console.log(`❌ Opção "${nomeOJ}" NÃO ENCONTRADA - fechando dropdown`);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(500);
         
+        // Listar opções para o usuário corrigir
         try {
-          await page.keyboard.type(nomeOJ, { delay: 80 });
-          digitacaoOK = true;
-        } catch (typeError) {
-          try {
-            const input = page.locator('input[role="combobox"]').first();
-            await input.fill(nomeOJ);
-            digitacaoOK = true;
-          } catch (fillError) {
-            // Fallback
-          }
-        }
-        
-        if (!digitacaoOK) {
-          throw new Error('Falha ao digitar nome do OJ');
-        }
-        
-        // Aguardar opções aparecerem
-        await page.waitForTimeout(waitTimeout(1200));
-        
-        // Confirmar seleção - buscar opção exata
-        console.log('🔄 PERITO FLOW: Procurando opção exata no dropdown...');
-        
-        try {
-          // Aguardar opções aparecerem
-          await page.waitForTimeout(500);
+          await page.click('mat-select[name="idOrgaoJulgadorSelecionado"]', { force: true });
+          await page.waitForTimeout(1000);
+          const todasOpcoes = await page.locator('mat-option').allTextContents();
+          await page.keyboard.press('Escape'); // Fechar novamente
           
-          // Procurar pela opção exata usando mat-option
-          const opcaoExata = page.locator('mat-option').filter({ hasText: nomeOJ });
-          const countOpcaoExata = await opcaoExata.count();
-          
-          if (countOpcaoExata > 0) {
-            console.log(`✓ Opção exata encontrada: ${nomeOJ}`);
-            await opcaoExata.first().click();
-            console.log('✓ Opção exata clicada');
-          } else {
-            console.log(`⚠️ Opção exata não encontrada, tentando estratégias de busca...`);
-            
-            let opcaoEncontrada = false;
-            
-            // Estratégia 1: Buscar por número específico (ex: "2ª" em "2ª Vara do Trabalho de Limeira")
-            const numeroMatch = nomeOJ.match(/(\d+[ªº])/);
-            if (numeroMatch && !opcaoEncontrada) {
-              const numero = numeroMatch[1];
-              console.log(`🔍 Procurando por número específico: "${numero}"`);
-              
-              const opcaoComNumero = page.locator('mat-option').filter({ hasText: numero });
-              const countNumero = await opcaoComNumero.count();
-              
-              if (countNumero > 0) {
-                // Se há múltiplas opções com o mesmo número, tentar ser mais específico
-                const opcoes = await opcaoComNumero.all();
-                let melhorOpcao = null;
-                let melhorScore = 0;
-                
-                for (const opcao of opcoes) {
-                  const textoOpcao = await opcao.textContent();
-                  console.log(`🔍 Analisando opção: "${textoOpcao}"`);
-                  
-                  // Calcular score de similaridade
-                  let score = 0;
-                  const palavrasOJ = nomeOJ.toLowerCase().split(' ');
-                  const palavrasOpcao = textoOpcao.toLowerCase().split(' ');
-                  
-                  for (const palavra of palavrasOJ) {
-                    if (palavra.length > 2 && palavrasOpcao.some(p => p.includes(palavra))) {
-                      score++;
-                    }
-                  }
-                  
-                  console.log(`📊 Score para "${textoOpcao}": ${score}`);
-                  
-                  if (score > melhorScore) {
-                    melhorScore = score;
-                    melhorOpcao = opcao;
-                  }
-                }
-                
-                if (melhorOpcao && melhorScore > 1) {
-                  const textoMelhor = await melhorOpcao.textContent();
-                  console.log(`✅ Melhor opção selecionada: "${textoMelhor}" (score: ${melhorScore})`);
-                  await melhorOpcao.click();
-                  opcaoEncontrada = true;
-                } else if (opcoes.length > 0) {
-                  const textoFirstNumber = await opcoes[0].textContent();
-                  console.log(`⚠️ Usando primeira opção com número "${numero}": "${textoFirstNumber}"`);
-                  await opcoes[0].click();
-                  opcaoEncontrada = true;
-                }
-              }
-            }
-            
-            // Estratégia 2: Buscar por palavras-chave importantes
-            if (!opcaoEncontrada) {
-              console.log('🔍 Tentando busca por palavras-chave...');
-              const palavrasChave = nomeOJ.split(' ').filter(palavra => 
-                palavra.length > 2 && 
-                !['vara', 'do', 'de', 'da', 'dos', 'das'].includes(palavra.toLowerCase())
-              );
-              
-              for (const palavra of palavrasChave) {
-                const opcaoParcial = page.locator('mat-option').filter({ hasText: palavra });
-                const countParcial = await opcaoParcial.count();
-                
-                if (countParcial > 0) {
-                  console.log(`✓ Encontrada opção com palavra "${palavra}"`);
-                  await opcaoParcial.first().click();
-                  opcaoEncontrada = true;
-                  break;
-                }
-              }
-            }
-            
-            // Estratégia 3: Fallback para qualquer opção visível
-            if (!opcaoEncontrada) {
-              console.log('⚠️ Nenhuma opção específica encontrada, listando opções disponíveis...');
-              
-              try {
-                const todasOpcoes = page.locator('mat-option');
-                const countTodas = await todasOpcoes.count();
-                
-                if (countTodas > 0) {
-                  console.log(`📋 ${countTodas} opções encontradas no dropdown:`);
-                  for (let i = 0; i < Math.min(countTodas, 5); i++) {
-                    const texto = await todasOpcoes.nth(i).textContent();
-                    console.log(`  ${i + 1}. "${texto}"`);
-                  }
-                }
-              } catch (listError) {
-                console.log('⚠️ Erro ao listar opções');
-              }
-              
-              console.log('⚠️ Usando ArrowDown + Enter como fallback final');
-              await page.keyboard.press('ArrowDown');
-              await page.waitForTimeout(200);
-              await page.keyboard.press('Enter');
-            }
-          }
-          
-          console.log('✓ Seleção de OJ confirmada');
-        } catch (selecaoError) {
-          console.log(`⚠️ Erro na seleção específica: ${selecaoError.message}`);
-          console.log('⚠️ Usando Enter direto como fallback final');
-          await page.keyboard.press('Enter');
+          const error = new Error(`OJ "${nomeOJ}" não encontrado na relação`);
+          error.code = 'OJ_NAO_ENCONTRADO';
+          error.opcoesDisponiveis = todasOpcoes;
+          throw error;
+        } catch (listError) {
+          const error = new Error(`OJ "${nomeOJ}" não encontrado`);
+          error.code = 'OJ_NAO_ENCONTRADO';
+          throw error;
         }
-        
-        // Aguardar processamento
-        await page.waitForTimeout(waitTimeout(1500));
+      }
+      
+      // Continuar com o fluxo de vinculação
+      console.log('✅ Seleção de OJ confirmada');
+      
+      // Aguardar processamento
+      await page.waitForTimeout(waitTimeout(1500));
         
         // Procurar botão "Vincular Órgão Julgador ao Perito"
         console.log('🔄 PERITO FLOW: Procurando botão Vincular...');
@@ -1809,10 +1582,6 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiên
         } catch (botaoError) {
           throw new Error(`Botão Vincular não encontrado: ${botaoError.message}`);
         }
-        
-      } catch (digitacaoError) {
-        throw new Error(`Erro na digitação: ${digitacaoError.message}`);
-      }
       
     } catch (peritoError) {
       console.log(`❌ ERRO no fluxo PERITO: ${peritoError.message}`);

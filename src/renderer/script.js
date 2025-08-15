@@ -8,7 +8,12 @@ class PeritoApp {
     this.isAutomationRunning = false;
     this.currentProgress = 0;
     this.totalSteps = 0;
-        
+    
+    // Sistema de memória/histórico
+    this.cpfHistory = [];
+    this.ojHistory = [];
+    this.profileHistory = [];
+    
     this.init();
   }
 
@@ -17,10 +22,12 @@ class PeritoApp {
     await this.loadPeritos();
     // loadServidores() removido - usando apenas configuração V2
     await this.loadConfig();
+    this.loadHistory(); // Carregar histórico
     this.updateSelectedPeritosDisplay();
     this.initTabs();
     this.setupServidorAutomationListeners();
     this.setupServidorV2Listeners();
+    this.setupAutocomplete(); // Configurar autocomplete
     // checkServidorAutomationStatus removido - usando apenas V2
     this.loadServidorV2Config();
     this.updateV2StatusIndicator();
@@ -498,6 +505,14 @@ class PeritoApp {
     } else {
       this.peritos.push(perito);
     }
+    
+    // Salvar CPF no histórico para autocomplete
+    this.saveCpfToHistory(cpf, 'perito');
+    
+    // Salvar OJs no histórico se existirem
+    if (ojs.length > 0) {
+      ojs.forEach(oj => this.saveOjToHistory(oj));
+    }
         
     await this.savePeritos();
     this.renderPeritosTable();
@@ -625,34 +640,59 @@ class PeritoApp {
   }
 
   showFinalReport(relatorio) {
+    const total = relatorio.totalOJs;
+    const processados = relatorio.ojsVinculados + relatorio.ojsJaVinculados;
+    const porcentagemSucesso = total > 0 ? Math.round((processados / total) * 100) : 0;
+    const tempoFinal = new Date().toLocaleString('pt-BR');
+    
     // Criar modal do relatório final
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
       <div class="modal-content report-modal">
         <div class="modal-header">
-          <h2>📊 Relatório Final de Vinculação</h2>
+          <h2>🎯 Relatório Final - Automação de Peritos</h2>
           <button class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
+          <div class="report-timestamp">
+            <p><strong>Finalizado em:</strong> ${tempoFinal}</p>
+            <p><strong>Taxa de Sucesso:</strong> ${porcentagemSucesso}% (${processados}/${total} OJs processados)</p>
+          </div>
+          
           <div class="report-summary">
             <div class="summary-grid">
               <div class="summary-item success">
+                <div class="summary-icon">✅</div>
                 <div class="summary-number">${relatorio.ojsVinculados}</div>
-                <div class="summary-label">OJs Vinculados</div>
+                <div class="summary-label">Novos Vínculos</div>
               </div>
-              <div class="summary-item warning">
+              <div class="summary-item info">
+                <div class="summary-icon">ℹ️</div>
                 <div class="summary-number">${relatorio.ojsJaVinculados}</div>
                 <div class="summary-label">Já Vinculados</div>
               </div>
-              <div class="summary-item error">
+              <div class="summary-item warning">
+                <div class="summary-icon">⚠️</div>
                 <div class="summary-number">${relatorio.ojsNaoEncontrados.length}</div>
                 <div class="summary-label">Não Encontrados</div>
               </div>
-              <div class="summary-item info">
+              <div class="summary-item error">
+                <div class="summary-icon">❌</div>
                 <div class="summary-number">${relatorio.ojsComErro.length}</div>
                 <div class="summary-label">Com Erro</div>
               </div>
+            </div>
+          </div>
+          
+          <div class="report-status">
+            <div class="status-message ${porcentagemSucesso >= 80 ? 'success' : porcentagemSucesso >= 50 ? 'warning' : 'error'}">
+              ${porcentagemSucesso >= 80 ? 
+                '🎉 Excelente! A maioria dos OJs foi processada com sucesso.' :
+                porcentagemSucesso >= 50 ? 
+                '⚠️ Atenção! Alguns OJs não puderam ser processados.' :
+                '❌ Vários problemas encontrados. Verifique os detalhes abaixo.'
+              }
             </div>
           </div>
           
@@ -704,6 +744,26 @@ class PeritoApp {
             </div>
           ` : ''}
           
+          ${relatorio.ojsNaoEncontrados.length > 0 ? `
+            <div class="report-recommendations">
+              <h3>💡 Recomendações</h3>
+              <div class="recommendations-list">
+                <div class="recommendation-item">
+                  <strong>✓ Para OJs Não Encontrados:</strong>
+                  <p>Verifique se os nomes dos órgãos julgadores estão corretos. Consulte as opções disponíveis exibidas acima e ajuste os nomes conforme necessário.</p>
+                </div>
+                <div class="recommendation-item">
+                  <strong>✓ Verificação Manual:</strong>
+                  <p>O navegador permanece aberto para que você possa verificar os vínculos criados e fazer ajustes manuais se necessário.</p>
+                </div>
+                <div class="recommendation-item">
+                  <strong>✓ Próximos Passos:</strong>
+                  <p>Corrija os nomes dos OJs não encontrados na configuração dos peritos e execute a automação novamente para os itens pendentes.</p>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+          
           <div class="report-section">
             <h3>📈 Resumo por Perito</h3>
             <div class="report-list">
@@ -730,8 +790,14 @@ class PeritoApp {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary export-report">Exportar Relatório</button>
-          <button class="btn btn-secondary close-report">Fechar</button>
+          <div class="footer-info">
+            <p>🌐 <strong>Navegador mantido aberto</strong> para revisão manual dos vínculos criados</p>
+            <p>💾 Exporte o relatório para manter um registro permanente da operação</p>
+          </div>
+          <div class="footer-actions">
+            <button class="btn btn-primary export-report">📄 Exportar Relatório</button>
+            <button class="btn btn-secondary close-report">✅ Concluir</button>
+          </div>
         </div>
       </div>
     `;
@@ -1132,6 +1198,16 @@ class PeritoApp {
     try {
       // Salvar no localStorage (operação rápida)
       localStorage.setItem('configServidorV2', JSON.stringify(config));
+      
+      // Salvar CPF no histórico para autocomplete
+      if (config.cpf) {
+        this.saveCpfToHistory(config.cpf, 'servidor');
+      }
+      
+      // Salvar órgãos no histórico para autocomplete
+      if (config.orgaos && config.orgaos.length > 0) {
+        config.orgaos.forEach(orgao => this.saveOjToHistory(orgao));
+      }
             
       // Atualizar interface imediatamente
       this.updateV2StatusIndicator();
@@ -1485,6 +1561,281 @@ class PeritoApp {
         
     if (startBtn) {
       startBtn.disabled = !hasConfig;
+    }
+  }
+
+  // === SISTEMA DE MEMÓRIA/HISTÓRICO ===
+
+  loadHistory() {
+    try {
+      // Carregar histórico do localStorage
+      this.cpfHistory = JSON.parse(localStorage.getItem('pje-cpf-history') || '[]');
+      this.ojHistory = JSON.parse(localStorage.getItem('pje-oj-history') || '[]');
+      this.profileHistory = JSON.parse(localStorage.getItem('pje-profile-history') || '[]');
+      
+      console.log('📚 Histórico carregado:', {
+        cpfs: this.cpfHistory.length,
+        ojs: this.ojHistory.length,
+        profiles: this.profileHistory.length
+      });
+    } catch (error) {
+      console.error('Erro ao carregar histórico:', error);
+      this.cpfHistory = [];
+      this.ojHistory = [];
+      this.profileHistory = [];
+    }
+  }
+
+  saveHistory() {
+    try {
+      // Salvar histórico no localStorage
+      localStorage.setItem('pje-cpf-history', JSON.stringify(this.cpfHistory));
+      localStorage.setItem('pje-oj-history', JSON.stringify(this.ojHistory));
+      localStorage.setItem('pje-profile-history', JSON.stringify(this.profileHistory));
+    } catch (error) {
+      console.error('Erro ao salvar histórico:', error);
+    }
+  }
+
+  addToHistory(type, data) {
+    let history, key;
+    
+    switch (type) {
+      case 'cpf':
+        history = this.cpfHistory;
+        key = 'cpf';
+        break;
+      case 'oj':
+        history = this.ojHistory;
+        key = 'name';
+        break;
+      case 'profile':
+        history = this.profileHistory;
+        key = 'profile';
+        break;
+      default:
+        return;
+    }
+    
+    // Verificar se já existe
+    const existingIndex = history.findIndex(item => item[key] === data[key]);
+    
+    if (existingIndex !== -1) {
+      // Atualizar data de uso se já existe
+      history[existingIndex].lastUsed = new Date().toISOString();
+      history[existingIndex].usageCount = (history[existingIndex].usageCount || 1) + 1;
+    } else {
+      // Adicionar novo item
+      history.unshift({
+        ...data,
+        lastUsed: new Date().toISOString(),
+        usageCount: 1
+      });
+    }
+    
+    // Manter apenas os 50 mais recentes
+    if (history.length > 50) {
+      history.splice(50);
+    }
+    
+    // Ordenar por uso mais recente
+    history.sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed));
+    
+    this.saveHistory();
+  }
+
+  saveCpfToHistory(cpf, type) {
+    if (!cpf || cpf.length < 11) return;
+    
+    const cpfData = {
+      cpf: cpf,
+      type: type, // 'perito' ou 'servidor'
+      lastUsed: new Date().toISOString()
+    };
+    
+    this.addToHistory('cpf', cpfData);
+  }
+
+  saveOjToHistory(ojName) {
+    if (!ojName || ojName.trim().length < 3) return;
+    
+    const ojData = {
+      name: ojName.trim(),
+      lastUsed: new Date().toISOString()
+    };
+    
+    this.addToHistory('oj', ojData);
+  }
+
+  setupAutocomplete() {
+    // Configurar autocomplete para CPF do perito
+    this.setupCpfAutocomplete('perito-cpf', 'perito-cpf-suggestions');
+    
+    // Configurar autocomplete para CPF do servidor V2
+    this.setupCpfAutocomplete('v2-cpf', 'v2-cpf-suggestions');
+  }
+
+  setupCpfAutocomplete(inputId, suggestionsId) {
+    const input = document.getElementById(inputId);
+    const suggestions = document.getElementById(suggestionsId);
+    
+    if (!input || !suggestions) return;
+    
+    let currentSuggestionIndex = -1;
+    
+    input.addEventListener('input', (e) => {
+      const value = e.target.value.replace(/\D/g, ''); // Remover não dígitos
+      
+      if (value.length < 3) {
+        suggestions.classList.remove('show');
+        return;
+      }
+      
+      this.showCpfSuggestions(value, suggestions, input);
+    });
+    
+    input.addEventListener('focus', (e) => {
+      if (e.target.value.length >= 3) {
+        const value = e.target.value.replace(/\D/g, '');
+        this.showCpfSuggestions(value, suggestions, input);
+      }
+    });
+    
+    input.addEventListener('blur', (e) => {
+      // Delay para permitir clique nas sugestões
+      setTimeout(() => {
+        suggestions.classList.remove('show');
+      }, 150);
+    });
+    
+    input.addEventListener('keydown', (e) => {
+      const items = suggestions.querySelectorAll('.autocomplete-item');
+      
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        currentSuggestionIndex = Math.min(currentSuggestionIndex + 1, items.length - 1);
+        this.updateSuggestionSelection(items, currentSuggestionIndex);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        currentSuggestionIndex = Math.max(currentSuggestionIndex - 1, -1);
+        this.updateSuggestionSelection(items, currentSuggestionIndex);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (currentSuggestionIndex >= 0 && items[currentSuggestionIndex]) {
+          items[currentSuggestionIndex].click();
+        }
+      } else if (e.key === 'Escape') {
+        suggestions.classList.remove('show');
+        currentSuggestionIndex = -1;
+      }
+    });
+  }
+
+  showCpfSuggestions(searchValue, suggestionsContainer, input) {
+    // Filtrar histórico por CPF
+    const filtered = this.cpfHistory.filter(item => {
+      const cpfNumbers = item.cpf.replace(/\D/g, '');
+      return cpfNumbers.includes(searchValue);
+    });
+    
+    if (filtered.length === 0) {
+      suggestionsContainer.innerHTML = '<div class="autocomplete-empty">Nenhum CPF anterior encontrado</div>';
+      suggestionsContainer.classList.add('show');
+      return;
+    }
+    
+    // Gerar HTML das sugestões
+    const html = filtered.map(item => {
+      const timeSince = this.getTimeSince(item.lastUsed);
+      const isPerito = item.type === 'perito';
+      
+      return `
+        <div class="autocomplete-item" data-cpf="${item.cpf}" data-type="${item.type}">
+          <div class="autocomplete-cpf">${item.cpf}</div>
+          <div class="autocomplete-details">
+            <span class="autocomplete-tag">${isPerito ? 'Perito' : 'Servidor'}</span>
+            <span class="autocomplete-date">Usado ${timeSince}</span>
+            <span style="color: var(--text-light)">•</span>
+            <span style="color: var(--text-light)">${item.usageCount}x usado</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    suggestionsContainer.innerHTML = html;
+    suggestionsContainer.classList.add('show');
+    
+    // Adicionar event listeners aos itens
+    suggestionsContainer.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const cpf = item.dataset.cpf;
+        input.value = cpf;
+        
+        // Atualizar histórico de uso
+        this.addToHistory('cpf', {
+          cpf: cpf,
+          type: item.dataset.type
+        });
+        
+        suggestionsContainer.classList.remove('show');
+        
+        // Trigger input event para formatação
+        input.dispatchEvent(new Event('input'));
+      });
+    });
+  }
+
+  getTimeSince(dateString) {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffMs = now - date;
+    
+    const minutes = Math.floor(diffMs / (1000 * 60));
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (minutes < 1) return 'agora';
+    if (minutes < 60) return `há ${minutes}min`;
+    if (hours < 24) return `há ${hours}h`;
+    if (days === 1) return 'ontem';
+    return `há ${days} dias`;
+  }
+
+  updateSuggestionSelection(items, selectedIndex) {
+    items.forEach((item, index) => {
+      if (index === selectedIndex) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
+  }
+
+  getTimeSince(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'há poucos minutos';
+    if (diffInHours < 24) return `há ${diffInHours}h`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) return `há ${diffInDays}d`;
+    
+    const diffInWeeks = Math.floor(diffInDays / 7);
+    if (diffInWeeks < 4) return `há ${diffInWeeks}sem`;
+    
+    const diffInMonths = Math.floor(diffInDays / 30);
+    return `há ${diffInMonths}m`;
+  }
+
+  saveCpfToHistory(cpf, type) {
+    // Salvar CPF no histórico quando usado
+    if (cpf && cpf.length >= 11) {
+      this.addToHistory('cpf', {
+        cpf: cpf,
+        type: type // 'perito' ou 'servidor'
+      });
     }
   }
 }

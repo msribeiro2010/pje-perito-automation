@@ -199,7 +199,10 @@
                 </div>
                 <div class="form-group">
                     <label for="perito-cpf">CPF:</label>
-                    <input type="text" id="perito-cpf" placeholder="000.000.000-00" required>
+                    <div class="autocomplete-container">
+                        <input type="text" id="perito-cpf" placeholder="000.000.000-00" required autocomplete="off">
+                        <div class="autocomplete-suggestions" id="perito-cpf-suggestions"></div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="perito-ojs">Órgãos Julgadores (um por linha):</label>
@@ -406,7 +409,10 @@
                 <form id="servidor-v2-form">
                     <div class="form-group">
                         <label for="v2-cpf">CPF do Servidor:</label>
-                        <input type="text" id="v2-cpf" placeholder="000.000.000-00" required>
+                        <div class="autocomplete-container">
+                            <input type="text" id="v2-cpf" placeholder="000.000.000-00" required autocomplete="off">
+                            <div class="autocomplete-suggestions" id="v2-cpf-suggestions"></div>
+                        </div>
                         <small>CPF do servidor que receberá os vínculos</small>
                     </div>
                     

@@ -630,20 +630,32 @@ function gerarMensagemFinal(relatorio) {
   const jaVinculados = relatorio.ojsJaVinculados;
   const naoEncontrados = relatorio.ojsNaoEncontrados.length;
   const comErro = relatorio.ojsComErro.length;
+  const processados = vinculados + jaVinculados;
+  const porcentagemSucesso = total > 0 ? Math.round((processados / total) * 100) : 0;
   
-  let mensagem = `Automação concluída! `;
-  mensagem += `${vinculados} OJs vinculados, `;
-  mensagem += `${jaVinculados} já vinculados`;
+  let mensagem = `🎯 Automação de Peritos Concluída! `;
+  mensagem += `${processados}/${total} OJs processados com sucesso (${porcentagemSucesso}%). `;
+  
+  if (vinculados > 0) {
+    mensagem += `✅ ${vinculados} novos vínculos, `;
+  }
+  
+  if (jaVinculados > 0) {
+    mensagem += `ℹ️ ${jaVinculados} já vinculados, `;
+  }
   
   if (naoEncontrados > 0) {
-    mensagem += `, ${naoEncontrados} não encontrados`;
+    mensagem += `⚠️ ${naoEncontrados} não encontrados, `;
   }
   
   if (comErro > 0) {
-    mensagem += `, ${comErro} com erro`;
+    mensagem += `❌ ${comErro} com erro, `;
   }
   
-  mensagem += ` (${total} total). `;
+  // Remover última vírgula e espaço
+  mensagem = mensagem.replace(/, $/, '. ');
+  
+  mensagem += `📋 Relatório detalhado disponível no painel. Navegador permanece aberto para revisão.`;
   
   if (naoEncontrados > 0 || comErro > 0) {
     mensagem += `Verifique o console para detalhes dos problemas. `;
