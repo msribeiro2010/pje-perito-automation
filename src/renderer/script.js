@@ -669,14 +669,14 @@ class PeritoApp {
                     <div class="item-details">
                       ${oj.motivo}
                       ${oj.opcoesDisponiveis && oj.opcoesDisponiveis.length > 0 ? 
-                        `<details class="options-details">
+    `<details class="options-details">
                           <summary>Ver opções disponíveis (${oj.opcoesDisponiveis.length})</summary>
                           <div class="options-list">
                             ${oj.opcoesDisponiveis.slice(0, 20).map(opcao => `<span class="option-tag">${opcao}</span>`).join('')}
                             ${oj.opcoesDisponiveis.length > 20 ? `<span class="more-options">... e mais ${oj.opcoesDisponiveis.length - 20}</span>` : ''}
                           </div>
                         </details>` : ''
-                      }
+}
                     </div>
                   </div>
                 `).join('')}

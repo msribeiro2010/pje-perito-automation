@@ -8,83 +8,560 @@ const SeletorManager = require('./utils/seletores');
  * @param {Object} page - Instância da página do Playwright
  * @returns {Promise<Object>} - Objeto com sucesso e painelOJ se bem-sucedido
  */
-async function expandirOrgaosJulgadores(page) {
+async function expandirOrgaosJulgadores(page, modoRapido = false) {
     try {
-        console.log('Expandindo seção de Órgãos Julgadores vinculados ao Perito...');
+        const modo = modoRapido ? '⚡' : '🔄';
+        console.log(`${modo} Expandindo seção de Órgãos Julgadores...`);
+        
+        // Aguardar página estabilizar (otimizado se modo rápido)
+        const timeout = modoRapido ? 300 : 1000;
+        await page.waitForTimeout(timeout);
         
         // 1) Localiza o header do acordeão de OJs pelo padrão de ID
         let headerOJ = null;
         let panelId = null;
+        let headerText = '';
+        
+        console.log('🔍 Procurando headers de expansion panel...');
         
         // Tenta encontrar o header com ID específico (mat-expansion-panel-header-X)
-        const headers = await page.locator('[id^="mat-expansion-panel-header-"]').all();
-        for (const header of headers) {
-            const text = await header.textContent();
-            if (text && text.includes('Órgãos Julgadores vinculados ao Perito')) {
-                headerOJ = header;
-                const headerId = await header.getAttribute('id');
-                console.log(`Header encontrado com ID: ${headerId}`);
-                break;
+        try {
+            const headers = await page.locator('[id^="mat-expansion-panel-header-"]').all();
+            console.log(`Encontrados ${headers.length} headers de expansion panel`);
+            
+            for (let i = 0; i < headers.length; i++) {
+                try {
+                    const header = headers[i];
+                    const text = await header.textContent({ timeout: 3000 });
+                    const id = await header.getAttribute('id');
+                    console.log(`Header ${i + 1}: ID="${id}", Texto="${text}"`);
+                    
+                    // Verifica por diferentes variações de texto para perito e servidor
+                    if (text && (
+                        text.includes('Órgãos Julgadores vinculados ao Perito') ||
+                        text.includes('Órgãos Julgadores vinculados ao Servidor') ||
+                        text.includes('Órgãos Julgadores') ||
+                        text.includes('Localização/Visibilidade') ||
+                        text.includes('Servidor - Localização/Visibilidade')
+                    )) {
+                        headerOJ = header;
+                        headerText = text;
+                        console.log(`✅ Header encontrado: ID="${id}", Texto="${text}"`);
+                        break;
+                    }
+                } catch (textError) {
+                    console.log(`⚠️ Erro ao obter texto do header ${i + 1}: ${textError.message}`);
+                }
             }
+        } catch (headersError) {
+            console.log(`⚠️ Erro ao buscar headers: ${headersError.message}`);
         }
         
         if (!headerOJ) {
-            console.log('Header do acordeão não encontrado, tentando fallback...');
-            // Fallback para seletor genérico
-            headerOJ = page.getByRole('button', { name: /Órgãos Julgadores vinculados ao Perito/i });
-            if (!(await headerOJ.isVisible({ timeout: 2000 }))) {
-                throw new Error('Header do acordeão não encontrado');
+            console.log('❌ Header do acordeão não encontrado nos IDs, tentando fallbacks...');
+            
+            // Múltiplos fallbacks para diferentes contextos
+            const fallbackSelectors = [
+                // Para servidores (mais específicos primeiro)
+                { selector: page.getByRole('button', { name: /Servidor.*Localização.*Visibilidade/i }), desc: 'Servidor - Localização/Visibilidade' },
+                { selector: page.getByRole('button', { name: /Localização.*Visibilidade/i }), desc: 'Localização/Visibilidade' },
+                { selector: page.getByRole('button', { name: /Órgãos Julgadores.*Servidor/i }), desc: 'Órgãos Julgadores vinculados ao Servidor' },
+                // Para peritos
+                { selector: page.getByRole('button', { name: /Órgãos Julgadores.*Perito/i }), desc: 'Órgãos Julgadores vinculados ao Perito' },
+                // Genéricos
+                { selector: page.getByRole('button', { name: /Órgãos Julgadores/i }), desc: 'Órgãos Julgadores (genérico)' },
+                { selector: page.locator('button:has-text("Órgãos Julgadores")'), desc: 'button com texto "Órgãos Julgadores"' },
+                { selector: page.locator('button:has-text("Localização/Visibilidade")'), desc: 'button com texto "Localização/Visibilidade"' },
+                { selector: page.locator('[aria-expanded]').filter({ hasText: /Órgãos Julgadores/i }), desc: 'elemento com aria-expanded contendo "Órgãos Julgadores"' },
+                { selector: page.locator('[aria-expanded]').filter({ hasText: /Localização/i }), desc: 'elemento com aria-expanded contendo "Localização"' },
+                { selector: page.locator('mat-expansion-panel-header').filter({ hasText: /Órgãos Julgadores/i }), desc: 'mat-expansion-panel-header com "Órgãos Julgadores"' },
+                { selector: page.locator('mat-expansion-panel-header').filter({ hasText: /Localização/i }), desc: 'mat-expansion-panel-header com "Localização"' }
+            ];
+            
+            for (let i = 0; i < fallbackSelectors.length; i++) {
+                try {
+                    console.log(`🔍 Tentando fallback ${i + 1}: ${fallbackSelectors[i].desc}...`);
+                    const selectorInfo = fallbackSelectors[i];
+                    const selector = selectorInfo.selector;
+                    
+                    if (await selector.isVisible({ timeout: 2000 })) {
+                        headerOJ = selector;
+                        headerText = await selector.textContent() || selectorInfo.desc;
+                        console.log(`✅ Fallback ${i + 1} funcionou: ${selectorInfo.desc}`);
+                        break;
+                    } else {
+                        console.log(`❌ Fallback ${i + 1} não visível: ${selectorInfo.desc}`);
+                    }
+                } catch (error) {
+                    console.log(`❌ Fallback ${i + 1} falhou: ${error.message}`);
+                }
+            }
+            
+            if (!headerOJ) {
+                // Debug: listar TODOS os botões e elementos expansíveis presentes
+                console.log('🔍 DEBUG COMPLETO: Listando todos os elementos potenciais...');
+                
+                try {
+                    // Listar todos os botões
+                    const allButtons = await page.locator('button').all();
+                    console.log(`Encontrados ${allButtons.length} botões na página:`);
+                    for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
+                        try {
+                            const text = await allButtons[i].textContent();
+                            const id = await allButtons[i].getAttribute('id');
+                            const ariaExpanded = await allButtons[i].getAttribute('aria-expanded');
+                            console.log(`  Botão ${i + 1}: ID="${id}", aria-expanded="${ariaExpanded}", Texto="${text}"`);
+                        } catch (e) {
+                            console.log(`  Botão ${i + 1}: Erro ao obter informações`);
+                        }
+                    }
+                    
+                    // Listar elementos com aria-expanded
+                    const expandableElements = await page.locator('[aria-expanded]').all();
+                    console.log(`Encontrados ${expandableElements.length} elementos com aria-expanded:`);
+                    for (let i = 0; i < Math.min(expandableElements.length, 10); i++) {
+                        try {
+                            const text = await expandableElements[i].textContent();
+                            const tagName = await expandableElements[i].evaluate(el => el.tagName);
+                            const ariaExpanded = await expandableElements[i].getAttribute('aria-expanded');
+                            console.log(`  Elemento ${i + 1}: Tag="${tagName}", aria-expanded="${ariaExpanded}", Texto="${text}"`);
+                        } catch (e) {
+                            console.log(`  Elemento ${i + 1}: Erro ao obter informações`);
+                        }
+                    }
+                } catch (debugError) {
+                    console.log(`⚠️ Erro no debug: ${debugError.message}`);
+                }
+                
+                throw new Error('Header do acordeão não encontrado após todos os fallbacks');
             }
         }
         
-        // 2) Garante que não está desabilitado e abre (se ainda fechado)
-        await headerOJ.waitFor({ state: 'visible' });
+        console.log(`🎯 Header selecionado: "${headerText}"`);
         
-        const disabled = await headerOJ.getAttribute('aria-disabled');
-        if (disabled === 'true') {
-            throw new Error('Acordeão está desabilitado');
-        }
-        
-        const expanded = await headerOJ.getAttribute('aria-expanded');
-        if (expanded !== 'true') {
-            await headerOJ.click();
+        // 2) Verificações de estado e expansão
+        try {
+            console.log('🔍 Verificando estado do header...');
+            await headerOJ.waitFor({ state: 'visible', timeout: 5000 });
             
-            // Aguarda expansão usando o ID do header
-            const headerId = await headerOJ.getAttribute('id');
-            await page.waitForFunction(
-                (headerId) => {
-                    const header = document.getElementById(headerId);
-                    return header && header.getAttribute('aria-expanded') === 'true';
-                },
-                headerId,
-                { timeout: 5000 }
-            );
-            console.log('Acordeão expandido com sucesso');
-        } else {
-            console.log('Acordeão já estava expandido');
+            const disabled = await headerOJ.getAttribute('aria-disabled');
+            if (disabled === 'true') {
+                throw new Error('Acordeão está desabilitado');
+            }
+            console.log('✅ Header está habilitado');
+            
+            const expanded = await headerOJ.getAttribute('aria-expanded');
+            console.log(`📊 Estado atual do acordeão: aria-expanded="${expanded}"`);
+            
+            if (expanded !== 'true') {
+                console.log('🖱️ Clicando no header para expandir...');
+                
+                // Múltiplas estratégias de clique
+                const clickStrategies = [
+                    { name: 'click normal', action: () => headerOJ.click() },
+                    { name: 'click force', action: () => headerOJ.click({ force: true }) },
+                    { name: 'click com timeout', action: () => headerOJ.click({ timeout: 10000 }) },
+                    { name: 'click no centro', action: () => headerOJ.click({ position: { x: 50, y: 50 } }) }
+                ];
+                
+                let clickSuccessful = false;
+                for (const strategy of clickStrategies) {
+                    try {
+                        console.log(`🔄 Tentando ${strategy.name}...`);
+                        await strategy.action();
+                        clickSuccessful = true;
+                        console.log(`✅ ${strategy.name} bem-sucedido`);
+                        break;
+                    } catch (clickError) {
+                        console.log(`❌ ${strategy.name} falhou: ${clickError.message}`);
+                    }
+                }
+                
+                if (!clickSuccessful) {
+                    throw new Error('Falha em todas as estratégias de clique no header');
+                }
+                
+                // Aguardar expansão com múltiplas estratégias
+                console.log('⏳ Aguardando expansão...');
+                const expansionWaitStrategies = [
+                    // Estratégia 1: waitForFunction com ID do header
+                    async () => {
+                        const headerId = await headerOJ.getAttribute('id');
+                        if (headerId) {
+                            console.log(`🔍 Aguardando expansão via ID: ${headerId}`);
+                            await page.waitForFunction(
+                                (headerId) => {
+                                    const header = document.getElementById(headerId);
+                                    return header && header.getAttribute('aria-expanded') === 'true';
+                                },
+                                headerId,
+                                { timeout: 8000 }
+                            );
+                            return true;
+                        }
+                        return false;
+                    },
+                    // Estratégia 2: polling do atributo aria-expanded
+                    async () => {
+                        console.log('🔍 Aguardando expansão via polling...');
+                        for (let i = 0; i < 20; i++) {
+                            const currentExpanded = await headerOJ.getAttribute('aria-expanded');
+                            if (currentExpanded === 'true') {
+                                return true;
+                            }
+                            await page.waitForTimeout(400);
+                        }
+                        return false;
+                    },
+                    // Estratégia 3: aguardar timeout fixo
+                    async () => {
+                        console.log('🔍 Aguardando tempo fixo...');
+                        await page.waitForTimeout(3000);
+                        return true;
+                    }
+                ];
+                
+                let expansionSuccessful = false;
+                for (const strategy of expansionWaitStrategies) {
+                    try {
+                        if (await strategy()) {
+                            expansionSuccessful = true;
+                            break;
+                        }
+                    } catch (waitError) {
+                        console.log(`⚠️ Estratégia de espera falhou: ${waitError.message}`);
+                    }
+                }
+                
+                if (expansionSuccessful) {
+                    console.log('✅ Acordeão expandido com sucesso');
+                } else {
+                    console.log('⚠️ Não foi possível confirmar expansão, mas continuando...');
+                }
+            } else {
+                console.log('✅ Acordeão já estava expandido');
+            }
+        } catch (stateError) {
+            console.error(`❌ Erro no gerenciamento de estado: ${stateError.message}`);
+            throw stateError;
         }
         
-        // 3) Descobre o id do container do painel
-        panelId = await headerOJ.getAttribute('aria-controls');
-        if (!panelId) {
-            throw new Error('aria-controls não encontrado no header');
+        // 3) Descobre o container do painel
+        console.log('🔍 Localizando painel de conteúdo...');
+        try {
+            panelId = await headerOJ.getAttribute('aria-controls');
+            if (!panelId) {
+                console.log('⚠️ aria-controls não encontrado, tentando estratégias alternativas...');
+                
+                // Estratégias alternativas para encontrar o painel
+                const panelStrategies = [
+                    // Estratégia 1: próximo elemento sibling
+                    () => headerOJ.locator('+ *'),
+                    // Estratégia 2: parent seguido de expansion panel content
+                    () => headerOJ.locator('.. mat-expansion-panel-content'),
+                    // Estratégia 3: buscar por papel expansion panel content próximo
+                    () => page.locator('mat-expansion-panel-content').first(),
+                    // Estratégia 4: qualquer elemento visível depois do header
+                    () => page.locator('.mat-expansion-panel-content, [role="region"]').first()
+                ];
+                
+                let painelOJ = null;
+                for (let i = 0; i < panelStrategies.length; i++) {
+                    try {
+                        console.log(`🔍 Tentando estratégia de painel ${i + 1}...`);
+                        const candidatePainel = panelStrategies[i]();
+                        if (await candidatePainel.isVisible({ timeout: 3000 })) {
+                            painelOJ = candidatePainel;
+                            console.log(`✅ Painel encontrado com estratégia ${i + 1}`);
+                            break;
+                        }
+                    } catch (strategyError) {
+                        console.log(`❌ Estratégia de painel ${i + 1} falhou: ${strategyError.message}`);
+                    }
+                }
+                
+                if (!painelOJ) {
+                    throw new Error('Painel de conteúdo não encontrado');
+                }
+                
+                console.log('✅ Painel localizado via estratégia alternativa');
+                return { sucesso: true, painelOJ };
+            } else {
+                const painelOJ = page.locator(`#${panelId}`);
+                await painelOJ.waitFor({ state: 'visible', timeout: 5000 });
+                console.log(`✅ Painel localizado via aria-controls: #${panelId}`);
+                return { sucesso: true, painelOJ };
+            }
+        } catch (panelError) {
+            console.error(`❌ Erro ao localizar painel: ${panelError.message}`);
+            throw panelError;
         }
-        
-        const painelOJ = page.locator(`#${panelId}`);
-        await painelOJ.waitFor({ state: 'visible' });
-        console.log(`Painel localizado: #${panelId}`);
-        
-        // PULAR a etapa de clicar em "Adicionar" - ir direto para o campo OJ
-        console.log('Pulando botão Adicionar - buscando campo de Órgão Julgador diretamente...');
-        
-        // Aguardar um momento para garantir que os campos estejam carregados
-        await page.waitForTimeout(2000);
-        
-        return { sucesso: true, painelOJ };
         
     } catch (error) {
-        console.error('Erro ao expandir seção de Órgãos Julgadores:', error);
+        console.error('❌ Erro ao expandir seção de Órgãos Julgadores:', error.message);
+        console.error('📍 Stack trace:', error.stack);
         return { sucesso: false, painelOJ: null };
+    }
+}
+
+/**
+ * Clica no botão "Adicionar Localização/Visibilidade" dentro do painel de OJs
+ * @param {Object} page - Instância da página do Playwright
+ * @param {Object} painelOJ - Locator do painel específico do OJ
+ * @returns {Promise<void>}
+ */
+async function clickAddLocationButton(page, painelOJ) {
+    console.log('🔄 Procurando botão "Adicionar Localização/Visibilidade" APENAS na seção de Órgãos Julgadores...');
+    
+    // 1. Primeiro, fechar qualquer overlay/dropdown que possa estar aberto
+    await closeAngularMaterialOverlays(page);
+    
+    // 2. Aguardar estabilização da página
+    await page.waitForTimeout(1000);
+    
+    // Múltiplos seletores para o botão Adicionar - APENAS DENTRO DO PAINEL CORRETO
+    const addButtonSelectors = [
+        'button:has-text("Adicionar Localização/Visibilidade"):not([disabled])',
+        'button:has-text("Adicionar Localização"):not([disabled])',
+        'button:has-text("Adicionar"):not([disabled]):visible'
+    ];
+    
+    let addButton = null;
+    
+    console.log('🔍 Procurando botão Adicionar APENAS dentro do painel de Órgãos Julgadores...');
+    
+    // IMPORTANTE: Só procurar dentro do painel específico da seção "Órgãos Julgadores vinculados ao Perito"
+    for (const selector of addButtonSelectors) {
+        try {
+            console.log(`🔍 Testando seletor DENTRO DO PAINEL: ${selector}`);
+            
+            // Verificar APENAS dentro do painel específico
+            const buttonInPanel = painelOJ.locator(selector);
+            const count = await buttonInPanel.count();
+            console.log(`  - Botão no painel: ${count} encontrado(s)`);
+            
+            if (count > 0) {
+                const isVisible = await buttonInPanel.first().isVisible();
+                console.log(`  - Visível: ${isVisible}`);
+                
+                if (isVisible) {
+                    addButton = buttonInPanel.first();
+                    console.log(`✅ Botão encontrado dentro do painel correto: ${selector}`);
+                    break;
+                }
+            }
+        } catch (error) {
+            console.log(`❌ Erro ao testar seletor ${selector}: ${error.message}`);
+        }
+    }
+    
+    // Se não encontrou dentro do painel, tentar com seletores mais específicos
+    if (!addButton) {
+        console.log('🔍 Botão não encontrado no painel, tentando seletores mais específicos...');
+        
+        const specificSelectors = [
+            // Seletores que garantem que estamos na seção correta
+            `button:has-text("Adicionar"):not([disabled]):visible`,
+            `input[value*="Adicionar"]:not([disabled])`,
+            `.btn:has-text("Adicionar"):not([disabled])`
+        ];
+        
+        for (const selector of specificSelectors) {
+            try {
+                console.log(`🔍 Testando seletor específico DENTRO DO PAINEL: ${selector}`);
+                
+                const buttonInPanel = painelOJ.locator(selector);
+                const count = await buttonInPanel.count();
+                
+                if (count > 0) {
+                    const isVisible = await buttonInPanel.first().isVisible();
+                    console.log(`  - Botão específico no painel: ${count} encontrado(s), visível: ${isVisible}`);
+                    
+                    if (isVisible) {
+                        addButton = buttonInPanel.first();
+                        console.log(`✅ Botão específico encontrado: ${selector}`);
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.log(`❌ Erro ao testar seletor específico ${selector}: ${error.message}`);
+            }
+        }
+    }
+    
+    if (!addButton) {
+        console.log('❌ ERRO: Nenhum botão Adicionar encontrado');
+        
+        // Debug: listar todos os botões visíveis na página
+        try {
+            console.log('🔍 DEBUG: Listando botões visíveis na página...');
+            const allVisibleButtons = await page.locator('button:visible').all();
+            for (let i = 0; i < Math.min(allVisibleButtons.length, 15); i++) {
+                try {
+                    const text = await allVisibleButtons[i].textContent();
+                    const classes = await allVisibleButtons[i].getAttribute('class');
+                    console.log(`  Botão ${i + 1}: "${text}" [${classes}]`);
+                } catch (e) {
+                    console.log(`  Botão ${i + 1}: Erro ao obter informações`);
+                }
+            }
+        } catch (debugError) {
+            console.log(`⚠️ Erro no debug: ${debugError.message}`);
+        }
+        
+        throw new Error('Botão "Adicionar Localização/Visibilidade" não encontrado');
+    }
+    
+    console.log(`🖱️ Tentando clicar no botão Adicionar...`);
+    
+    // Múltiplas estratégias de clique para lidar com overlays
+    const clickStrategies = [
+        {
+            name: 'click normal',
+            action: async () => {
+                await addButton.click({ timeout: 8000 });
+            }
+        },
+        {
+            name: 'fechar overlays e tentar novamente',
+            action: async () => {
+                await closeAngularMaterialOverlays(page);
+                await page.waitForTimeout(500);
+                await addButton.click({ timeout: 8000 });
+            }
+        },
+        {
+            name: 'click com force',
+            action: async () => {
+                await addButton.click({ force: true, timeout: 8000 });
+            }
+        },
+        {
+            name: 'click após scroll',
+            action: async () => {
+                await addButton.scrollIntoViewIfNeeded();
+                await page.waitForTimeout(500);
+                await addButton.click({ timeout: 8000 });
+            }
+        },
+        {
+            name: 'click via JavaScript',
+            action: async () => {
+                await addButton.evaluate(button => button.click());
+            }
+        },
+        {
+            name: 'pressionar Enter',
+            action: async () => {
+                await addButton.focus();
+                await page.keyboard.press('Enter');
+            }
+        }
+    ];
+    
+    let clickSuccessful = false;
+    let lastError = null;
+    
+    for (const strategy of clickStrategies) {
+        try {
+            console.log(`🔄 Tentando: ${strategy.name}...`);
+            await strategy.action();
+            clickSuccessful = true;
+            console.log(`✅ ${strategy.name} bem-sucedido!`);
+            break;
+        } catch (clickError) {
+            console.log(`❌ ${strategy.name} falhou: ${clickError.message}`);
+            lastError = clickError;
+            
+            // Aguardar um pouco antes da próxima tentativa
+            await page.waitForTimeout(1000);
+        }
+    }
+    
+    if (!clickSuccessful) {
+        console.error(`❌ Todas as estratégias de clique falharam. Último erro: ${lastError?.message}`);
+        throw new Error(`Falha ao clicar no botão Adicionar: ${lastError?.message}`);
+    }
+    
+    // Aguardar modal/formulário carregar
+    await page.waitForTimeout(2000);
+    console.log('✅ Botão Adicionar clicado com sucesso');
+}
+
+/**
+ * Fecha overlays e dropdowns do Angular Material que podem estar interceptando cliques
+ * @param {Object} page - Instância da página do Playwright
+ */
+async function closeAngularMaterialOverlays(page) {
+    try {
+        console.log('🧹 Fechando overlays do Angular Material...');
+        
+        // Estratégias para fechar overlays
+        const closeStrategies = [
+            // 1. Clicar no backdrop para fechar overlays
+            async () => {
+                const backdrops = page.locator('.cdk-overlay-backdrop');
+                const count = await backdrops.count();
+                if (count > 0) {
+                    console.log(`🖱️ Clicando em ${count} backdrop(s)...`);
+                    // Clicar em todos os backdrops encontrados
+                    for (let i = 0; i < count; i++) {
+                        try {
+                            const backdrop = backdrops.nth(i);
+                            if (await backdrop.isVisible({ timeout: 500 })) {
+                                await backdrop.click({ force: true });
+                                await page.waitForTimeout(200);
+                            }
+                        } catch (e) {
+                            // Ignorar erros de backdrop específico
+                        }
+                    }
+                }
+            },
+            
+            // 2. Pressionar Escape para fechar modais/dropdowns
+            async () => {
+                console.log('⌨️ Pressionando Escape...');
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(300);
+            },
+            
+            // 3. Clicar fora de qualquer dropdown aberto
+            async () => {
+                const overlayContainers = page.locator('.cdk-overlay-container');
+                const count = await overlayContainers.count();
+                if (count > 0) {
+                    console.log(`🖱️ Clicando fora de ${count} overlay container(s)...`);
+                    await page.click('body', { position: { x: 10, y: 10 }, force: true });
+                    await page.waitForTimeout(300);
+                }
+            },
+            
+            // 4. Fechar qualquer mat-select aberto
+            async () => {
+                const matOptions = page.locator('mat-option:visible');
+                if (await matOptions.count() > 0) {
+                    console.log('🖱️ Fechando mat-select...');
+                    await page.keyboard.press('Escape');
+                    await page.waitForTimeout(300);
+                }
+            }
+        ];
+        
+        // Executar todas as estratégias
+        for (const strategy of closeStrategies) {
+            try {
+                await strategy();
+            } catch (error) {
+                // Ignorar erros individuais de fechamento
+                console.log(`⚠️ Estratégia de fechamento falhou (ignorando): ${error.message}`);
+            }
+        }
+        
+        console.log('✅ Overlays processados');
+        
+    } catch (error) {
+        console.log(`⚠️ Erro ao fechar overlays (continuando): ${error.message}`);
     }
 }
 
@@ -512,6 +989,7 @@ async function aguardarMatSelectOJPronto(page, painelOJ) {
 async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
     const startTime = Date.now();
     const TIMEOUT_TOTAL = 60000; // 60 segundos máximo para toda a operação
+    const estrategias = []; // Array para rastrear estratégias usadas
     
     try {
         console.log(`🎯 Selecionando Órgão Julgador: ${alvoOJ} (timeout: ${TIMEOUT_TOTAL/1000}s)`);
@@ -667,7 +1145,6 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
         
         // Estratégias melhoradas de seleção com timeout
         let opcaoSelecionada = false;
-        const estrategias = [];
         
         // Estratégia 1: Buscar opção exata (case-insensitive)
         if (!opcaoSelecionada && Date.now() - startTime < TIMEOUT_TOTAL) {
@@ -716,6 +1193,7 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
         // Estratégia 3: Buscar opção que contém as palavras principais
         if (!opcaoSelecionada && Date.now() - startTime < TIMEOUT_TOTAL) {
             try {
+                console.log('🎯 Estratégia 3: Busca por palavras-chave...');
                 // Extrair palavras principais do nome do OJ
                 const palavrasChave = alvoOJ.split(' ').filter(palavra => 
                     palavra.length > 2 && 
@@ -730,30 +1208,33 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
                         console.log('✓ Opção parcial encontrada por palavras-chave, clicando...');
                         await opcaoParcial.first().click({ force: true });
                         opcaoSelecionada = true;
+                        estrategias.push('palavras_chave');
                     }
                 }
             } catch (error) {
-                console.log('Opção por palavras-chave não encontrada:', error.message);
+                console.log('❌ Opção por palavras-chave não encontrada:', error.message);
             }
         }
         
-        // Estratégia 3: Buscar opção que contém o texto (mais flexível)
+        // Estratégia 4: Buscar opção que contém o texto (mais flexível)
         if (!opcaoSelecionada) {
             try {
+                console.log('🎯 Estratégia 4: Busca parcial...');
                 const opcaoParcial = page.locator('mat-option').filter({ hasText: new RegExp(alvoOJ, 'i') });
                 if (await opcaoParcial.first().isVisible({ timeout: 2000 })) {
                     console.log('✓ Opção parcial encontrada, clicando...');
                     await opcaoParcial.first().click({ force: true });
                     opcaoSelecionada = true;
+                    estrategias.push('parcial');
                 }
             } catch (error) {
-                console.log('Opção parcial não encontrada:', error.message);
+                console.log('❌ Opção parcial não encontrada:', error.message);
             }
         }
         
-        // Estratégia 4: Filtrar por teclado (última tentativa)
+        // Estratégia 5: Filtrar por teclado (última tentativa)
         if (!opcaoSelecionada) {
-            console.log('Tentando filtrar por teclado...');
+            console.log('🎯 Estratégia 5: Filtro por teclado...');
             try {
                 // Focar no mat-select e digitar
                 await matSelectEspecifico.focus();
@@ -766,6 +1247,7 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
                     console.log('✓ Opção filtrada encontrada, clicando...');
                     await opcaoFiltrada.click({ force: true });
                     opcaoSelecionada = true;
+                    estrategias.push('teclado');
                 } else {
                     // Se não encontrou, tentar Enter
                     console.log('Tentando Enter...');
@@ -852,26 +1334,514 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
     }
 }
 
+/**
+ * Seleciona um órgão julgador no modal que acabou de abrir
+ * @param {Page} page - Instância da página do Playwright
+ * @param {string} alvoOJ - Nome do órgão julgador a ser selecionado
+ */
+async function selecionarOrgaoJulgadorNoModal(page, alvoOJ) {
+    const startTime = Date.now();
+    const TIMEOUT_TOTAL = 60000; // 60 segundos máximo
+    const estrategias = []; // Array para rastrear estratégias usadas
+    
+    try {
+        console.log(`🎯 Selecionando OJ no modal: ${alvoOJ}`);
+        
+        // 1. Aguardar o modal estar completamente carregado
+        await page.waitForTimeout(2000);
+        
+        // 2. Procurar pelo mat-select de Órgão Julgador no modal
+        console.log('🔍 Procurando mat-select de Órgão Julgador no modal...');
+        
+        const matSelectSelectors = [
+            // Seletores específicos por placeholder exato
+            'mat-dialog-container mat-select[placeholder="Órgão Julgador"]',
+            'mat-dialog-container mat-select[placeholder="Orgao Julgador"]',
+            '[role="dialog"] mat-select[placeholder="Órgão Julgador"]',
+            '[role="dialog"] mat-select[placeholder="Orgao Julgador"]',
+            '.mat-dialog-container mat-select[placeholder="Órgão Julgador"]',
+            
+            // Seletores por name específicos
+            'mat-dialog-container mat-select[name="idOrgaoJulgadorSelecionado"]',
+            '[role="dialog"] mat-select[name="idOrgaoJulgadorSelecionado"]',
+            'mat-dialog-container mat-select[formcontrolname="orgaoJulgador"]',
+            
+            // Seletores por placeholder parcial
+            'mat-dialog-container mat-select[placeholder*="Órgão"]',
+            'mat-dialog-container mat-select[placeholder*="Orgao"]',
+            'mat-dialog-container mat-select[placeholder*="Julgador"]', 
+            '[role="dialog"] mat-select[placeholder*="Órgão"]',
+            '[role="dialog"] mat-select[placeholder*="Orgao"]',
+            '[role="dialog"] mat-select[placeholder*="Julgador"]',
+            '.mat-dialog-container mat-select[placeholder*="Órgão"]',
+            
+            // Seletores por aria-label
+            'mat-dialog-container mat-select[aria-label*="Órgão"]',
+            'mat-dialog-container mat-select[aria-label*="Julgador"]',
+            
+            // Seletores genéricos no modal
+            'mat-dialog-container mat-select',
+            '[role="dialog"] mat-select',
+            '.mat-dialog-container mat-select',
+            
+            // Seletores globais como fallback
+            'mat-select[placeholder="Órgão Julgador"]',
+            'mat-select[placeholder="Orgao Julgador"]',
+            'mat-select[placeholder*="Órgão"]',
+            'mat-select[placeholder*="Orgao"]',
+            'mat-select[placeholder*="Julgador"]',
+            'mat-select[name="idOrgaoJulgadorSelecionado"]',
+            'mat-select'
+        ];
+        
+        let matSelect = null;
+        for (const selector of matSelectSelectors) {
+            try {
+                console.log(`🔍 Testando seletor: ${selector}`);
+                const candidate = page.locator(selector);
+                if (await candidate.count() > 0 && await candidate.first().isVisible({ timeout: 3000 })) {
+                    matSelect = candidate.first();
+                    console.log(`✅ Mat-select encontrado: ${selector}`);
+                    break;
+                }
+            } catch (error) {
+                console.log(`❌ Seletor ${selector} falhou: ${error.message}`);
+            }
+        }
+        
+        if (!matSelect) {
+            throw new Error('Mat-select de Órgão Julgador não encontrado no modal');
+        }
+        
+        // 3. Clicar no mat-select para abrir o dropdown
+        console.log('🖱️ Clicando no mat-select para abrir dropdown...');
+        
+        const clickStrategies = [
+            () => matSelect.click(),
+            () => matSelect.click({ force: true }),
+            () => matSelect.locator('.mat-select-trigger').click(),
+            () => matSelect.evaluate(el => el.click())
+        ];
+        
+        let dropdownAberto = false;
+        for (const strategy of clickStrategies) {
+            try {
+                await strategy();
+                await page.waitForTimeout(1000);
+                
+                // Verificar se o dropdown abriu
+                const opcoes = page.locator('mat-option');
+                if (await opcoes.count() > 0) {
+                    console.log('✅ Dropdown aberto com sucesso');
+                    dropdownAberto = true;
+                    break;
+                }
+            } catch (error) {
+                console.log(`⚠️ Estratégia de clique falhou: ${error.message}`);
+            }
+        }
+        
+        if (!dropdownAberto) {
+            throw new Error('Não foi possível abrir o dropdown do mat-select');
+        }
+        
+        // 4. Aguardar as opções carregarem
+        await page.waitForTimeout(2000);
+        
+        // 5. Selecionar a opção desejada usando as mesmas estratégias
+        console.log(`🎯 Procurando pela opção: ${alvoOJ}`);
+        let opcaoSelecionada = false;
+        
+        // Estratégia 1: Busca exata
+        if (!opcaoSelecionada) {
+            try {
+                console.log('🎯 Estratégia 1: Busca exata...');
+                const opcaoExata = page.locator('mat-option').filter({ 
+                    hasText: new RegExp(`^\\s*${alvoOJ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i') 
+                });
+                if (await opcaoExata.count() > 0 && await opcaoExata.first().isVisible({ timeout: 2000 })) {
+                    console.log('✅ Opção exata encontrada');
+                    await opcaoExata.first().click({ force: true });
+                    opcaoSelecionada = true;
+                    estrategias.push('exata');
+                }
+            } catch (error) {
+                console.log('❌ Busca exata falhou:', error.message);
+            }
+        }
+        
+        // Estratégia 2: Busca parcial
+        if (!opcaoSelecionada) {
+            try {
+                console.log('🎯 Estratégia 2: Busca parcial...');
+                const opcaoParcial = page.locator('mat-option').filter({ hasText: new RegExp(alvoOJ, 'i') });
+                if (await opcaoParcial.count() > 0 && await opcaoParcial.first().isVisible({ timeout: 2000 })) {
+                    console.log('✅ Opção parcial encontrada');
+                    await opcaoParcial.first().click({ force: true });
+                    opcaoSelecionada = true;
+                    estrategias.push('parcial');
+                }
+            } catch (error) {
+                console.log('❌ Busca parcial falhou:', error.message);
+            }
+        }
+        
+        // Estratégia 3: Busca por palavras-chave
+        if (!opcaoSelecionada) {
+            try {
+                console.log('🎯 Estratégia 3: Busca por palavras-chave...');
+                const palavrasChave = alvoOJ.split(' ').filter(palavra => 
+                    palavra.length > 2 && 
+                    !['de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no', 'e'].includes(palavra.toLowerCase())
+                );
+                
+                if (palavrasChave.length > 0) {
+                    const regexPalavras = new RegExp(palavrasChave.join('.*'), 'i');
+                    const opcaoPalavras = page.locator('mat-option').filter({ hasText: regexPalavras });
+                    
+                    if (await opcaoPalavras.count() > 0 && await opcaoPalavras.first().isVisible({ timeout: 2000 })) {
+                        console.log('✅ Opção por palavras-chave encontrada');
+                        await opcaoPalavras.first().click({ force: true });
+                        opcaoSelecionada = true;
+                        estrategias.push('palavras_chave');
+                    }
+                }
+            } catch (error) {
+                console.log('❌ Busca por palavras-chave falhou:', error.message);
+            }
+        }
+        
+        if (!opcaoSelecionada) {
+            // Debug: listar opções disponíveis
+            try {
+                const opcoes = await page.locator('mat-option').allTextContents();
+                console.log('📋 Opções disponíveis no dropdown:');
+                opcoes.forEach((opcao, index) => {
+                    console.log(`  ${index + 1}. "${opcao}"`);
+                });
+            } catch (e) {
+                console.log('⚠️ Não foi possível listar opções disponíveis');
+            }
+            
+            throw new Error(`OJ "${alvoOJ}" não encontrado nas opções disponíveis`);
+        }
+        
+        // 6. Aguardar seleção ser processada
+        await page.waitForTimeout(1000);
+        
+        console.log(`✅ OJ selecionado com sucesso: ${alvoOJ}`);
+        console.log(`📊 Estratégias usadas: [${estrategias.join(', ')}]`);
+        console.log(`⏱️ Tempo total: ${((Date.now() - startTime)/1000).toFixed(1)}s`);
+        
+        return true;
+        
+    } catch (error) {
+        console.error(`❌ Erro ao selecionar OJ no modal "${alvoOJ}":`, error.message);
+        console.error(`⏱️ Tempo decorrido: ${((Date.now() - startTime)/1000).toFixed(1)}s`);
+        console.error(`📊 Estratégias tentadas: [${estrategias.join(', ') || 'nenhuma'}]`);
+        throw error;
+    }
+}
+
 // Função melhorada para vincular OJ usando o fluxo determinístico sugerido pelo usuário
-async function vincularOJMelhorado(page, nomeOJ, papel = 'Diretor de Secretaria', visibilidade = 'Público') {
-  console.log(`Iniciando vinculação determinística do OJ: ${nomeOJ}`);
+async function vincularOJMelhorado(page, nomeOJ, papel = 'Diretor de Secretaria', visibilidade = 'Público', modoRapido = false) {
+  const tipoModo = modoRapido ? '⚡ RÁPIDO' : '🔄 NORMAL';
+  console.log(`${tipoModo} Vinculando OJ: ${nomeOJ} (${papel}, ${visibilidade})`);
+  
+  const startTime = Date.now();
+  
+  // Helper para timeouts otimizados
+  const waitTimeout = (normalMs) => modoRapido ? Math.min(normalMs / 3, normalMs) : normalMs;
   
   try {
-    // 1. Expande a seção (SEM clicar em Adicionar)
-    console.log('1. Expandindo seção de Órgãos Julgadores...');
-    const { sucesso: expandiu, painelOJ } = await expandirOrgaosJulgadores(page);
+    // 1. Expande a seção (SEM clicar em Adicionar) - otimizado se modo rápido
+    console.log(`${tipoModo} 1. Expandindo seção de Órgãos Julgadores...`);
+    const { sucesso: expandiu, painelOJ } = await expandirOrgaosJulgadores(page, modoRapido);
     if (!expandiu || !painelOJ) {
       const error = new Error('Não foi possível expandir a seção de Órgãos Julgadores');
       error.code = 'ERRO_EXPANSAO';
       throw error;
     }
     
-    // 2. Selecionar o Órgão Julgador usando a nova estratégia otimizada
-    console.log('2. Selecionando Órgão Julgador...');
+    const tempoExpansao = Date.now() - startTime;
+    console.log(`${tipoModo} ✓ Seção expandida em ${tempoExpansao}ms`);
+    
+    // 2. NOVO FLUXO PARA PERITOS: Clicar direto no mat-select (sem botão Adicionar)
+    console.log('2. FLUXO PERITO: Clicando diretamente no campo Órgão Julgador...');
     
     try {
-      // Usar a nova função otimizada para seleção do OJ
-      await selecionarOrgaoJulgador(page, painelOJ, nomeOJ);
+      console.log('🎯 PERITO: Iniciando fluxo direto...');
+      
+      // Aguardar estabilização da página
+      await page.waitForTimeout(1500);
+      
+      // Tentar estratégias progressivas para encontrar e clicar o mat-select
+      let matSelectClicado = false;
+      const seletoresDirectos = [
+        'mat-select[name="idOrgaoJulgadorSelecionado"]',
+        'mat-select[placeholder="Órgão Julgador"]',
+        'mat-select[id="mat-select-32"]',
+        'mat-expansion-panel:has-text("Órgão") mat-select',
+        'mat-select'
+      ];
+      
+      for (const seletor of seletoresDirectos) {
+        try {
+          const elemento = page.locator(seletor).first();
+          const count = await elemento.count();
+          
+          if (count > 0) {
+            try {
+              await elemento.scrollIntoViewIfNeeded();
+              await page.waitForTimeout(300);
+            } catch (scrollError) {
+              // Scroll opcional
+            }
+            
+            try {
+              await elemento.click({ force: true, timeout: 3000 });
+              matSelectClicado = true;
+              console.log(`✅ PERITO: Mat-select clicado (${seletor})`);
+              break;
+            } catch (clickError) {
+              // Tentar próximo seletor
+            }
+          }
+        } catch (error) {
+          // Tentar próximo seletor
+        }
+      }
+      
+      if (!matSelectClicado) {
+        throw new Error('PERITO FLOW: Não foi possível clicar em nenhum mat-select');
+      }
+      
+      // Aguardar dropdown aparecer
+      console.log('🔄 PERITO FLOW: Aguardando dropdown aparecer...');
+      await page.waitForTimeout(waitTimeout(1000));
+      
+      // Digitar OJ
+      console.log(`🔄 PERITO: Digitando "${nomeOJ}"`);
+      try {
+        let digitacaoOK = false;
+        
+        try {
+          await page.keyboard.type(nomeOJ, { delay: 80 });
+          digitacaoOK = true;
+        } catch (typeError) {
+          try {
+            const input = page.locator('input[role="combobox"]').first();
+            await input.fill(nomeOJ);
+            digitacaoOK = true;
+          } catch (fillError) {
+            // Fallback
+          }
+        }
+        
+        if (!digitacaoOK) {
+          throw new Error('Falha ao digitar nome do OJ');
+        }
+        
+        // Aguardar opções aparecerem
+        await page.waitForTimeout(waitTimeout(1200));
+        
+        // Confirmar seleção - buscar opção exata
+        console.log('🔄 PERITO FLOW: Procurando opção exata no dropdown...');
+        
+        try {
+          // Aguardar opções aparecerem
+          await page.waitForTimeout(500);
+          
+          // Procurar pela opção exata usando mat-option
+          const opcaoExata = page.locator('mat-option').filter({ hasText: nomeOJ });
+          const countOpcaoExata = await opcaoExata.count();
+          
+          if (countOpcaoExata > 0) {
+            console.log(`✓ Opção exata encontrada: ${nomeOJ}`);
+            await opcaoExata.first().click();
+            console.log('✓ Opção exata clicada');
+          } else {
+            console.log(`⚠️ Opção exata não encontrada, tentando estratégias de busca...`);
+            
+            let opcaoEncontrada = false;
+            
+            // Estratégia 1: Buscar por número específico (ex: "2ª" em "2ª Vara do Trabalho de Limeira")
+            const numeroMatch = nomeOJ.match(/(\d+[ªº])/);
+            if (numeroMatch && !opcaoEncontrada) {
+              const numero = numeroMatch[1];
+              console.log(`🔍 Procurando por número específico: "${numero}"`);
+              
+              const opcaoComNumero = page.locator('mat-option').filter({ hasText: numero });
+              const countNumero = await opcaoComNumero.count();
+              
+              if (countNumero > 0) {
+                // Se há múltiplas opções com o mesmo número, tentar ser mais específico
+                const opcoes = await opcaoComNumero.all();
+                let melhorOpcao = null;
+                let melhorScore = 0;
+                
+                for (const opcao of opcoes) {
+                  const textoOpcao = await opcao.textContent();
+                  console.log(`🔍 Analisando opção: "${textoOpcao}"`);
+                  
+                  // Calcular score de similaridade
+                  let score = 0;
+                  const palavrasOJ = nomeOJ.toLowerCase().split(' ');
+                  const palavrasOpcao = textoOpcao.toLowerCase().split(' ');
+                  
+                  for (const palavra of palavrasOJ) {
+                    if (palavra.length > 2 && palavrasOpcao.some(p => p.includes(palavra))) {
+                      score++;
+                    }
+                  }
+                  
+                  console.log(`📊 Score para "${textoOpcao}": ${score}`);
+                  
+                  if (score > melhorScore) {
+                    melhorScore = score;
+                    melhorOpcao = opcao;
+                  }
+                }
+                
+                if (melhorOpcao && melhorScore > 1) {
+                  const textoMelhor = await melhorOpcao.textContent();
+                  console.log(`✅ Melhor opção selecionada: "${textoMelhor}" (score: ${melhorScore})`);
+                  await melhorOpcao.click();
+                  opcaoEncontrada = true;
+                } else if (opcoes.length > 0) {
+                  const textoFirstNumber = await opcoes[0].textContent();
+                  console.log(`⚠️ Usando primeira opção com número "${numero}": "${textoFirstNumber}"`);
+                  await opcoes[0].click();
+                  opcaoEncontrada = true;
+                }
+              }
+            }
+            
+            // Estratégia 2: Buscar por palavras-chave importantes
+            if (!opcaoEncontrada) {
+              console.log('🔍 Tentando busca por palavras-chave...');
+              const palavrasChave = nomeOJ.split(' ').filter(palavra => 
+                palavra.length > 2 && 
+                !['vara', 'do', 'de', 'da', 'dos', 'das'].includes(palavra.toLowerCase())
+              );
+              
+              for (const palavra of palavrasChave) {
+                const opcaoParcial = page.locator('mat-option').filter({ hasText: palavra });
+                const countParcial = await opcaoParcial.count();
+                
+                if (countParcial > 0) {
+                  console.log(`✓ Encontrada opção com palavra "${palavra}"`);
+                  await opcaoParcial.first().click();
+                  opcaoEncontrada = true;
+                  break;
+                }
+              }
+            }
+            
+            // Estratégia 3: Fallback para qualquer opção visível
+            if (!opcaoEncontrada) {
+              console.log('⚠️ Nenhuma opção específica encontrada, listando opções disponíveis...');
+              
+              try {
+                const todasOpcoes = page.locator('mat-option');
+                const countTodas = await todasOpcoes.count();
+                
+                if (countTodas > 0) {
+                  console.log(`📋 ${countTodas} opções encontradas no dropdown:`);
+                  for (let i = 0; i < Math.min(countTodas, 5); i++) {
+                    const texto = await todasOpcoes.nth(i).textContent();
+                    console.log(`  ${i + 1}. "${texto}"`);
+                  }
+                }
+              } catch (listError) {
+                console.log('⚠️ Erro ao listar opções');
+              }
+              
+              console.log('⚠️ Usando ArrowDown + Enter como fallback final');
+              await page.keyboard.press('ArrowDown');
+              await page.waitForTimeout(200);
+              await page.keyboard.press('Enter');
+            }
+          }
+          
+          console.log('✓ Seleção de OJ confirmada');
+        } catch (selecaoError) {
+          console.log(`⚠️ Erro na seleção específica: ${selecaoError.message}`);
+          console.log('⚠️ Usando Enter direto como fallback final');
+          await page.keyboard.press('Enter');
+        }
+        
+        // Aguardar processamento
+        await page.waitForTimeout(waitTimeout(1500));
+        
+        // Procurar botão "Vincular Órgão Julgador ao Perito"
+        console.log('🔄 PERITO FLOW: Procurando botão Vincular...');
+        try {
+          const botaoVincular = page.getByRole('button', { name: 'Vincular Órgão Julgador ao Perito' });
+          await botaoVincular.waitFor({ state: 'visible', timeout: 5000 });
+          await botaoVincular.click();
+          console.log('✓ Botão Vincular clicado');
+          
+          // Aguardar modal e confirmar
+          await page.waitForTimeout(waitTimeout(1000));
+          
+          try {
+            const botaoSim = page.getByRole('button', { name: 'SIM' });
+            await botaoSim.waitFor({ state: 'visible', timeout: 3000 });
+            await botaoSim.click();
+            console.log('✓ Confirmação SIM clicada');
+          } catch (simError) {
+            console.log('⚠️ Botão SIM não encontrado, tentando Sim...');
+            try {
+              await page.locator('button:has-text("Sim")').click();
+              console.log('✓ Confirmação Sim clicada');
+            } catch (simMinError) {
+              console.log('⚠️ Nenhuma confirmação encontrada, assumindo sucesso...');
+            }
+          }
+          
+          // Aguardar finalização
+          await page.waitForTimeout(waitTimeout(2000));
+          
+          console.log(`✅ PERITO FLOW: OJ "${nomeOJ}" vinculado com sucesso em ${Date.now() - startTime}ms`);
+          return; // Sucesso!
+          
+        } catch (botaoError) {
+          throw new Error(`Botão Vincular não encontrado: ${botaoError.message}`);
+        }
+        
+      } catch (digitacaoError) {
+        throw new Error(`Erro na digitação: ${digitacaoError.message}`);
+      }
+      
+    } catch (peritoError) {
+      console.log(`❌ ERRO no fluxo PERITO: ${peritoError.message}`);
+      
+      // Se o erro for de campo não encontrado, tentar o fluxo tradicional como fallback
+      if (peritoError.message.includes('select') || peritoError.message.includes('campo') || peritoError.message.includes('Órgão Julgador')) {
+        console.log('🔄 Tentando fluxo tradicional como fallback...');
+        // Continuar para o fluxo tradicional abaixo
+      } else {
+        // Para outros erros, propagar
+        throw peritoError;
+      }
+    }
+    
+    // FLUXO TRADICIONAL (FALLBACK) - Só executa se o fluxo PERITO falhar
+    console.log('🔄 FALLBACK: Executando fluxo tradicional com modal...');
+    await clickAddLocationButton(page, painelOJ);
+    
+    // 3. Aguardar modal abrir e estabilizar (otimizado)
+    console.log(`${tipoModo} 3. Aguardando modal abrir...`);
+    await page.waitForTimeout(waitTimeout(2000));
+    
+    // 4. Selecionar o Órgão Julgador usando a nova estratégia otimizada
+    console.log('4. Selecionando Órgão Julgador no modal...');
+    
+    try {
+      // Agora que o modal abriu, o mat-select está na página global, não mais no painel
+      // Vamos passar a página inteira como contexto em vez do painel específico
+      await selecionarOrgaoJulgadorNoModal(page, nomeOJ);
     } catch (selecaoError) {
       // Verificar se é um OJ não encontrado na relação
       if (selecaoError.code === 'OJ_NAO_ENCONTRADO') {
@@ -891,59 +1861,112 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Diretor de Secretaria'
       }
     }
     
-    // 3. Aguardar um momento para garantir que a seleção foi processada
-    console.log('3. Aguardando processamento da seleção...');
-    await page.waitForTimeout(1500);
+    // 5. Aguardar um momento para garantir que a seleção foi processada (otimizado)
+    console.log(`${tipoModo} 5. Aguardando processamento da seleção...`);
+    await page.waitForTimeout(waitTimeout(1500));
     
-    // 4. Procurar e clicar no botão "Vincular Órgão Julgador ao Perito"
-    console.log('4. Procurando botão de vinculação...');
+    // 6. Configurar papel e visibilidade
+    console.log('6. Configurando papel e visibilidade...');
+    try {
+      await configurarPapel(page, papel);
+      console.log(`✓ Papel configurado: ${papel}`);
+    } catch (papelError) {
+      console.log(`⚠️ Erro ao configurar papel: ${papelError.message}`);
+    }
     
-    // Múltiplas estratégias para encontrar o botão
-    const seletoresBotaoVincular = [
+    try {
+      await configurarVisibilidadeModal(page, visibilidade);
+      console.log(`✓ Visibilidade configurada: ${visibilidade}`);
+    } catch (visibilidadeError) {
+      console.log(`⚠️ Erro ao configurar visibilidade: ${visibilidadeError.message}`);
+    }
+    
+    // 7. Procurar e clicar no botão de finalizar vinculação no modal
+    console.log('7. Procurando botão de finalizar vinculação no modal...');
+    
+    // Estratégias para encontrar o botão no modal (não no painel)
+    const seletoresBotaoGravar = [
+      // PRIMEIRO: Botão específico para peritos (PRIORIDADE MÁXIMA)
+      'mat-dialog-container button:has-text("Vincular Órgão Julgador ao Perito")',
+      '[role="dialog"] button:has-text("Vincular Órgão Julgador ao Perito")',
+      '.mat-dialog-container button:has-text("Vincular Órgão Julgador ao Perito")',
+      
+      // SEGUNDO: Botões de vincular genéricos
+      'mat-dialog-container button:has-text("Vincular")',
+      '[role="dialog"] button:has-text("Vincular")',
+      
+      // TERCEIRO: Botões de gravar/salvar para servidores  
+      'mat-dialog-container button:has-text("Gravar")',
+      '[role="dialog"] button:has-text("Gravar")',
+      '.mat-dialog-container button:has-text("Gravar")',
+      'mat-dialog-container button:has-text("Salvar")',
+      '[role="dialog"] button:has-text("Salvar")',
+      'mat-dialog-container button:has-text("Confirmar")',
+      
+      // Fallbacks globais (última opção)
       'button:has-text("Vincular Órgão Julgador ao Perito")',
       'button:has-text("Vincular")',
       'button:has-text("Gravar")',
       'button:has-text("Salvar")',
       'button:has-text("Confirmar")',
       'input[type="submit"]',
-      'input[type="button"][value*="Vincular"]',
       'input[type="button"][value*="Gravar"]',
-      '.btn:has-text("Vincular")',
-      '.btn:has-text("Gravar")'
+      'input[type="button"][value*="Salvar"]'
     ];
     
     let botaoEncontrado = false;
-    for (const seletor of seletoresBotaoVincular) {
+    for (const seletor of seletoresBotaoGravar) {
       try {
-        const botao = painelOJ.locator(seletor);
-        if (await botao.first().isVisible({ timeout: 2000 })) {
-          console.log(`✓ Botão encontrado: ${seletor}`);
+        console.log(`🔍 Testando botão: ${seletor}`);
+        const botao = page.locator(seletor); // Usar page em vez de painelOJ
+        if (await botao.count() > 0 && await botao.first().isVisible({ timeout: 2000 })) {
+          console.log(`✅ Botão encontrado: ${seletor}`);
           await botao.first().click({ force: true });
           botaoEncontrado = true;
-          console.log('✓ Clique no botão de vinculação realizado');
+          console.log('✅ Clique no botão Gravar realizado');
           break;
+        } else {
+          console.log(`❌ Botão ${seletor} não visível ou não encontrado`);
         }
       } catch (e) {
-        console.log(`Seletor ${seletor} não funcionou, tentando próximo...`);
+        console.log(`❌ Seletor ${seletor} falhou: ${e.message}`);
       }
     }
     
     if (!botaoEncontrado) {
-      // Tentar buscar por role
+      // Tentar buscar por role no modal
       try {
-        const botaoRole = painelOJ.getByRole('button', { name: /Vincular|Gravar|Salvar|Confirmar/i });
-        if (await botaoRole.first().isVisible({ timeout: 2000 })) {
+        console.log('🔍 Tentando buscar botão por role no modal...');
+        const botaoRole = page.getByRole('button', { name: /Gravar|Salvar|Confirmar|Vincular/i });
+        if (await botaoRole.count() > 0 && await botaoRole.first().isVisible({ timeout: 2000 })) {
           await botaoRole.first().click({ force: true });
           botaoEncontrado = true;
-          console.log('✓ Botão encontrado por role e clicado');
+          console.log('✅ Botão encontrado por role e clicado');
         }
       } catch (e) {
-        console.log('Busca por role também falhou');
+        console.log('❌ Busca por role também falhou:', e.message);
       }
     }
     
     if (!botaoEncontrado) {
-      throw new Error('Botão de vinculação não encontrado no painel');
+      // Debug: listar todos os botões no modal
+      try {
+        console.log('🔍 DEBUG: Listando botões no modal...');
+        const botoesModal = await page.locator('mat-dialog-container button, [role="dialog"] button').all();
+        for (let i = 0; i < botoesModal.length; i++) {
+          try {
+            const texto = await botoesModal[i].textContent();
+            const isVisible = await botoesModal[i].isVisible();
+            console.log(`  Botão ${i + 1}: "${texto}" (visível: ${isVisible})`);
+          } catch (e) {
+            console.log(`  Botão ${i + 1}: Erro ao obter informações`);
+          }
+        }
+      } catch (debugError) {
+        console.log(`⚠️ Erro no debug de botões: ${debugError.message}`);
+      }
+      
+      throw new Error('Botão Gravar/Salvar não encontrado no modal');
     }
     
     // 5. Aguardar processamento e verificar resultado
@@ -1005,14 +2028,21 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Diretor de Secretaria'
       const painelId = await painelOJ.getAttribute('id');
       const ojNaTabela = await page.waitForFunction(
         (painelId, nomeOJ) => {
-          const painel = document.getElementById(painelId);
-          if (!painel) return false;
-          
-          const tabela = painel.querySelector('table, .table, [role="table"]');
-          if (!tabela) return false;
-          
-          const textoTabela = tabela.textContent || '';
-          return textoTabela.toLowerCase().includes(nomeOJ.toLowerCase());
+          try {
+            const painel = document.getElementById(painelId);
+            if (!painel) return false;
+            
+            const tabela = painel.querySelector('table, .table, [role="table"]');
+            if (!tabela) return false;
+            
+            const textoTabela = tabela.textContent || tabela.innerText || '';
+            if (!textoTabela) return false;
+            
+            return textoTabela.toLowerCase().includes(nomeOJ.toLowerCase());
+          } catch (error) {
+            console.log('Erro na verificação da tabela:', error);
+            return false;
+          }
         },
         painelId,
         nomeOJ,
@@ -1045,7 +2075,8 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Diretor de Secretaria'
       console.log('Não foi possível verificar mensagens de status');
     }
     
-    console.log(`✓ Vinculação determinística do OJ "${nomeOJ}" concluída!`);
+    const tempoTotal = Date.now() - startTime;
+    console.log(`${tipoModo} ✓ Vinculação de "${nomeOJ}" concluída em ${tempoTotal}ms!`);
     return true;
     
   } catch (error) {
@@ -1892,6 +2923,256 @@ async function configurarPapel(page, papel) {
   }
   
   console.log('AVISO: Campo de papel não encontrado, continuando sem configurar...');
+}
+
+/**
+ * Configura a visibilidade no modal de Localização/Visibilidade
+ * @param {Object} page - Instância da página do Playwright
+ * @param {string} visibilidade - Valor da visibilidade a ser configurada
+ */
+async function configurarVisibilidadeModal(page, visibilidade) {
+    console.log(`🎯 Configurando visibilidade no modal: ${visibilidade}`);
+    
+    try {
+        // 1. Aguardar estabilização do modal
+        await page.waitForTimeout(1000);
+        
+        // 2. Procurar pelo mat-select de visibilidade/localização no modal
+        const visibilidadeSelectors = [
+            // Seletores específicos por placeholder
+            'mat-dialog-container mat-select[placeholder*="Localização"]',
+            'mat-dialog-container mat-select[placeholder*="Visibilidade"]',
+            '[role="dialog"] mat-select[placeholder*="Localização"]',
+            '[role="dialog"] mat-select[placeholder*="Visibilidade"]',
+            '.mat-dialog-container mat-select[placeholder*="Localização"]',
+            '.mat-dialog-container mat-select[placeholder*="Visibilidade"]',
+            
+            // Seletores por name
+            'mat-dialog-container mat-select[name*="visibilidade"]',
+            'mat-dialog-container mat-select[name*="localizacao"]',
+            '[role="dialog"] mat-select[name*="visibilidade"]',
+            '[role="dialog"] mat-select[name*="localizacao"]',
+            
+            // Seletores por atributos aria
+            'mat-dialog-container mat-select[aria-label*="Visibilidade"]',
+            'mat-dialog-container mat-select[aria-label*="Localização"]',
+            '[role="dialog"] mat-select[aria-label*="Visibilidade"]',
+            '[role="dialog"] mat-select[aria-label*="Localização"]',
+            
+            // Seletores por classes específicas
+            'mat-dialog-container .campo-visibilidade mat-select',
+            'mat-dialog-container .campo-localizacao mat-select',
+            '.mat-dialog-container .campo-visibilidade mat-select',
+            '.mat-dialog-container .campo-localizacao mat-select',
+            
+            // Seletores por ID específicos
+            'mat-dialog-container #mat-select-visibilidade',
+            'mat-dialog-container #mat-select-localizacao',
+            'mat-dialog-container mat-select[id*="visibilidade"]',
+            'mat-dialog-container mat-select[id*="localizacao"]',
+            
+            // Fallbacks gerais (deve vir por último)
+            'mat-dialog-container mat-select',
+            '[role="dialog"] mat-select'
+        ];
+        
+        let matSelectVisibilidade = null;
+        for (const selector of visibilidadeSelectors) {
+            try {
+                console.log(`🔍 Testando seletor de visibilidade: ${selector}`);
+                const candidate = page.locator(selector);
+                
+                // Pular o primeiro mat-select que é do OJ
+                const count = await candidate.count();
+                console.log(`  - Encontrados ${count} mat-select(s)`);
+                
+                for (let i = 0; i < count; i++) {
+                    try {
+                        const placeholder = await candidate.nth(i).getAttribute('placeholder');
+                        console.log(`  - Mat-select ${i + 1}: placeholder="${placeholder}"`);
+                        
+                        if (placeholder && (
+                            placeholder.toLowerCase().includes('localização') || 
+                            placeholder.toLowerCase().includes('visibilidade')
+                        )) {
+                            if (await candidate.nth(i).isVisible()) {
+                                matSelectVisibilidade = candidate.nth(i);
+                                console.log(`✅ Mat-select de visibilidade encontrado: ${selector}, índice ${i}`);
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`  - Erro ao verificar mat-select ${i + 1}: ${e.message}`);
+                    }
+                }
+                
+                if (matSelectVisibilidade) break;
+                
+            } catch (error) {
+                console.log(`❌ Seletor ${selector} falhou: ${error.message}`);
+            }
+        }
+        
+        if (!matSelectVisibilidade) {
+            throw new Error('Mat-select de visibilidade não encontrado no modal');
+        }
+        
+        // 3. Clicar no mat-select para abrir o dropdown
+        console.log('🖱️ Clicando no mat-select de visibilidade...');
+        await matSelectVisibilidade.click({ force: true });
+        await page.waitForTimeout(1500);
+        
+        // 4. Aguardar e verificar se há opções disponíveis com múltiplas tentativas
+        let opcoes = null;
+        let numOpcoes = 0;
+        const maxTentativas = 5;
+        
+        console.log('🔍 Aguardando opções aparecerem no dropdown...');
+        for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+            console.log(`📋 Tentativa ${tentativa}/${maxTentativas} - verificando opções...`);
+            
+            // Tentar diferentes seletores para mat-option
+            const opcoesSelectors = [
+                'mat-option', // Global
+                '.cdk-overlay-container mat-option', // Container overlay
+                '.mat-select-panel mat-option', // Panel específico
+                '[role="listbox"] mat-option', // Dentro do listbox
+                '.mat-option' // Classe direta
+            ];
+            
+            for (const selector of opcoesSelectors) {
+                try {
+                    const candidateOpcoes = page.locator(selector);
+                    const candidateCount = await candidateOpcoes.count();
+                    console.log(`  - Seletor "${selector}": ${candidateCount} opções`);
+                    
+                    if (candidateCount > 0) {
+                        opcoes = candidateOpcoes;
+                        numOpcoes = candidateCount;
+                        console.log(`✅ Opções encontradas com seletor: ${selector}`);
+                        break;
+                    }
+                } catch (error) {
+                    console.log(`  - Erro com seletor "${selector}": ${error.message}`);
+                }
+            }
+            
+            if (numOpcoes > 0) break;
+            
+            console.log(`⏱️ Tentativa ${tentativa} falhou, aguardando mais 2s...`);
+            await page.waitForTimeout(2000);
+            
+            // Tentar clicar no mat-select novamente para garantir que está aberto
+            if (tentativa < maxTentativas) {
+                try {
+                    console.log('🖱️ Re-clicando no mat-select para reabrir...');
+                    await matSelectVisibilidade.click({ force: true });
+                    await page.waitForTimeout(1000);
+                } catch (error) {
+                    console.log(`⚠️ Erro ao re-clicar: ${error.message}`);
+                }
+            }
+        }
+        
+        console.log(`📋 FINAL: ${numOpcoes} opções encontradas no dropdown de visibilidade`);
+        
+        if (numOpcoes === 0) {
+            // Capturar informações de debug antes de falhar
+            console.log('🔍 DEBUG: Capturando estado do modal para diagnóstico...');
+            try {
+                const modalVisible = await page.locator('mat-dialog-container').isVisible();
+                console.log(`  - Modal visível: ${modalVisible}`);
+                
+                const selectVisible = await matSelectVisibilidade.isVisible();
+                console.log(`  - Mat-select visível: ${selectVisible}`);
+                
+                const selectAriaExpanded = await matSelectVisibilidade.getAttribute('aria-expanded');
+                console.log(`  - Mat-select expandido: ${selectAriaExpanded}`);
+                
+                const overlayExists = await page.locator('.cdk-overlay-container').count();
+                console.log(`  - Overlays CDK encontrados: ${overlayExists}`);
+                
+                const panelExists = await page.locator('.mat-select-panel').count();
+                console.log(`  - Painéis mat-select encontrados: ${panelExists}`);
+                
+            } catch (debugError) {
+                console.log(`⚠️ Erro ao capturar debug: ${debugError.message}`);
+            }
+            
+            throw new Error('Nenhuma opção disponível no dropdown de visibilidade após múltiplas tentativas. Verifique se o campo está configurado corretamente no sistema.');
+        }
+        
+        // 5. Listar todas as opções disponíveis
+        const opcoesTexto = await opcoes.allTextContents();
+        console.log('📋 Opções de visibilidade disponíveis:');
+        opcoesTexto.forEach((opcao, index) => {
+            console.log(`  ${index + 1}. "${opcao.trim()}"`);
+        });
+        
+        // 6. Tentar selecionar a opção desejada
+        const opcoesParaTentar = [
+            visibilidade, // Valor original
+            'Público',
+            'Publico', // Sem acento
+            'PÚBLICO',
+            'PUBLICO',
+            'Público - Irrestrito',
+            'Publico - Irrestrito',
+            'Irrestrito'
+        ];
+        
+        let opcaoSelecionada = false;
+        for (const opcaoTentativa of opcoesParaTentar) {
+            if (opcaoSelecionada) break;
+            
+            try {
+                console.log(`🔍 Tentando selecionar: "${opcaoTentativa}"`);
+                
+                // Busca exata
+                const opcaoExata = opcoes.filter({ hasText: new RegExp(`^\\s*${opcaoTentativa.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i') });
+                if (await opcaoExata.count() > 0) {
+                    await opcaoExata.first().click({ force: true });
+                    console.log(`✅ Opção selecionada (exata): "${opcaoTentativa}"`);
+                    opcaoSelecionada = true;
+                    break;
+                }
+                
+                // Busca parcial
+                const opcaoParcial = opcoes.filter({ hasText: new RegExp(opcaoTentativa, 'i') });
+                if (await opcaoParcial.count() > 0) {
+                    await opcaoParcial.first().click({ force: true });
+                    console.log(`✅ Opção selecionada (parcial): "${opcaoTentativa}"`);
+                    opcaoSelecionada = true;
+                    break;
+                }
+                
+            } catch (error) {
+                console.log(`❌ Falha ao tentar "${opcaoTentativa}": ${error.message}`);
+            }
+        }
+        
+        if (!opcaoSelecionada) {
+            // Como fallback, selecionar a primeira opção disponível
+            try {
+                console.log('⚠️ Selecionando primeira opção disponível como fallback...');
+                const primeiraOpcao = opcoes.first();
+                const textoOpcao = await primeiraOpcao.textContent();
+                await primeiraOpcao.click({ force: true });
+                console.log(`✅ Primeira opção selecionada: "${textoOpcao}"`);
+                opcaoSelecionada = true;
+            } catch (fallbackError) {
+                throw new Error(`Não foi possível selecionar nenhuma opção de visibilidade: ${fallbackError.message}`);
+            }
+        }
+        
+        // 7. Aguardar processamento
+        await page.waitForTimeout(1000);
+        console.log('✅ Visibilidade configurada com sucesso');
+        
+    } catch (error) {
+        console.error(`❌ Erro ao configurar visibilidade: ${error.message}`);
+        throw error;
+    }
 }
 
 // Função auxiliar para configurar a visibilidade

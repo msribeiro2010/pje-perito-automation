@@ -1,6 +1,14 @@
 # PJE Automation - Peritos e Servidores
 
-Sistema de automação para vinculação de peritos e servidores no PJE (Processo Judicial Eletrônico). com interface gráfica moderna e intuitiva.
+Sistema de automação para vinculação de peritos e servidores no PJE (Processo Judicial Eletrônico) com interface gráfica moderna e intuitiva construída em Electron.
+
+## ⭐ Principais Melhorias (v2.0)
+
+- **🎯 Fluxo PERITO Otimizado**: Nova estratégia que clica diretamente no mat-select, sem necessidade de botão "Adicionar"
+- **🧠 Seleção Inteligente de OJ**: Sistema de scoring que encontra exatamente o órgão julgador correto (ex: distingue entre 1ª e 2ª Vara da mesma cidade)
+- **💪 Elementos Hidden**: Suporte completo a elementos mat-select marcados como "hidden" com force click e scroll automático
+- **🔄 Fallbacks Robustos**: Múltiplas estratégias de detecção e interação com elementos Angular Material
+- **📊 Logs Otimizados**: Sistema de debug inteligente com informações essenciais
 
 ## 🚀 Funcionalidades
 
