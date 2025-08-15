@@ -77,50 +77,38 @@
         <!-- Aba Servidores -->
         <div id="servidores" class="tab-content">
             <div class="section-header">
-                <h2>Automação de Servidores</h2>
-            </div>
-
-            <!-- Seção de Automação -->
-            <div class="automation-controls">
-                <div class="selected-servidores">
-                    <h3>Servidores para Automação:</h3>
-                    <div id="selected-servidores-list" class="selected-list">
-                        <p class="no-selection">Nenhum servidor selecionado</p>
-                    </div>
-                    <div id="selected-servidores-display" class="selection-info">
-                        <small>0 de 0 servidores selecionados</small>
-                    </div>
-                </div>
-
-                <div class="automation-config">
-                    <div class="automation-buttons">
-                        <button id="startServidorAutomation" class="btn btn-success" disabled>
-                            <i class="fas fa-play"></i> Iniciar Automação
-                        </button>
-                        <button id="stopServidorAutomation" class="btn btn-danger" disabled>
-                            <i class="fas fa-stop"></i> Parar Automação
-                        </button>
-                        <button id="configServidorV2" class="btn btn-secondary">
-                            <i class="fas fa-cog"></i> Configurar Automação
-                        </button>
-                    </div>
+                <h2>Gerenciar Servidores</h2>
+                <div class="button-group">
+                    <button id="add-servidor" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Adicionar Servidor
+                    </button>
+                    <button id="import-servidores" class="btn btn-secondary">
+                        <i class="fas fa-upload"></i> Importar
+                    </button>
+                    <button id="export-servidores" class="btn btn-secondary">
+                        <i class="fas fa-download"></i> Exportar
+                    </button>
                 </div>
             </div>
-            
-            <div class="progress-container" style="margin-bottom: 20px; display: none;" id="servidorProgressContainer">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="servidorProgress"></div>
-                </div>
-                <div class="progress-text" id="servidorProgressText">0% concluído</div>
-            </div>
 
-            <div class="info-message" style="margin-top: 20px; padding: 15px; background: #e8f4f8; border-radius: 8px; border-left: 4px solid #3498db;">
-                <h4 style="margin: 0 0 10px 0; color: #2c3e50;">ℹ️ Como usar a Automação</h4>
-                <p style="margin: 0; color: #5a6c7d;">
-                    1. Clique em <strong>"Configurar Automação"</strong> para definir CPF, perfil e órgãos julgadores<br>
-                    2. Após configurar, clique em <strong>"Iniciar Automação"</strong> para começar o processo<br>
-                    3. A automação vinculará automaticamente o servidor aos órgãos configurados
-                </p>
+            <div class="servidores-list">
+                <div class="table-container">
+                    <table id="servidores-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all-servidores"></th>
+                                <th>Nome</th>
+                                <th>CPF</th>
+                                <th>Perfil</th>
+                                <th>Órgãos Julgadores</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servidores-tbody">
+                            <!-- Servidores serão carregados aqui -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -158,6 +146,7 @@
                 <h2>Executar Automação</h2>
             </div>
 
+            <!-- Seção Peritos -->
             <div class="automation-controls">
                 <div class="selected-peritos">
                     <h3>Peritos Selecionados:</h3>
@@ -174,12 +163,37 @@
                         <i class="fas fa-stop"></i> Parar Automação
                     </button>
                 </div>
+            </div>
 
-                <div class="status-panel">
-                    <h3>Status da Automação:</h3>
-                    <div id="status-log" class="status-log">
-                        <p class="status-item info">Aguardando início da automação...</p>
+            <!-- Divisor -->
+            <hr style="margin: 30px 0; border: none; height: 1px; background: #ddd;">
+
+            <!-- Seção Servidores -->
+            <div class="automation-controls">
+                <div class="selected-servidores">
+                    <h3>Servidores Selecionados:</h3>
+                    <div id="selected-servidores-list" class="selected-list">
+                        <p class="no-selection">Nenhum servidor selecionado</p>
                     </div>
+                    <div id="selected-servidores-display" class="selection-info">
+                        <small>0 de 0 servidores selecionados</small>
+                    </div>
+                </div>
+
+                <div class="automation-buttons">
+                    <button id="start-servidor-automation" class="btn btn-success" disabled>
+                        <i class="fas fa-play"></i> Iniciar Automação de Servidores
+                    </button>
+                    <button id="stop-servidor-automation" class="btn btn-danger" disabled>
+                        <i class="fas fa-stop"></i> Parar Automação
+                    </button>
+                </div>
+            </div>
+
+            <div class="status-panel">
+                <h3>Status da Automação:</h3>
+                <div id="status-log" class="status-log">
+                    <p class="status-item info">Aguardando início da automação...</p>
                 </div>
             </div>
         </div>
@@ -220,7 +234,7 @@
     <div id="servidor-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="servidor-modal-title">Órgão Julgador (OJ) o qual o servidor quer o perfil</h3>
+                <h3 id="servidor-modal-title">Adicionar Servidor</h3>
                 <span class="close">&times;</span>
             </div>
             <form id="servidor-form">
@@ -230,11 +244,57 @@
                 </div>
                 <div class="form-group">
                     <label for="servidor-cpf">CPF:</label>
-                    <input type="text" id="servidor-cpf" placeholder="000.000.000-00" required>
+                    <div class="autocomplete-container">
+                        <input type="text" id="servidor-cpf" placeholder="000.000.000-00" required autocomplete="off">
+                        <div class="autocomplete-suggestions" id="servidor-cpf-suggestions"></div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="servidor-perfil">Perfil *:</label>
                     <select id="servidor-perfil" name="perfil" required>
+                        <option value="">Selecione...</option>
+                        <option value="Administrador">Administrador</option>
+                        <option value="Assessor">Assessor</option>
+                        <option value="Diretor de Central de Atendimento">Diretor de Central de Atendimento</option>
+                        <option value="Diretor de Secretaria">Diretor de Secretaria</option>
+                        <option value="Estagiário Conhecimento">Estagiário Conhecimento</option>
+                        <option value="Estagiário de Central de Atendimento">Estagiário de Central de Atendimento</option>
+                        <option value="Secretário de Audiência">Secretário de Audiência</option>
+                        <option value="Servidor">Servidor</option>
+                        <option value="Perito Judicial">Perito Judicial</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="servidor-ojs">Órgãos Julgadores (um por linha):</label>
+                    <textarea id="servidor-ojs" rows="5" placeholder="Vara do Trabalho de Atibaia&#10;1ª Vara do Trabalho de Campinas"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" id="cancel-servidor">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para adicionar/editar servidor (versão antiga - mantida para compatibilidade) -->
+    <div id="servidor-modal-old" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="servidor-modal-title-old">Órgão Julgador (OJ) o qual o servidor quer o perfil</h3>
+                <span class="close">&times;</span>
+            </div>
+            <form id="servidor-form-old">
+                <div class="form-group">
+                    <label for="servidor-nome-old">Nome:</label>
+                    <input type="text" id="servidor-nome-old" required>
+                </div>
+                <div class="form-group">
+                    <label for="servidor-cpf-old">CPF:</label>
+                    <input type="text" id="servidor-cpf-old" placeholder="000.000.000-00" required>
+                </div>
+                <div class="form-group">
+                    <label for="servidor-perfil-old">Perfil *:</label>
+                    <select id="servidor-perfil-old" name="perfil" required>
                         <option value="">Selecione...</option>
                         <option value="Administrador">Administrador</option>
                         <option value="Assessor">Assessor</option>
