@@ -262,6 +262,7 @@ class PeritoApp {
           this.selectedPeritos = this.selectedPeritos.filter(i => i !== index);
         }
         this.updateAutomationButton();
+        this.updateSelectedPeritosDisplay();
       });
     });
 
@@ -296,6 +297,44 @@ class PeritoApp {
     }
   }
 
+  updateSelectAllServidoresCheckbox() {
+    const selectAllCheckbox = document.getElementById('select-all-servidores');
+    if (selectAllCheckbox) {
+      const totalServidores = this.servidores.length;
+      const selectedCount = this.selectedServidores.length;
+      
+      if (selectedCount === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+      } else if (selectedCount === totalServidores) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+      } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true; // Estado intermediário
+      }
+    }
+  }
+
+  updateSelectAllPeritosCheckbox() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    if (selectAllCheckbox) {
+      const totalPeritos = this.peritos.length;
+      const selectedCount = this.selectedPeritos.length;
+      
+      if (selectedCount === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+      } else if (selectedCount === totalPeritos) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+      } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true; // Estado intermediário
+      }
+    }
+  }
+
   updateSelectedPeritosDisplay() {
     const container = document.getElementById('selected-peritos-list');
         
@@ -316,6 +355,9 @@ class PeritoApp {
     }).join('');
 
     container.innerHTML = selectedPeritosList;
+    
+    // Update select-all checkbox state
+    this.updateSelectAllPeritosCheckbox();
   }
 
   openPeritoModal(editIndex = -1) {
@@ -446,6 +488,7 @@ class PeritoApp {
   }
 
   renderServidoresTable() {
+    console.log('Renderizando tabela de servidores...');
     const tbody = document.getElementById('servidores-tbody');
     if (!tbody) {
       console.log('Elemento servidores-tbody não encontrado');
@@ -453,12 +496,16 @@ class PeritoApp {
     }
         
     tbody.innerHTML = '';
+    console.log('Servidores a renderizar:', this.servidores.length);
+    console.log('Servidores selecionados:', this.selectedServidores);
         
     this.servidores.forEach((servidor, index) => {
       const isSelected = this.selectedServidores && this.selectedServidores.includes(index);
+      console.log(`Servidor ${index} (${servidor.nome}): selecionado = ${isSelected}`);
+      
       const row = document.createElement('tr');
       
-      // Create checkbox with event listener
+      // Create all cells properly to avoid innerHTML issues
       const checkboxCell = document.createElement('td');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -466,23 +513,37 @@ class PeritoApp {
       checkbox.addEventListener('change', () => this.toggleServidorSelection(index));
       checkboxCell.appendChild(checkbox);
       
-      row.appendChild(checkboxCell);
-      row.innerHTML += `
-        <td>${servidor.nome}</td>
-        <td>${servidor.cpf}</td>
-        <td>${servidor.perfil}</td>
-        <td>${servidor.ojs ? servidor.ojs.join(', ') : 'Não definido'}</td>
-        <td>
-          <button onclick="app.editServidor(${index})" class="btn btn-sm btn-primary">
-            <i class="fas fa-edit"></i> Editar
-          </button>
-          <button onclick="app.deleteServidor(${index})" class="btn btn-sm btn-danger">
-            <i class="fas fa-trash"></i> Excluir
-          </button>
-        </td>
+      const nomeCell = document.createElement('td');
+      nomeCell.textContent = servidor.nome;
+      
+      const cpfCell = document.createElement('td');
+      cpfCell.textContent = servidor.cpf;
+      
+      const perfilCell = document.createElement('td');
+      perfilCell.textContent = servidor.perfil;
+      
+      const ojsCell = document.createElement('td');
+      ojsCell.textContent = servidor.ojs ? servidor.ojs.join(', ') : 'Não definido';
+      
+      const actionsCell = document.createElement('td');
+      actionsCell.innerHTML = `
+        <button onclick="app.editServidor(${index})" class="btn btn-sm btn-primary">
+          <i class="fas fa-edit"></i> Editar
+        </button>
+        <button onclick="app.deleteServidor(${index})" class="btn btn-sm btn-danger">
+          <i class="fas fa-trash"></i> Excluir
+        </button>
       `;
+      
+      row.appendChild(checkboxCell);
+      row.appendChild(nomeCell);
+      row.appendChild(cpfCell);
+      row.appendChild(perfilCell);
+      row.appendChild(ojsCell);
+      row.appendChild(actionsCell);
       tbody.appendChild(row);
     });
+    console.log('Tabela renderizada com sucesso');
   }
 
   openServidorModal(editIndex = -1) {
@@ -587,27 +648,50 @@ class PeritoApp {
   }
 
   toggleServidorSelection(index) {
+    console.log(`toggleServidorSelection chamado para índice: ${index}`);
     const checkboxIndex = this.selectedServidores.indexOf(index);
+    console.log('Estado anterior dos selecionados:', this.selectedServidores);
         
     if (checkboxIndex >= 0) {
       this.selectedServidores.splice(checkboxIndex, 1);
+      console.log(`Removendo servidor ${index}`);
     } else {
       this.selectedServidores.push(index);
+      console.log(`Adicionando servidor ${index}`);
     }
+    
+    console.log('Estado novo dos selecionados:', this.selectedServidores);
         
     this.updateSelectedServidoresDisplay();
     this.renderServidoresTable();
   }
 
   selectAllServidores(selectAll) {
+    console.log('selectAllServidores chamado com:', selectAll);
+    console.log('Total de servidores:', this.servidores.length);
+    
     if (selectAll) {
       this.selectedServidores = this.servidores.map((_, index) => index);
     } else {
       this.selectedServidores = [];
     }
+    
+    console.log('Servidores selecionados após mudança:', this.selectedServidores);
         
     this.updateSelectedServidoresDisplay();
     this.renderServidoresTable();
+  }
+
+  selectAllPeritos(selectAll) {
+    if (selectAll) {
+      this.selectedPeritos = this.peritos.map((_, index) => index);
+    } else {
+      this.selectedPeritos = [];
+    }
+        
+    this.updateSelectedPeritosDisplay();
+    this.renderPeritosTable();
+    this.updateAutomationButton();
   }
 
   updateSelectedServidoresDisplay() {
@@ -642,6 +726,9 @@ class PeritoApp {
     
     // Update automation button state
     this.updateServidorAutomationButton();
+    
+    // Update select-all checkbox state
+    this.updateSelectAllServidoresCheckbox();
   }
 
   // ===== AUTOMATION METHODS =====
