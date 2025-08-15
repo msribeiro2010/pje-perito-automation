@@ -442,6 +442,7 @@ class ServidorAutomationV2 {
           orgao,
           status: 'Sucesso',
           erro: null,
+          perfil: this.config.perfil,
           timestamp: new Date().toISOString()
         });
         this.sendStatus('success', 'OJ processado com sucesso', progress, orgao);
@@ -470,6 +471,7 @@ class ServidorAutomationV2 {
           orgao: orgaoExistente,
           status: 'Já Incluído',
           erro: null,
+          perfil: this.config.perfil,
           timestamp: new Date().toISOString()
         });
       }
@@ -558,6 +560,7 @@ class ServidorAutomationV2 {
         orgao,
         status: 'Já Incluído',
         erro: null,
+        perfil: this.config.perfil,
         timestamp: new Date().toISOString()
       });
       return; // Skip processamento
@@ -746,23 +749,72 @@ class ServidorAutomationV2 {
     console.log('🎯 ASSERTIVO: Configuração direta de papel/visibilidade...');
     
     try {
-      // 1. PAPEL: Selecionar rapidamente se necessário
-      console.log('🎯 Verificando campo Papel...');
+      // 1. PAPEL: Selecionar perfil configurado
+      console.log(`🎯 Verificando campo Papel - Configurado: ${this.config.perfil || 'Não especificado'}`);
       const matSelectPapel = this.page.locator('mat-dialog-container mat-select[placeholder*="Papel"]');
       if (await matSelectPapel.count() > 0) {
         await matSelectPapel.click();
         await this.page.waitForTimeout(300);
         
-        // Selecionar "Diretor de Secretaria" ou primeira opção
         const opcoesPapel = this.page.locator('mat-option');
-        const diretorOpcao = opcoesPapel.filter({ hasText: /Diretor.*Secretaria/i });
+        let perfilSelecionado = false;
         
-        if (await diretorOpcao.count() > 0) {
-          await diretorOpcao.first().click();
-          console.log('✅ Papel: Diretor de Secretaria selecionado');
-        } else {
+        // Se perfil foi configurado, procurar pela opção correta
+        if (this.config.perfil) {
+          console.log(`🔍 Procurando perfil: ${this.config.perfil}`);
+          
+          // Verificar diferentes variações do nome do perfil
+          const perfilVariacoes = [
+            this.config.perfil,
+            this.config.perfil.replace(/de /gi, ''),
+            this.config.perfil.replace(/Secretario/gi, 'Secretário'),
+            this.config.perfil.replace(/Secretário/gi, 'Secretario'),
+            this.config.perfil.replace(/Audiencia/gi, 'Audiência'),
+            this.config.perfil.replace(/Audiência/gi, 'Audiencia')
+          ];
+          
+          // Tentar encontrar o perfil exato
+          for (const variacao of perfilVariacoes) {
+            const opcaoPerfil = opcoesPapel.filter({ hasText: new RegExp(variacao.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') });
+            if (await opcaoPerfil.count() > 0) {
+              await opcaoPerfil.first().click();
+              console.log(`✅ Papel encontrado e selecionado: ${variacao}`);
+              perfilSelecionado = true;
+              break;
+            }
+          }
+          
+          // Se não encontrou exato, procurar por palavras-chave
+          if (!perfilSelecionado) {
+            console.log(`⚠️ Perfil exato não encontrado, procurando por palavras-chave...`);
+            
+            if (this.config.perfil.toLowerCase().includes('secretario') || this.config.perfil.toLowerCase().includes('secretário')) {
+              if (this.config.perfil.toLowerCase().includes('audiencia') || this.config.perfil.toLowerCase().includes('audiência')) {
+                // Procurar "Secretário de Audiência"
+                const secretarioAudiencia = opcoesPapel.filter({ hasText: /Secretári[oa].*Audiênc/i });
+                if (await secretarioAudiencia.count() > 0) {
+                  await secretarioAudiencia.first().click();
+                  console.log('✅ Papel: Secretário de Audiência selecionado');
+                  perfilSelecionado = true;
+                }
+              } else {
+                // Procurar "Diretor de Secretaria" como fallback
+                const diretorSecretaria = opcoesPapel.filter({ hasText: /Diretor.*Secretaria/i });
+                if (await diretorSecretaria.count() > 0) {
+                  await diretorSecretaria.first().click();
+                  console.log('✅ Papel: Diretor de Secretaria selecionado (fallback)');
+                  perfilSelecionado = true;
+                }
+              }
+            }
+          }
+        }
+        
+        // Se ainda não encontrou, selecionar primeira opção
+        if (!perfilSelecionado) {
           await opcoesPapel.first().click();
-          console.log('✅ Papel: Primeira opção selecionada');
+          const textoSelecionado = await opcoesPapel.first().textContent();
+          console.log(`✅ Papel: Primeira opção selecionada - ${textoSelecionado?.trim()}`);
         }
       }
       
@@ -965,11 +1017,11 @@ class ServidorAutomationV2 {
         
     // Usar a função melhorada com estratégia de trigger
     const { vincularOJMelhorado } = require('../vincularOJ.js');
-    console.log(`🔄 Chamando vincularOJMelhorado para: ${orgao}`);
+    console.log(`🔄 Chamando vincularOJMelhorado para: ${orgao} com perfil: ${this.config.perfil || 'Não especificado'}`);
     await vincularOJMelhorado(
       this.page, 
       orgao, // Nome do órgão como string
-      this.config.perfil || 'Diretor de Secretaria',
+      this.config.perfil || 'Secretário de Audiência', // Usar perfil configurado
       'Público'
     );
     console.log(`✅ vincularOJMelhorado concluído para: ${orgao}`);
@@ -1011,6 +1063,62 @@ class ServidorAutomationV2 {
     }
   }
 
+  // Método para otimizar resultados removendo duplicatas e melhorando informações
+  otimizarResultados() {
+    console.log('🔄 Otimizando resultados do relatório...');
+    
+    // Mapa para agrupar por órgão julgador
+    const orgaosMap = new Map();
+    
+    // Processar cada resultado
+    this.results.forEach(resultado => {
+      const orgao = resultado.orgao;
+      
+      if (!orgaosMap.has(orgao)) {
+        // Primeiro registro para este órgão
+        let statusFinal = resultado.status;
+        let observacoes = resultado.erro || '';
+        
+        // Normalizar status
+        if (statusFinal === 'Sucesso' || statusFinal === 'Já Incluído') {
+          statusFinal = 'Incluído com Sucesso';
+          // Adicionar perfil nas observações (usar perfil do resultado se disponível)
+          observacoes = resultado.perfil || this.config.perfil || 'Perfil não especificado';
+        }
+        
+        orgaosMap.set(orgao, {
+          orgao: orgao,
+          status: statusFinal,
+          observacoes: observacoes,
+          timestamp: resultado.timestamp
+        });
+      } else {
+        // Já existe registro para este órgão - priorizar sucesso
+        const existente = orgaosMap.get(orgao);
+        
+        if (resultado.status === 'Sucesso' && existente.status !== 'Incluído com Sucesso') {
+          // Atualizar para sucesso se ainda não estava
+          existente.status = 'Incluído com Sucesso';
+          existente.observacoes = resultado.perfil || this.config.perfil || 'Perfil não especificado';
+          existente.timestamp = resultado.timestamp;
+        } else if (resultado.status === 'Já Incluído' && existente.status === 'Erro') {
+          // Se teve erro antes mas agora está incluído, atualizar
+          existente.status = 'Incluído com Sucesso';
+          existente.observacoes = resultado.perfil || this.config.perfil || 'Perfil não especificado';
+          existente.timestamp = resultado.timestamp;
+        }
+        // Ignorar duplicatas de "Já Incluído" ou outros casos
+      }
+    });
+    
+    // Converter mapa para array
+    const resultadosFinais = Array.from(orgaosMap.values());
+    
+    console.log(`✅ Resultados otimizados: ${this.results.length} → ${resultadosFinais.length} (${this.results.length - resultadosFinais.length} duplicatas removidas)`);
+    
+    return resultadosFinais;
+  }
+
   async generateReport() {
     this.sendStatus('info', 'Gerando relatório...', 95, 'Finalizando processo');
         
@@ -1020,14 +1128,16 @@ class ServidorAutomationV2 {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
+    
+    // OTIMIZAR RESULTADOS: Remover duplicatas e melhorar informações
+    const resultadosOtimizados = this.otimizarResultados();
         
-    // Calcular estatísticas
-    const sucessos = this.results.filter(r => r.status === 'Sucesso').length;
-    const erros = this.results.filter(r => r.status === 'Erro').length;
-    const jaIncluidos = this.results.filter(r => r.status === 'Já Incluído').length;
-    const totalValidos = sucessos + jaIncluidos + erros;
+    // Calcular estatísticas baseadas nos resultados otimizados
+    const sucessos = resultadosOtimizados.filter(r => r.status === 'Incluído com Sucesso').length;
+    const erros = resultadosOtimizados.filter(r => r.status === 'Erro').length;
+    const totalValidos = sucessos + erros;
         
-    // Gerar relatório JSON detalhado
+    // Gerar relatório JSON detalhado com resultados otimizados
     const jsonReport = {
       timestamp: new Date().toISOString(),
       config: {
@@ -1035,27 +1145,26 @@ class ServidorAutomationV2 {
         perfil: this.config.perfil,
         totalOrgaos: this.config.orgaos.length
       },
-      results: this.results,
+      results: resultadosOtimizados, // Usar resultados otimizados
       summary: {
-        total: this.results.length,
+        total: resultadosOtimizados.length,
         sucessos,
         erros,
-        jaIncluidos,
         totalValidos,
         estatisticas: totalValidos > 0 ? {
           percentualSucesso: parseFloat(((sucessos / totalValidos) * 100).toFixed(1)),
-          percentualJaExistiam: parseFloat(((jaIncluidos / totalValidos) * 100).toFixed(1)),
           percentualErros: parseFloat(((erros / totalValidos) * 100).toFixed(1))
         } : null
       },
       detalhes: {
-        orgaosCadastrados: this.results.filter(r => r.status === 'Sucesso').map(r => r.orgao),
-        orgaosJaExistiam: this.results.filter(r => r.status === 'Já Incluído').map(r => r.orgao),
-        orgaosComErro: this.results.filter(r => r.status === 'Erro').map(r => ({
+        orgaosIncluidos: resultadosOtimizados.filter(r => r.status === 'Incluído com Sucesso').map(r => ({
           orgao: r.orgao,
-          erro: r.erro || 'Erro não especificado'
+          perfil: r.observacoes
         })),
-        orgaosPulados: this.results.filter(r => r.status === 'Pulado').map(r => r.orgao)
+        orgaosComErro: resultadosOtimizados.filter(r => r.status === 'Erro').map(r => ({
+          orgao: r.orgao,
+          erro: r.observacoes || 'Erro não especificado'
+        }))
       }
     };
         
@@ -1063,10 +1172,10 @@ class ServidorAutomationV2 {
     const jsonPath = path.join(outputDir, `relatorio-servidor-${Date.now()}.json`);
     fs.writeFileSync(jsonPath, JSON.stringify(jsonReport, null, 2));
         
-    // Gerar CSV
+    // Gerar CSV otimizado
     const csvContent = [
-      'Órgão Julgador,Status,Erro',
-      ...this.results.map(r => `"${r.orgao}","${r.status}","${r.erro || ''}"`)
+      'Órgão Julgador,Status,Observações',
+      ...resultadosOtimizados.map(r => `"${r.orgao}","${r.status}","${r.observacoes || ''}"`)
     ].join('\n');
         
     const csvPath = path.join(outputDir, `relatorio-servidor-${Date.now()}.csv`);
@@ -1109,13 +1218,15 @@ class ServidorAutomationV2 {
   }
 
   getRelatorio() {
-    // Calcular estatísticas
-    const sucessos = this.results.filter(r => r.status === 'Sucesso').length;
-    const erros = this.results.filter(r => r.status === 'Erro').length;
-    const jaIncluidos = this.results.filter(r => r.status === 'Já Incluído').length;
-    const totalValidos = sucessos + jaIncluidos + erros;
+    // Usar resultados otimizados para o relatório da interface
+    const resultadosOtimizados = this.otimizarResultados();
+    
+    // Calcular estatísticas baseadas nos resultados otimizados
+    const sucessos = resultadosOtimizados.filter(r => r.status === 'Incluído com Sucesso').length;
+    const erros = resultadosOtimizados.filter(r => r.status === 'Erro').length;
+    const totalValidos = sucessos + erros;
         
-    // Retornar relatório no formato esperado pelo frontend
+    // Retornar relatório otimizado no formato esperado pelo frontend
     return {
       timestamp: new Date().toISOString(),
       config: {
@@ -1123,19 +1234,17 @@ class ServidorAutomationV2 {
         perfil: this.config?.perfil || '',
         totalOrgaos: this.config?.orgaos?.length || 0
       },
-      resultados: this.results.map(r => ({
+      resultados: resultadosOtimizados.map(r => ({
         orgao: r.orgao,
         status: r.status,
-        observacoes: r.erro || '-'
+        observacoes: r.observacoes || '-'
       })),
       resumo: {
-        total: this.results.length,
+        total: resultadosOtimizados.length,
         sucessos,
         erros,
-        jaIncluidos,
         totalValidos,
         percentualSucesso: totalValidos > 0 ? parseFloat(((sucessos / totalValidos) * 100).toFixed(1)) : 0,
-        percentualJaIncluidos: totalValidos > 0 ? parseFloat(((jaIncluidos / totalValidos) * 100).toFixed(1)) : 0,
         percentualErros: totalValidos > 0 ? parseFloat(((erros / totalValidos) * 100).toFixed(1)) : 0
       }
     };

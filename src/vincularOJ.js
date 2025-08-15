@@ -1544,7 +1544,7 @@ async function selecionarOrgaoJulgadorNoModal(page, alvoOJ) {
 }
 
 // Função melhorada para vincular OJ usando o fluxo determinístico sugerido pelo usuário
-async function vincularOJMelhorado(page, nomeOJ, papel = 'Diretor de Secretaria', visibilidade = 'Público', modoRapido = false) {
+async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiência', visibilidade = 'Público', modoRapido = false) {
   const tipoModo = modoRapido ? '⚡ RÁPIDO' : '🔄 NORMAL';
   console.log(`${tipoModo} Vinculando OJ: ${nomeOJ} (${papel}, ${visibilidade})`);
   
@@ -2085,7 +2085,7 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Diretor de Secretaria'
   }
 }
 
-async function vincularOJ(page, nomeOJ, papel = 'Diretor de Secretaria', visibilidade = 'Público') {
+async function vincularOJ(page, nomeOJ, papel = 'Secretário de Audiência', visibilidade = 'Público') {
   
   // Verificar se a página está válida antes de começar
   if (page.isClosed()) {
@@ -2866,11 +2866,20 @@ async function configurarPapel(page, papel) {
         const opcoesPapel = [
           `mat-option:has-text("${papel}")`,
           `mat-option[value="${papel}"]`,
-          `mat-option:has-text("Diretor de Secretaria")`,
-          `mat-option:has-text("Diretor")`,
           `[role="option"]:has-text("${papel}")`,
-          `[role="option"]:has-text("Diretor de Secretaria")`,
-          `[role="option"]:has-text("Diretor")`
+          // Fallbacks genéricos apenas se não especificado
+          ...(papel === 'Secretário de Audiência' ? [
+            `mat-option:has-text("Secretário de Audiência")`,
+            `mat-option:has-text("Secretario de Audiencia")`,
+            `mat-option:has-text("Secretário")`,
+            `[role="option"]:has-text("Secretário")`,
+            `[role="option"]:has-text("Secretario")`
+          ] : []),
+          ...(papel === 'Diretor de Secretaria' ? [
+            `mat-option:has-text("Diretor de Secretaria")`,
+            `mat-option:has-text("Diretor")`,
+            `[role="option"]:has-text("Diretor")`
+          ] : [])
         ];
         
         let opcaoSelecionada = false;

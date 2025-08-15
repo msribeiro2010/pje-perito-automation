@@ -5,57 +5,77 @@
 }
 
 :root {
-    --primary-color: #2563eb;
-    --primary-light: #3b82f6;
-    --primary-dark: #1d4ed8;
-    --secondary-color: #f1f5f9;
-    --accent-color: #0ea5e9;
-    --success-color: #10b981;
-    --warning-color: #f59e0b;
-    --error-color: #ef4444;
-    --text-primary: #1e293b;
-    --text-secondary: #64748b;
-    --text-light: #94a3b8;
-    --border-color: #e2e8f0;
-    --border-light: #f1f5f9;
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    --radius-sm: 0.375rem;
-    --radius-md: 0.5rem;
-    --radius-lg: 0.75rem;
-    --radius-xl: 1rem;
+    /* Paleta Papiro/Pergaminho - Tons suaves e naturais */
+    --primary-color: #8b7355;
+    --primary-light: #a0845c;
+    --primary-dark: #7a634a;
+    --secondary-color: #f9f7f4;
+    --accent-color: #b8956f;
+    --success-color: #6b8e58;
+    --warning-color: #d4a574;
+    --error-color: #c07b73;
+    
+    /* Tons de texto inspirados em tinta sépia */
+    --text-primary: #3a342a;
+    --text-secondary: #6b625a;
+    --text-light: #8e8379;
+    
+    /* Bordas e fundos em tons de pergaminho */
+    --border-color: #e8e4de;
+    --border-light: #f2efea;
+    --background-primary: #fefcf9;
+    --background-secondary: #f7f5f2;
+    
+    /* Sombras mais suaves */
+    --shadow-sm: 0 1px 2px 0 rgb(58 52 42 / 0.08);
+    --shadow-md: 0 4px 6px -1px rgb(58 52 42 / 0.12), 0 2px 4px -2px rgb(58 52 42 / 0.08);
+    --shadow-lg: 0 10px 15px -3px rgb(58 52 42 / 0.15), 0 4px 6px -4px rgb(58 52 42 / 0.08);
+    --shadow-xl: 0 20px 25px -5px rgb(58 52 42 / 0.18), 0 8px 10px -6px rgb(58 52 42 / 0.10);
+    
+    /* Bordas arredondadas mais suaves */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
 }
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%);
-    background-size: 400% 400%;
-    animation: gradientShift 15s ease infinite;
+    background: linear-gradient(135deg, #f4f1eb 0%, #ede8e0 30%, #e8e2d8 70%, #e0d9cc 100%);
+    background-attachment: fixed;
     min-height: 100vh;
     color: var(--text-primary);
     line-height: 1.6;
+    position: relative;
 }
 
-@keyframes gradientShift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        radial-gradient(circle at 20% 20%, rgba(184, 149, 111, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(139, 115, 85, 0.04) 0%, transparent 50%),
+        radial-gradient(circle at 60% 40%, rgba(160, 132, 92, 0.02) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: -1;
 }
 
 .container {
     max-width: 1400px;
     margin: 0 auto;
     padding: 24px;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
+    background: rgba(254, 252, 249, 0.95);
+    backdrop-filter: blur(15px);
     min-height: 100vh;
-    box-shadow: var(--shadow-xl);
+    box-shadow: var(--shadow-lg);
     border-radius: var(--radius-xl);
     margin-top: 20px;
     margin-bottom: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(248, 245, 240, 0.6);
 }
 
 header {
@@ -149,7 +169,7 @@ header p {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+    background: rgba(139, 115, 85, 0.05);
     opacity: 0;
     transition: opacity 0.3s ease;
 }
@@ -195,11 +215,11 @@ header p {
     align-items: center;
     margin-bottom: 25px;
     padding-bottom: 15px;
-    border-bottom: 1px solid #ecf0f1;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .section-header h2 {
-    color: #2c3e50;
+    color: var(--text-primary);
     font-size: 1.8em;
 }
 
@@ -232,8 +252,8 @@ header p {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s ease;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+    transition: left 0.6s ease;
 }
 
 .btn:hover {
@@ -313,7 +333,7 @@ header p {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
-    color: #2c3e50;
+    color: var(--text-primary);
 }
 
 .form-group input,
@@ -321,35 +341,39 @@ header p {
 .form-group select {
     width: 100%;
     padding: 12px;
-    border: 2px solid #ecf0f1;
-    border-radius: 6px;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
     font-size: 1em;
     transition: border-color 0.3s ease;
+    background: var(--background-primary);
+    color: var(--text-primary);
 }
 
 .form-group input:focus,
 .form-group textarea:focus,
 .form-group select:focus {
     outline: none;
-    border-color: #3498db;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(139, 115, 85, 0.1);
 }
 
 .config-form {
     max-width: 500px;
     margin: 0 auto;
     padding: 30px;
-    background: #f8f9fa;
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    background: var(--background-secondary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-light);
 }
 
 /* Table */
 .table-container {
-    background: white;
-    border-radius: 10px;
+    background: var(--background-primary);
+    border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-light);
 }
 
 table {
@@ -360,19 +384,19 @@ table {
 th, td {
     padding: 15px;
     text-align: left;
-    border-bottom: 1px solid #ecf0f1;
+    border-bottom: 1px solid var(--border-color);
 }
 
 th {
-    background: #f8f9fa;
+    background: var(--background-secondary);
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--text-primary);
     position: sticky;
     top: 0;
 }
 
 tr:hover {
-    background: #f8f9fa;
+    background: var(--background-secondary);
 }
 
 .ojs-list {
@@ -381,10 +405,10 @@ tr:hover {
 
 .oj-tag {
     display: inline-block;
-    background: #3498db;
+    background: var(--primary-color);
     color: white;
     padding: 4px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.8em;
     margin: 2px;
 }
@@ -1437,16 +1461,31 @@ tr:hover {
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* Acelerar animações em geral */
+/* Suavizar animações em geral */
 *, *::before, *::after {
-    animation-duration: 0.2s !important;
-    transition-duration: 0.15s !important;
+    animation-duration: 0.3s !important;
+    transition-duration: 0.25s !important;
 }
 
-/* Exceções para animações que devem ser mais lentas */
+/* Exceções para animações específicas */
 .loading-overlay, .spinner {
-    animation-duration: 1s !important;
-    transition-duration: 0.3s !important;
+    animation-duration: 1.5s !important;
+    transition-duration: 0.4s !important;
+}
+
+/* Animações muito suaves para elementos piscantes */
+.tab-button:hover, .btn:hover {
+    transition-duration: 0.4s !important;
+}
+
+.oj-tag:hover {
+    transform: translateY(-1px);
+    transition: all 0.4s ease;
+}
+
+/* Reduzir efeitos brilhantes nos botões */
+.btn:hover {
+    box-shadow: var(--shadow-md);
 }
 
 /* Report Modal Styles */
@@ -1772,7 +1811,7 @@ tr:hover {
     margin-top: 60px;
     padding: 32px 0;
     border-top: 1px solid var(--border-color);
-    background: linear-gradient(135deg, rgba(37, 99, 235, 0.02) 0%, rgba(14, 165, 233, 0.02) 100%);
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.03) 0%, rgba(184, 149, 111, 0.02) 100%);
     border-radius: 0 0 var(--radius-xl) var(--radius-xl);
     position: relative;
 }
@@ -1834,7 +1873,7 @@ tr:hover {
 
 .footer-credits .heart {
     color: var(--error-color);
-    animation: heartbeat 2s ease-in-out infinite;
+    animation: heartbeat 3s ease-in-out infinite;
 }
 
 .footer-credits .author {
@@ -1851,8 +1890,8 @@ tr:hover {
 }
 
 @keyframes heartbeat {
-    0%, 50%, 100% { transform: scale(1); }
-    25%, 75% { transform: scale(1.1); }
+    0%, 60%, 100% { transform: scale(1); }
+    30% { transform: scale(1.05); }
 }
 
 /* Responsive adjustments for report modal */
