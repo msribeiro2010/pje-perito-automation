@@ -38,6 +38,8 @@ class ServidorAutomationV2 {
       .replace(/doTrabalho/g, 'do Trabalho')  // Corrigir "doTrabalho" → "do Trabalho"
       .replace(/daTrabalho/g, 'da Trabalho')  // Corrigir "daTrabalho" → "da Trabalho"  
       .replace(/deTrabalho/g, 'de Trabalho')  // Corrigir "deTrabalho" → "de Trabalho"
+      .replace(/Trrabalho/g, 'Trabalho')  // Corrigir "Trrabalho" → "Trabalho" (duplo R)
+      .replace(/trrabalho/g, 'trabalho')  // Corrigir versão minúscula
       .trim();
   }
 
@@ -102,49 +104,200 @@ class ServidorAutomationV2 {
     const servidores = config.servidores;
     this.totalOrgaos = servidores.reduce((total, servidor) => total + (servidor.orgaos ? servidor.orgaos.length : 0), 0);
     
-    this.sendStatus('info', `Iniciando automação para ${servidores.length} servidores...`, 0, 'Configurando ambiente');
+    // Inicializar estrutura de relatório por servidor
+    this.servidorResults = {};
+    this.processedServidores = 0;
+    this.successfulServidores = 0;
+    this.failedServidores = 0;
+    this.consecutiveErrors = 0;
+    this.maxConsecutiveErrors = 3; // Parar após 3 erros consecutivos
+    
+    this.sendStatus('info', `🚀 AUTOMAÇÃO EM LOTE: ${servidores.length} servidores, ${this.totalOrgaos} OJs total`, 0, 'Iniciando processamento sequencial robusto');
     
     await this.initializeBrowser();
     await this.performLogin();
     
-    // Processar cada servidor na mesma sessão
+    // Processar cada servidor na mesma sessão com recuperação robusta
     for (let i = 0; i < servidores.length; i++) {
       const servidor = servidores[i];
+      const progressBase = (i / servidores.length) * 90;
       
-      this.sendStatus('info', `Processando servidor ${i + 1}/${servidores.length}: ${servidor.nome}`, 
-        (i / servidores.length) * 90, `CPF: ${servidor.cpf}`);
+      // Verificar limite de erros consecutivos
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+        this.sendStatus('error', `🚨 PARADA DE SEGURANÇA: ${this.maxConsecutiveErrors} erros consecutivos detectados`, 90, 'Automação interrompida por segurança');
+        break;
+      }
       
-      try {
-        // Configurar dados do servidor atual
-        this.config.cpf = servidor.cpf;
-        this.config.perfil = servidor.perfil;
-        this.config.orgaos = servidor.orgaos || [];
+      // Inicializar resultado do servidor
+      this.servidorResults[servidor.cpf] = {
+        nome: servidor.nome,
+        cpf: servidor.cpf,
+        perfil: servidor.perfil,
+        totalOJs: servidor.orgaos ? servidor.orgaos.length : 0,
+        ojsProcessados: 0,
+        sucessos: 0,
+        erros: 0,
+        jaIncluidos: 0,
+        detalhes: [],
+        status: 'Processando',
+        inicioProcessamento: new Date().toISOString(),
+        fimProcessamento: null,
+        tempoProcessamento: null,
+        tentativas: 0,
+        maxTentativas: 2
+      };
+      
+      this.sendStatus('info', `🎯 [${i + 1}/${servidores.length}] ${servidor.nome}`, 
+        progressBase, `CPF: ${servidor.cpf} | ${servidor.orgaos?.length || 0} OJs | Erros consecutivos: ${this.consecutiveErrors}`);
+      
+      const startTime = Date.now();
+      let servidorProcessado = false;
+      
+      // Tentar processar servidor com retry automático
+      for (let tentativa = 1; tentativa <= this.servidorResults[servidor.cpf].maxTentativas && !servidorProcessado; tentativa++) {
+        this.servidorResults[servidor.cpf].tentativas = tentativa;
         
-        await this.navigateDirectlyToPerson(servidor.cpf);
-        await this.navigateToServerTab();
-        await this.processOrgaosJulgadores();
+        try {
+          this.sendStatus('info', `🔄 [${i + 1}/${servidores.length}] Tentativa ${tentativa}/${this.servidorResults[servidor.cpf].maxTentativas} - ${servidor.nome}`, 
+            progressBase, 'Preparando processamento...');
+          
+          console.log(`🎯 ===== INICIANDO PROCESSAMENTO DO SERVIDOR ${i + 1}: ${servidor.nome} =====`);
+          
+          // Garantir navegador ativo antes de processar
+          console.log(`🔍 [${i + 1}/${servidores.length}] Verificando navegador ativo...`);
+          await this.ensureBrowserActive();
+          
+          // Garantir recuperação completa antes de processar
+          console.log(`🧹 [${i + 1}/${servidores.length}] Limpando estado...`);
+          await this.ensureCleanState();
+          
+          // Configurar dados do servidor atual
+          console.log(`⚙️ [${i + 1}/${servidores.length}] Configurando dados do servidor...`);
+          this.config.cpf = servidor.cpf;
+          this.config.perfil = servidor.perfil;
+          this.config.orgaos = servidor.orgaos || [];
+          console.log(`📋 Servidor configurado: CPF=${servidor.cpf}, Perfil=${servidor.perfil}, OJs=${servidor.orgaos?.length || 0}`);
+          
+          // Debug detalhado do estado atual
+          console.log('🔍 [DEBUG] Estado do navegador:');
+          const currentUrl = this.page.url();
+          console.log(`   URL atual: ${currentUrl}`);
+          const pageTitle = await this.page.title();
+          console.log(`   Título: ${pageTitle}`);
+          console.log(`   Servidor ${i + 1}: ${servidor.nome} (${servidor.cpf})`);
+          console.log(`   OJs a processar: ${JSON.stringify(servidor.orgaos?.slice(0,3) || [])}${servidor.orgaos?.length > 3 ? '...' : ''}`);
+          
+          // Navegação robusta
+          console.log(`🔗 [${i + 1}/${servidores.length}] Navegando para pessoa...`);
+          await this.navigateDirectlyToPerson(servidor.cpf);
+          
+          // Debug após navegação
+          const urlAposNavegacao = this.page.url();
+          console.log(`🔍 [DEBUG] URL após navegação: ${urlAposNavegacao}`);
+          console.log(`🔍 [DEBUG] Navegação para ${servidor.nome} (${servidor.cpf}) CONCLUÍDA`);
+          
+          console.log(`📂 [${i + 1}/${servidores.length}] Acessando aba servidor...`);
+          await this.navigateToServerTab();
+          
+          // Debug após acessar aba servidor
+          const urlAposAbaServidor = this.page.url();
+          console.log(`🔍 [DEBUG] URL após aba servidor: ${urlAposAbaServidor}`);
+          console.log(`🔍 [DEBUG] Aba servidor acessada para ${servidor.nome}`);
+          
+          // Processar OJs com monitoramento detalhado
+          console.log(`🎯 [${i + 1}/${servidores.length}] Processando ${servidor.orgaos?.length || 0} OJs...`);
+          console.log(`🔍 [DEBUG] Iniciando processamento de OJs para ${servidor.nome}:`);
+          for (let debugOJ = 0; debugOJ < Math.min(3, servidor.orgaos?.length || 0); debugOJ++) {
+            console.log(`   OJ ${debugOJ + 1}: ${servidor.orgaos[debugOJ]}`);
+          }
+          
+          await this.processOrgaosJulgadoresWithServerTracking(servidor);
+          console.log(`✅ [${i + 1}/${servidores.length}] Processamento de OJs concluído`);
+          console.log(`🔍 [DEBUG] Processamento de OJs FINALIZADO para ${servidor.nome}`);
+          
+          // Finalizar resultado do servidor
+          console.log(`📋 [${i + 1}/${servidores.length}] Finalizando resultado do servidor...`);
+          const serverResult = this.servidorResults[servidor.cpf];
+          serverResult.status = 'Concluído';
+          serverResult.fimProcessamento = new Date().toISOString();
+          serverResult.tempoProcessamento = Date.now() - startTime;
+          
+          this.processedServidores++;
+          this.successfulServidores++;
+          this.consecutiveErrors = 0; // Reset contador de erros
+          
+          console.log(`🎉 [${i + 1}/${servidores.length}] Servidor ${servidor.nome} CONCLUÍDO com sucesso!`);
+          
+          this.sendStatus('success', `✅ [${i + 1}/${servidores.length}] ${servidor.nome}: ${serverResult.sucessos} sucessos, ${serverResult.erros} erros`, 
+            ((i + 1) / servidores.length) * 90, `Tempo: ${(serverResult.tempoProcessamento/1000).toFixed(1)}s`);
+          
+          servidorProcessado = true;
+          
+        } catch (error) {
+          console.error(`❌ TENTATIVA ${tentativa} FALHOU - Servidor: ${servidor.nome} (${servidor.cpf})`);
+          console.error(`   Erro: ${error.message}`);
+          
+          if (tentativa === this.servidorResults[servidor.cpf].maxTentativas) {
+            // Última tentativa falhou
+            const serverResult = this.servidorResults[servidor.cpf];
+            serverResult.status = 'Erro';
+            serverResult.fimProcessamento = new Date().toISOString();
+            serverResult.tempoProcessamento = Date.now() - startTime;
+            serverResult.erroGeral = error.message;
+            
+            this.processedServidores++;
+            this.failedServidores++;
+            this.consecutiveErrors++;
+            
+            this.sendStatus('error', `❌ [${i + 1}/${servidores.length}] ${servidor.nome}: ${error.message}`, 
+              ((i + 1) / servidores.length) * 90, `FALHA após ${this.servidorResults[servidor.cpf].maxTentativas} tentativas`);
+            
+            // Log detalhado do erro final
+            console.error(`💥 FALHA FINAL - Servidor: ${servidor.nome} (${servidor.cpf})`);
+            console.error(`   Erro: ${error.message}`);
+            console.error(`   Stack: ${error.stack}`);
+            console.error(`   Tentativas realizadas: ${tentativa}`);
+          } else {
+            // Ainda há tentativas, tentar recuperação
+            this.sendStatus('warning', `⚠️ [${i + 1}/${servidores.length}] Tentativa ${tentativa} falhou: ${error.message}`, 
+              progressBase, 'Tentando recuperação para próxima tentativa...');
+          }
+          
+          // Tentar recuperação robusta para próxima tentativa ou próximo servidor
+          await this.performRobustRecovery();
+        }
+      }
+      
+      // Pausa estabilizada entre servidores para garantir continuidade
+      if (i < servidores.length - 1) {
+        console.log(`🔄 ===== TRANSIÇÃO: Servidor ${i + 1} → Servidor ${i + 2} =====`);
+        console.log(`⏳ Preparando para próximo servidor (${servidores[i + 1].nome})...`);
         
-        // Adicionar resultado do servidor
-        const servidorResults = this.results.filter(r => r.cpf === servidor.cpf);
-        this.sendStatus('success', `Servidor ${servidor.nome} processado: ${servidorResults.filter(r => r.status === 'Incluído com Sucesso').length} sucessos`, 
-          ((i + 1) / servidores.length) * 90);
+        this.sendStatus('info', '⏳ Preparando para próximo servidor...', 
+          ((i + 1) / servidores.length) * 90, 'Estabilizando sistema');
         
-      } catch (error) {
-        this.sendStatus('error', `Erro ao processar servidor ${servidor.nome}: ${error.message}`, 
-          ((i + 1) / servidores.length) * 90);
-        
-        // Adicionar resultado de erro
-        this.results.push({
-          servidor: servidor.nome,
-          cpf: servidor.cpf,
-          status: 'Erro',
-          erro: error.message,
-          timestamp: new Date().toISOString()
-        });
+        // Limpeza extra entre servidores
+        try {
+          console.log('🧹 Limpeza extra entre servidores...');
+          
+          // IMPORTANTE: Limpar cache de OJs entre servidores
+          console.log(`🗑️ Limpando cache de OJs (${this.ojCache.size} OJs em cache)...`);
+          this.ojCache.clear();
+          console.log('✅ Cache de OJs limpo - próximo servidor processará todos os OJs');
+          
+          await this.closeAnyModals();
+          await this.delay(800); // Pausa maior para estabilidade
+          console.log('✅ Sistema estabilizado para próximo servidor');
+        } catch (transitionError) {
+          console.log('⚠️ Erro na transição entre servidores:', transitionError.message);
+          await this.delay(1000); // Pausa extra se houver erro
+        }
+      } else {
+        console.log('🏁 ===== ÚLTIMO SERVIDOR PROCESSADO - FINALIZANDO =====');
       }
     }
     
-    await this.generateReport();
+    await this.generateMultiServerReport();
   }
 
   async processSingleServidor(config) {
@@ -242,6 +395,15 @@ class ServidorAutomationV2 {
     const directUrl = `https://pje.trt15.jus.br/pjekz/pessoa-fisica?pagina=1&tamanhoPagina=10&cpf=${encodeURIComponent(cpfFormatado)}&situacao=1`;
         
     console.log(`🔗 Navegando para URL direta: ${directUrl}`);
+    
+    // IMPORTANTE: Fechar qualquer modal/overlay antes de navegar
+    try {
+      console.log('🧹 Limpando modais antes da navegação...');
+      await this.closeAnyModals();
+      await this.delay(500);
+    } catch (cleanError) {
+      console.log('⚠️ Erro na limpeza inicial:', cleanError.message);
+    }
         
     // Múltiplas estratégias de carregamento para otimizar velocidade
     const navigationStrategies = [
@@ -269,6 +431,11 @@ class ServidorAutomationV2 {
           this.page.waitForSelector('[data-test-id]', { timeout: 5000 }),
           this.page.waitForTimeout(2000) // Fallback mínimo
         ]);
+        
+        // IMPORTANTE: Verificar se não há modais bloqueando após navegação
+        console.log('🧹 Limpando modais após navegação...');
+        await this.closeAnyModals();
+        await this.delay(1000);
                 
         navigationSuccess = true;
         this.sendStatus('success', `Navegação bem-sucedida com: ${strategy.description}`, 40, 'Pessoa encontrada');
@@ -291,9 +458,18 @@ class ServidorAutomationV2 {
       throw lastError || new Error('Falha em todas as estratégias de navegação');
     }
         
-    // Verificar se chegou na página correta
+    // Verificar se chegou na página correta e limpar novamente
     const currentUrl = this.page.url();
     console.log(`✅ URL atual após navegação: ${currentUrl}`);
+    
+    // Final cleanup para garantir página limpa
+    try {
+      await this.closeAnyModals();
+      await this.delay(500);
+      console.log('✅ Página limpa e pronta para processar');
+    } catch (finalCleanError) {
+      console.log('⚠️ Erro na limpeza final:', finalCleanError.message);
+    }
   }
 
   async searchByCPF(cpf) {
@@ -396,51 +572,601 @@ class ServidorAutomationV2 {
 
   async navigateToServerTab() {
     this.sendStatus('info', 'Navegando para aba Servidor...', 45, 'Acessando perfil');
+    
+    let editSuccessful = false;
+    
+    try {
+      // Clicar no ícone de edição
+      await this.clickEditIcon();
+      editSuccessful = true;
+      console.log('✅ Ícone de edição clicado com sucesso');
+      
+      // Aguardar navegação
+      await this.delay(2000);
+      
+      // Clicar na aba Servidor
+      await this.clickServerTab();
+      
+    } catch (editError) {
+      console.error('❌ Falha ao clicar no ícone de edição:', editError.message);
+      
+      // ESTRATÉGIA DE FALLBACK: Tentar navegar diretamente para a página de edição
+      console.log('🔄 TENTANDO FALLBACK: Navegação direta para edição');
+      
+      try {
+        const currentUrl = this.page.url();
+        console.log(`📍 URL atual: ${currentUrl}`);
         
-    // Clicar no ícone de edição
-    await this.clickEditIcon();
+        // Se já estamos na página de pessoa, tentar URLs diretas de edição
+        if (currentUrl.includes('pessoa-fisica')) {
+          const possibleEditUrls = [
+            currentUrl.replace('pessoa-fisica', 'pessoa-fisica/alterar'),
+            currentUrl.replace('pessoa-fisica', 'pessoa-fisica/editar'),
+            currentUrl + '/alterar',
+            currentUrl + '/editar',
+            currentUrl.includes('?') ? currentUrl + '&acao=alterar' : currentUrl + '?acao=alterar'
+          ];
+          
+          for (const editUrl of possibleEditUrls) {
+            try {
+              console.log(`🔗 Tentando URL direta: ${editUrl}`);
+              await this.page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+              await this.delay(2000);
+              
+              // Verificar se chegamos numa página de edição (procurar pela aba Servidor)
+              const serverTabExists = await this.page.$('text=Servidor, a[href*="servidor"], button:has-text("Servidor")');
+              if (serverTabExists) {
+                console.log('✅ FALLBACK SUCEDIDO: Página de edição alcançada');
+                editSuccessful = true;
+                
+                // Tentar clicar na aba servidor
+                await this.clickServerTab();
+                break;
+              } else {
+                console.log('❌ URL não levou à página de edição');
+              }
+              
+            } catch (urlError) {
+              console.log(`❌ Falha na URL ${editUrl}: ${urlError.message}`);
+            }
+          }
+        }
         
-    // Clicar na aba Servidor
-    await this.clickServerTab();
+        // Se ainda não conseguimos, tentar uma última estratégia
+        if (!editSuccessful) {
+          console.log('🚨 ESTRATÉGIA FINAL: Buscar por qualquer link/form de edição na página atual');
+          
+          const currentPageContent = await this.page.content();
+          if (currentPageContent.includes('servidor') || currentPageContent.includes('Servidor')) {
+            console.log('✅ Conteúdo de servidor detectado na página atual');
+            
+            // Tentar encontrar e clicar na aba servidor diretamente
+            await this.clickServerTab();
+            editSuccessful = true;
+          }
+        }
         
-    this.sendStatus('success', 'Aba Servidor acessada', 50, 'Pronto para processar OJs');
+      } catch (fallbackError) {
+        console.error('❌ Estratégias de fallback falharam:', fallbackError.message);
+        throw new Error(`Não foi possível acessar a página de edição: ${editError.message} | Fallback: ${fallbackError.message}`);
+      }
+    }
+    
+    if (editSuccessful) {
+      this.sendStatus('success', 'Aba Servidor acessada', 50, 'Pronto para processar OJs');
+    } else {
+      throw new Error('Falha completa ao acessar a aba Servidor');
+    }
   }
 
   async clickEditIcon() {
+    console.log('🎯 VERSÃO MELHORADA: Detecção robusta de ícone de edição...');
+    
+    // Debug: verificar elementos visíveis na página
+    try {
+      const pageContent = await this.page.content();
+      console.log(`📄 URL atual: ${this.page.url()}`);
+      
+      // Verificar se há tabela na página
+      const hasTable = pageContent.includes('<table') || pageContent.includes('datatable');
+      console.log(`🗂️ Tabela detectada: ${hasTable}`);
+      
+      // Procurar por elementos que podem ser botões de edição (limitado para performance)
+      try {
+        const potentialButtons = await this.page.$$eval('button, a', elements => 
+          elements.slice(0, 20).map(el => ({
+            tagName: el.tagName,
+            text: el.textContent?.trim().substring(0, 50),
+            title: el.title,
+            className: el.className?.substring(0, 100)
+          }))
+        );
+        console.log('🔘 Primeiros botões/links encontrados:', potentialButtons);
+      } catch (evalError) {
+        console.log('⚠️ Erro ao listar botões:', evalError.message);
+      }
+    } catch (debugError) {
+      console.log('⚠️ Erro no debug:', debugError.message);
+    }
+
+    // Seletores CORRETOS baseados no HTML fornecido pelo usuário
     const editSelectors = [
-      'button[title="Alterar pessoa"]',
-      'a[title="Alterar pessoa"]',
-      'button[title*="Editar"]:not([title*="Excluir"]):not([title*="Remover"])',
-      'a[title*="Editar"]:not([title*="Excluir"]):not([title*="Remover"])',
-      'i.fa-edit',
-      'i.fa-pencil',
+      // Seletores específicos baseados no código real
+      'button[aria-label="Alterar pessoa"]',
+      'button[mattooltip="Alterar pessoa"]',
+      'button:has(i.fa-pencil-alt)',
+      '.visivel-hover',
+      'button.visivel-hover',
+      '.fa-pencil-alt',
+      'i.fa-pencil-alt',
+      'i.fas.fa-pencil-alt',
+      '#cdk-drop-list-1 > tr > td:nth-child(6) > button',
+      'td:nth-child(6) button',
+      'td:nth-child(6) .visivel-hover',
+      
+      // Fallbacks genéricos
+      'button[title*="Alterar"]',
+      'a[title*="Alterar"]', 
       '.fa-edit',
-      '.fa-pencil',
-      'button:has(i.fa-edit)',
-      'button:has(i.fa-pencil)',
-      'td:nth-last-child(2) button',
-      'td:last-child button:first-child'
+      '.fa-pencil'
     ];
         
     let editButton = null;
+    let editButtonElement = null;
+    
+    // NOVA ESTRATÉGIA 1: Forçar visibilidade e fazer hover intensivo
+    console.log('🔧 ESTRATÉGIA 1: Forçando visibilidade e hover intensivo...');
+    
+    try {
+      // 1.1: Forçar visibilidade via JavaScript
+      await this.page.evaluate(() => {
+        // Forçar todos os elementos .visivel-hover serem visíveis
+        const hoverElements = document.querySelectorAll('.visivel-hover, button[aria-label="Alterar pessoa"]');
+        console.log(`Forçando visibilidade em ${hoverElements.length} elementos`);
         
-    for (const selector of editSelectors) {
+        hoverElements.forEach((element, index) => {
+          element.style.visibility = 'visible';
+          element.style.opacity = '1'; 
+          element.style.display = 'inline-block';
+          element.style.pointerEvents = 'auto';
+          console.log(`Elemento ${index + 1} forçado a ser visível`);
+        });
+        
+        return hoverElements.length;
+      });
+      
+      console.log('✅ Visibilidade forçada via JavaScript');
+      
+      // 1.2: Fazer hover intensivo em todas as linhas da tabela
+      const allRows = await this.page.$$('table tbody tr, .table tbody tr, .datatable tbody tr, #cdk-drop-list-1 > tr');
+      console.log(`📋 Fazendo hover intensivo em ${allRows.length} linhas...`);
+      
+      for (let i = 0; i < Math.min(allRows.length, 3); i++) {
+        const row = allRows[i];
+        try {
+          console.log(`🖱️ Hover intensivo na linha ${i + 1}...`);
+          await row.hover();
+          await this.delay(1000);
+          
+          // Verificar imediatamente se botões apareceram
+          const buttonsInRow = await row.$$('button[aria-label="Alterar pessoa"], .visivel-hover, i.fa-pencil-alt');
+          if (buttonsInRow.length > 0) {
+            console.log(`✅ ${buttonsInRow.length} botões encontrados após hover na linha ${i + 1}`);
+            
+            for (const btn of buttonsInRow) {
+              const isVisible = await btn.isVisible();
+              if (isVisible) {
+                editButtonElement = btn;
+                editButton = `Hover linha ${i + 1} - botão visível`;
+                console.log(`🎯 SUCESSO: ${editButton}`);
+                break;
+              }
+            }
+            
+            if (editButtonElement) break;
+          }
+        } catch (hoverRowError) {
+          console.log(`⚠️ Erro hover linha ${i + 1}:`, hoverRowError.message);
+        }
+      }
+      
+    } catch (forceError) {
+      console.log('⚠️ Erro na estratégia de força:', forceError.message);
+    }
+    
+    // ESTRATÉGIA 2: Clique direto na linha se não encontrou botões 
+    if (!editButtonElement) {
+      console.log('🎯 ESTRATÉGIA 2: Clique direto na linha da tabela...');
       try {
-        await this.page.waitForSelector(selector, { timeout: 2000 });
-        editButton = selector;
-        console.log(`✅ Ícone de edição encontrado: ${selector}`);
-        break;
-      } catch (error) {
-        console.log(`Seletor ${selector} não encontrado`);
+        const firstRow = await this.page.$('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child, #cdk-drop-list-1 > tr:first-child');
+        if (firstRow) {
+          console.log('✅ Executando clique direto na primeira linha...');
+          
+          // Primeiro fazer hover para garantir
+          await firstRow.hover();
+          await this.delay(500);
+          
+          // Então clicar
+          await firstRow.click();
+          await this.delay(3000);
+          
+          // Verificar se mudou de página
+          const currentUrl = this.page.url();
+          console.log(`📍 URL após clique: ${currentUrl}`);
+          
+          if (currentUrl.includes('editar') || currentUrl.includes('edit') || currentUrl.includes('detalhes')) {
+            console.log('🎯 SUCESSO: Navegação por clique na linha realizada!');
+            editButtonElement = firstRow;
+            editButton = 'Clique direto na linha da tabela';
+          } else {
+            console.log('⚠️ Clique na linha não levou à página de edição, tentando double-click...');
+            
+            await firstRow.dblclick();
+            await this.delay(3000);
+            
+            const newUrl = this.page.url();
+            if (newUrl !== currentUrl && (newUrl.includes('editar') || newUrl.includes('edit'))) {
+              console.log('🎯 SUCESSO: Navegação por double-click realizada!');
+              editButtonElement = firstRow;
+              editButton = 'Double-click na linha da tabela';
+            }
+          }
+        }
+      } catch (directClickError) {
+        console.log('⚠️ Erro no clique direto:', directClickError.message);
+      }
+    }
+    
+    // ESTRATÉGIA 3: Seletores tradicionais (apenas se estratégias anteriores falharam)
+    if (!editButtonElement) {
+      console.log('🔍 ESTRATÉGIA 3: Testando seletores tradicionais...');
+      
+      for (const selector of editSelectors) {
+        try {
+          console.log(`🔍 Testando seletor: ${selector}`);
+        
+          // Timeout muito reduzido para chegar logo nas estratégias especiais
+          await this.page.waitForSelector(selector, { timeout: 500, state: 'attached' });
+        
+          // Obter o elemento
+          editButtonElement = await this.page.$(selector);
+        
+          if (editButtonElement) {
+          // Verificar se está visível
+            const isVisible = await editButtonElement.isVisible();
+            if (isVisible) {
+              editButton = selector;
+              console.log(`✅ Ícone de edição encontrado e visível: ${selector}`);
+              break;
+            } else {
+              console.log(`⚠️ Elemento ${selector} existe mas não está visível`);
+            }
+          }
+        } catch (error) {
+        // Log simplificado para não poluir
+          console.log(`❌ ${selector} (timeout 500ms)`);
+        }
+      }
+    }
+
+    // Estratégia alternativa se nenhum seletor funcionou
+    if (!editButton || !editButtonElement) {
+      console.log('🔄 ===== SELETORES TRADICIONAIS FALHARAM - INICIANDO ESTRATÉGIAS ESPECIAIS =====');
+      console.log('🔄 ESTRATÉGIA ALTERNATIVA: Análise completa da tabela');
+      try {
+        // Primeiro, tentar encontrar qualquer tabela
+        const tableExists = await this.page.$('table, .table, .datatable');
+        if (tableExists) {
+          console.log('✅ Tabela encontrada, analisando linhas...');
+          
+          // Buscar todas as linhas da tabela
+          const rows = await this.page.$$('table tbody tr, .table tbody tr, .datatable tbody tr');
+          console.log(`🗂️ Encontradas ${rows.length} linhas na tabela`);
+          
+          if (rows.length > 0) {
+            // Analisar a primeira linha para entender a estrutura
+            const firstRow = rows[0];
+            
+            // ESTRATÉGIA ESPECÍFICA PARA PJE: Hover na linha para revelar botões
+            console.log('🖱️ Fazendo hover na primeira linha para revelar botões...');
+            try {
+              await firstRow.hover();
+              await this.delay(1000); // Aguardar botões aparecerem
+              console.log('✅ Hover realizado na linha');
+            } catch (hoverError) {
+              console.log('⚠️ Erro no hover:', hoverError.message);
+            }
+            
+            // Buscar elementos clicáveis em toda a linha após hover
+            const allRowElements = await firstRow.$$('button, a, i, span[onclick], div[onclick], .fa, .fas, .far, [class*="edit"], [class*="pencil"], [title*="Alterar"], [title*="Editar"]');
+            console.log(`🔘 Elementos clicáveis/ícones na linha: ${allRowElements.length}`);
+            
+            for (let i = 0; i < allRowElements.length; i++) {
+              const element = allRowElements[i];
+              try {
+                const tagName = await element.evaluate(el => el.tagName);
+                const text = await element.evaluate(el => el.textContent?.trim() || '');
+                const title = await element.evaluate(el => el.title || '');
+                const className = await element.evaluate(el => el.className || '');
+                const isVisible = await element.isVisible();
+                
+                console.log(`🔍 Elemento linha ${i + 1}: ${tagName} | "${text}" | Title:"${title}" | Class:"${className}" | Visível:${isVisible}`);
+                
+                // Se é visível e parece ser de edição
+                if (isVisible && !text.toLowerCase().includes('excluir') && !text.toLowerCase().includes('delete') && 
+                    !className.toLowerCase().includes('delete') && !title.toLowerCase().includes('excluir')) {
+                  
+                  // Priorizar elementos com indicação de edição
+                  const hasEditIndication = text.toLowerCase().includes('alterar') || 
+                                          text.toLowerCase().includes('editar') ||
+                                          title.toLowerCase().includes('alterar') || 
+                                          title.toLowerCase().includes('editar') ||
+                                          className.includes('edit') || 
+                                          className.includes('pencil') ||
+                                          className.includes('fa-edit') ||
+                                          className.includes('fa-pencil');
+                  
+                  if (hasEditIndication || (!editButtonElement && tagName === 'BUTTON') || (!editButtonElement && tagName === 'A')) {
+                    editButtonElement = element;
+                    editButton = `Linha elemento ${i + 1} (${tagName}) - "${text}"`;
+                    console.log(`✅ SELECIONADO da linha: ${editButton}`);
+                    
+                    if (hasEditIndication) {
+                      console.log('🎯 Elemento com indicação clara de edição - interrompendo busca');
+                      break;
+                    }
+                  }
+                }
+              } catch (elementError) {
+                console.log(`⚠️ Erro ao analisar elemento linha ${i + 1}:`, elementError.message);
+              }
+            }
+            
+            // Se não encontrou na linha, verificar células individualmente
+            if (!editButtonElement) {
+              const cells = await firstRow.$$('td');
+              console.log(`📋 Analisando ${cells.length} colunas individualmente...`);
+              
+              for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
+                const cell = cells[cellIndex];
+                
+                // Fazer hover na célula também
+                try {
+                  await cell.hover();
+                  await this.delay(300);
+                } catch (cellHoverError) {
+                  console.log(`⚠️ Erro hover célula ${cellIndex + 1}:`, cellHoverError.message);
+                }
+                
+                const cellElements = await cell.$$('button, a, i, span, div');
+                console.log(`📦 Célula ${cellIndex + 1}: ${cellElements.length} elementos`);
+                
+                for (const cellElement of cellElements) {
+                  try {
+                    const isVisible = await cellElement.isVisible();
+                    if (isVisible && !editButtonElement) {
+                      const tagName = await cellElement.evaluate(el => el.tagName);
+                      const text = await cellElement.evaluate(el => el.textContent?.trim() || '');
+                      
+                      console.log(`📦 Célula ${cellIndex + 1} - ${tagName}: "${text}"`);
+                      
+                      if ((tagName === 'BUTTON' || tagName === 'A') && !text.toLowerCase().includes('excluir')) {
+                        editButtonElement = cellElement;
+                        editButton = `Célula ${cellIndex + 1} elemento (${tagName})`;
+                        console.log(`✅ SELECIONADO da célula: ${editButton}`);
+                        break;
+                      }
+                    }
+                  } catch (cellElementError) {
+                    console.log('⚠️ Erro elemento da célula:', cellElementError.message);
+                  }
+                }
+                
+                if (editButtonElement) break;
+              }
+            }
+          }
+        }
+        
+        // Última tentativa: buscar por qualquer botão/link visível que não seja "excluir"
+        if (!editButton || !editButtonElement) {
+          console.log('🔄 PENÚLTIMA TENTATIVA: Busca por qualquer elemento clicável com indicação de edição');
+          
+          const allClickableElements = await this.page.$$('button:visible, a:visible');
+          console.log(`🔘 Total de elementos clicáveis visíveis: ${allClickableElements.length}`);
+          
+          for (let i = 0; i < Math.min(allClickableElements.length, 15); i++) { // Aumentar para 15 elementos
+            const element = allClickableElements[i];
+            try {
+              const text = await element.evaluate(el => el.textContent?.trim() || '');
+              const title = await element.evaluate(el => el.title || '');
+              const className = await element.evaluate(el => el.className || '');
+              
+              // Se não é botão de exclusão e contém indicação de edição
+              if (!text.toLowerCase().includes('excluir') && !text.toLowerCase().includes('delete') &&
+                  !title.toLowerCase().includes('excluir') && !className.toLowerCase().includes('delete') &&
+                  (text.toLowerCase().includes('alterar') || text.toLowerCase().includes('editar') || 
+                   title.toLowerCase().includes('alterar') || title.toLowerCase().includes('editar') ||
+                   className.includes('edit') || className.includes('pencil'))) {
+                
+                editButtonElement = element;
+                editButton = `Elemento global: "${text}" (${title})`;
+                console.log(`✅ ENCONTRADO elemento de edição global: ${editButton}`);
+                break;
+              }
+            } catch (globalError) {
+              console.log(`⚠️ Erro ao analisar elemento global ${i + 1}:`, globalError.message);
+            }
+          }
+        }
+        
+        // ESTRATÉGIA 4: Navegação direta por URL
+        if (!editButton || !editButtonElement) {
+          console.log('🔗 ESTRATÉGIA 4: Navegação direta por URL...');
+          
+          try {
+            const currentUrl = this.page.url();
+            console.log(`📍 URL atual: ${currentUrl}`);
+            
+            // Tentar diferentes padrões de URL de edição
+            const editUrlPatterns = [
+              currentUrl.replace('/pessoa-fisica', '/pessoa-fisica/edit'),
+              currentUrl.replace('/pessoa-fisica', '/pessoa-fisica/editar'),
+              currentUrl + '/edit',
+              currentUrl + '/editar',
+              currentUrl + '/detalhes'
+            ];
+            
+            for (const editUrl of editUrlPatterns) {
+              try {
+                console.log(`🔗 Tentando navegar para: ${editUrl}`);
+                await this.page.goto(editUrl, { waitUntil: 'networkidle', timeout: 10000 });
+                
+                const finalUrl = this.page.url();
+                console.log(`📍 URL final: ${finalUrl}`);
+                
+                if (finalUrl.includes('edit') || finalUrl.includes('editar') || finalUrl.includes('detalhes')) {
+                  console.log('✅ SUCESSO: Navegação direta realizada!');
+                  editButton = `Navegação direta: ${editUrl}`;
+                  editButtonElement = 'direct-navigation';
+                  break;
+                }
+              } catch (urlError) {
+                console.log(`⚠️ Erro na navegação para ${editUrl}:`, urlError.message);
+              }
+            }
+          } catch (directNavError) {
+            console.log('❌ Erro na navegação direta:', directNavError.message);
+          }
+        }
+        
+        // ESTRATÉGIA 5: Última tentativa com clique em elementos
+        if (!editButton || !editButtonElement) {
+          console.log('🚨 ESTRATÉGIA 5: Última tentativa com elementos da linha...');
+          
+          try {
+            // Buscar primeira linha da tabela
+            const firstRow = await this.page.$('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child');
+            if (firstRow) {
+              console.log('✅ Primeira linha encontrada para clique direto');
+              
+              // Primeiro, tentar encontrar elementos clicáveis
+              const rowClickables = await firstRow.$$('button, a, i, span[onclick], [onclick]');
+              console.log(`🔘 Elementos com potencial de clique: ${rowClickables.length}`);
+              
+              if (rowClickables.length > 0) {
+                for (let i = 0; i < rowClickables.length; i++) {
+                  const element = rowClickables[i];
+                  try {
+                    const isVisible = await element.isVisible();
+                    if (isVisible) {
+                      const text = await element.evaluate(el => el.textContent?.trim() || '');
+                      const title = await element.evaluate(el => el.title || '');
+                      const className = await element.evaluate(el => el.className || '');
+                      
+                      console.log(`🔍 Elemento ${i + 1}: Texto="${text}" Title="${title}" Class="${className}"`);
+                      
+                      // Evitar apenas botões que CLARAMENTE são de exclusão
+                      const isDeleteButton = text.toLowerCase().includes('excluir') || 
+                                           text.toLowerCase().includes('delete') || 
+                                           title.toLowerCase().includes('excluir') ||
+                                           className.toLowerCase().includes('delete');
+                      
+                      if (!isDeleteButton) {
+                        editButtonElement = element;
+                        editButton = `DESESPERADO - Elemento ${i + 1}: "${text}" (${title})`;
+                        console.log(`🚨 USANDO ESTRATÉGIA DESESPERADA: ${editButton}`);
+                        break;
+                      }
+                    }
+                  } catch (desperateError) {
+                    console.log(`⚠️ Erro na análise desesperada ${i + 1}:`, desperateError.message);
+                  }
+                }
+              } else {
+                // ÚLTIMA TENTATIVA FINAL: Clicar na primeira célula que não seja ID
+                console.log('🚨 TENTATIVA EXTREMA: Clicar na célula do nome para abrir detalhes');
+                
+                const cells = await firstRow.$$('td');
+                console.log(`📋 Células disponíveis: ${cells.length}`);
+                
+                if (cells.length >= 2) {
+                  // Geralmente a segunda célula é o nome (primeira é ID)
+                  const nameCell = cells[1];
+                  
+                  // Fazer hover primeiro
+                  await nameCell.hover();
+                  await this.delay(500);
+                  
+                  // Verificar se apareceram elementos clicáveis após hover
+                  const afterHoverElements = await nameCell.$$('a, button, [onclick]');
+                  if (afterHoverElements.length > 0 && await afterHoverElements[0].isVisible()) {
+                    editButtonElement = afterHoverElements[0];
+                    editButton = 'EXTREMO - Elemento da célula nome após hover';
+                    console.log('🚨 EXTREMO: Usando elemento que apareceu após hover no nome');
+                  } else {
+                    // Se ainda não há elementos clicáveis, clicar na própria célula do nome
+                    editButtonElement = nameCell;
+                    editButton = 'EXTREMO - Célula do nome diretamente';
+                    console.log('🚨 EXTREMO: Clicando diretamente na célula do nome');
+                  }
+                }
+              }
+            }
+          } catch (desperateError) {
+            console.log('❌ Estratégia desesperada falhou:', desperateError.message);
+          }
+        }
+        
+      } catch (altError) {
+        console.error('❌ Estratégia alternativa completa falhou:', altError.message);
+        console.error('Stack trace:', altError.stack);
       }
     }
         
-    if (!editButton) {
-      throw new Error('Ícone de edição não encontrado');
+    if (!editButton || !editButtonElement) {
+      console.error('❌ ===== FALHA TOTAL: NENHUM ícone de edição encontrado após TODAS as tentativas =====');
+      
+      // Debug final: salvar screenshot para diagnóstico
+      try {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const screenshotPath = `debug-no-edit-${timestamp}.png`;
+        await this.page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`📸 Screenshot de debug salvo: ${screenshotPath}`);
+      } catch (screenshotError) {
+        console.log('❌ Erro ao salvar screenshot:', screenshotError.message);
+      }
+      
+      throw new Error('Ícone de edição não encontrado após múltiplas estratégias');
     }
         
-    await this.page.click(editButton);
-    await this.delay(2000);
+    // Clicar no elemento encontrado ou verificar navegação direta
+    console.log(`🖱️ Processando ação: ${editButton}`);
+    
+    if (editButtonElement === 'direct-navigation') {
+      console.log('✅ Navegação direta já realizada - verificando página atual');
+      const currentUrl = this.page.url();
+      if (currentUrl.includes('edit') || currentUrl.includes('editar') || currentUrl.includes('detalhes')) {
+        console.log('✅ Navegação direta confirmada com sucesso');
+      } else {
+        throw new Error('Navegação direta não levou à página esperada');
+      }
+    } else {
+      try {
+        // Scroll para o elemento antes de clicar
+        await editButtonElement.scrollIntoViewIfNeeded();
+        await this.delay(500);
+        
+        // Clicar no elemento
+        await editButtonElement.click();
+        await this.delay(3000); // Aguardar navegação
+        
+        console.log('✅ Clique no ícone de edição executado com sucesso');
+      } catch (clickError) {
+        console.error('❌ Erro ao clicar no ícone de edição:', clickError.message);
+        throw new Error(`Falha ao clicar no ícone de edição: ${clickError.message}`);
+      }
+    }
   }
 
   async clickServerTab() {
@@ -521,8 +1247,8 @@ class ServidorAutomationV2 {
         await this.handleErrorRecovery();
       }
             
-      // Pausa ultra-reduzida entre processamentos (de 1000ms para 200ms)
-      await this.delay(200);
+      // Pausa ultra-otimizada (50ms para máxima velocidade)
+      await this.delay(50);
     }
         
     // Adicionar OJs já existentes ao relatório
@@ -634,39 +1360,64 @@ class ServidorAutomationV2 {
     try {
       // ULTRA-RÁPIDO: Sem estabilização desnecessária
       console.log('🎯 PROCESSAMENTO ULTRA-ASSERTIVO INICIADO');
+      console.log(`🔍 DEBUG: CPF atual: ${this.config.cpf}`);
+      console.log(`🔍 DEBUG: Perfil atual: ${this.config.perfil}`);
       
       // Fechar modais rapidamente (se existirem)
+      console.log('🔄 ETAPA 0: Fechando modais existentes...');
       await this.closeAnyModalsRapido();
           
       // 1. AÇÃO: Clicar no botão "Adicionar Localização/Visibilidade"
-      console.log('🎯 1. Abrindo modal de adição...');
+      console.log(`🔄 ETAPA 1: Abrindo modal de adição para OJ: ${orgao}`);
       await this.clickAddLocationButtonRapido();
           
       // 2. AÇÃO: Selecionar o OJ diretamente
-      console.log('🎯 2. Selecionando OJ...');
+      console.log(`🔄 ETAPA 2: Selecionando OJ específico: ${orgao}`);
       await this.selectOrgaoJulgadorRapido(orgao);
           
       // 3. AÇÃO: Configurar papel e visibilidade
-      console.log('🎯 3. Configurando campos...');
+      console.log(`🔄 ETAPA 3: Configurando papel e visibilidade para OJ: ${orgao}`);
       await this.configurePapelVisibilidadeRapido();
           
       // 4. AÇÃO: Salvar
-      console.log('🎯 4. Salvando...');
+      console.log(`🔄 ETAPA 4: Salvando configuração para OJ: ${orgao}`);
       await this.saveConfigurationRapido();
           
       // 5. FINAL: Verificar sucesso
-      console.log('🎯 5. Finalizando...');
+      console.log(`🔄 ETAPA 5: Verificando sucesso da vinculação para OJ: ${orgao}`);
       await this.verifySuccessRapido();
       
       const tempoDecorrido = Date.now() - startTime;
-      console.log(`✅ OJ processado em ${tempoDecorrido}ms: ${orgao}`);
+      console.log(`✅ OJ processado com SUCESSO em ${tempoDecorrido}ms: ${orgao}`);
       
       // Adicionar ao cache para próximas verificações
       this.ojCache.add(ojNormalizado);
       
+      // Adicionar resultado de sucesso
+      this.results.push({
+        orgao,
+        status: 'Vinculado com Sucesso',
+        erro: null,
+        perfil: this.config.perfil,
+        cpf: this.config.cpf,
+        timestamp: new Date().toISOString()
+      });
+      
     } catch (error) {
       const tempoDecorrido = Date.now() - startTime;
-      console.error(`❌ Erro após ${tempoDecorrido}ms processando ${orgao}:`, error.message);
+      console.error(`❌ ERRO após ${tempoDecorrido}ms processando OJ ${orgao}:`, error.message);
+      console.error('❌ Stack trace completo:', error.stack);
+      
+      // Adicionar resultado de erro
+      this.results.push({
+        orgao,
+        status: 'Erro na Vinculação',
+        erro: error.message,
+        perfil: this.config.perfil,
+        cpf: this.config.cpf,
+        timestamp: new Date().toISOString()
+      });
+      
       throw error;
     }
   }
@@ -849,7 +1600,7 @@ class ServidorAutomationV2 {
           
           // Se não encontrou exato, procurar por palavras-chave
           if (!perfilSelecionado) {
-            console.log(`⚠️ Perfil exato não encontrado, procurando por palavras-chave...`);
+            console.log('⚠️ Perfil exato não encontrado, procurando por palavras-chave...');
             
             if (this.config.perfil.toLowerCase().includes('secretario') || this.config.perfil.toLowerCase().includes('secretário')) {
               if (this.config.perfil.toLowerCase().includes('audiencia') || this.config.perfil.toLowerCase().includes('audiência')) {
@@ -1012,27 +1763,79 @@ class ServidorAutomationV2 {
   }
 
   async closeAnyModals() {
-    // Tentar fechar modais de erro genéricos
+    console.log('🧹 Procurando modais/overlays para fechar...');
+    
+    // Tentar fechar modais de erro genéricos e overlays
     const modalCloseSelectors = [
+      // Botões de texto comum
       'button:has-text("OK")',
       'button:has-text("Fechar")',
+      'button:has-text("Cancelar")',
+      'button:has-text("Confirmar")',
+      'button:has-text("Sim")',
+      'button:has-text("Não")',
+      
+      // Seletores Material Design
       '.mat-dialog-actions button',
+      '.mat-dialog-container .mat-button',
+      '.mat-overlay-backdrop',
+      '.cdk-overlay-backdrop',
+      
+      // Seletores genéricos de modal
       '[data-dismiss="modal"]',
       '.modal-footer button',
-      '.close'
+      '.modal-header .close',
+      '.close',
+      '.modal-close',
+      
+      // Ícones de fechar
+      'i.fa-times',
+      'i.fa-close',
+      'i.fa-x',
+      '.fas.fa-times',
+      
+      // Overlay/backdrop clicáveis
+      '.overlay',
+      '.backdrop',
+      '.modal-backdrop'
     ];
+    
+    let modalsFound = 0;
         
     for (const selector of modalCloseSelectors) {
       try {
-        const element = await this.page.$(selector);
-        if (element && await element.isVisible()) {
-          await element.click();
-          console.log(`Fechou modal com seletor: ${selector}`);
-          await this.delay(500);
+        const elements = await this.page.$$(selector);
+        
+        for (const element of elements) {
+          if (await element.isVisible()) {
+            try {
+              await element.click();
+              modalsFound++;
+              console.log(`✅ Fechou modal/overlay: ${selector}`);
+              await this.delay(300);
+            } catch (clickError) {
+              console.log(`⚠️ Erro ao clicar em ${selector}:`, clickError.message);
+            }
+          }
         }
       } catch (error) {
-        // Ignorar erros ao tentar fechar modais
+        // Ignorar erros de seletores não encontrados
       }
+    }
+    
+    // Tentar pressionar ESC para fechar qualquer modal restante
+    try {
+      await this.page.keyboard.press('Escape');
+      await this.delay(300);
+      console.log('🔑 Pressionou ESC para fechar modais');
+    } catch (escError) {
+      console.log('⚠️ Erro ao pressionar ESC:', escError.message);
+    }
+    
+    if (modalsFound > 0) {
+      console.log(`✅ Total de modais/overlays fechados: ${modalsFound}`);
+    } else {
+      console.log('ℹ️ Nenhum modal/overlay encontrado');
     }
   }
 
@@ -1108,6 +1911,307 @@ class ServidorAutomationV2 {
     await this.delay(500);
   }
 
+  async processOrgaosJulgadoresWithServerTracking(servidor) {
+    console.log(`🎯 [DEBUG] INICIANDO processOrgaosJulgadoresWithServerTracking para ${servidor.nome}`);
+    console.log(`🎯 [DEBUG] CPF: ${servidor.cpf}, Perfil: ${servidor.perfil}, OJs: ${servidor.orgaos?.length || 0}`);
+    
+    const serverResult = this.servidorResults[servidor.cpf];
+    if (!serverResult) {
+      console.error(`❌ [ERROR] serverResult não encontrado para CPF ${servidor.cpf}`);
+      throw new Error(`Resultado do servidor não encontrado para CPF ${servidor.cpf}`);
+    }
+    
+    this.sendStatus('info', `🔍 Verificando OJs cadastrados para ${servidor.nome}...`, null, 'Otimizando processo');
+    
+    // IMPORTANTE: Sempre limpar cache no início de cada servidor
+    console.log(`🗑️ [DEBUG] Limpando cache de OJs antes de processar ${servidor.nome}...`);
+    this.ojCache.clear();
+    console.log('✅ [DEBUG] Cache limpo - começando fresh para este servidor');
+    
+    // Verificar OJs já cadastrados em lote (otimização com cache)
+    console.log(`🔍 [DEBUG] Carregando OJs existentes para ${servidor.nome}...`);
+    await this.loadExistingOJs();
+    console.log(`🔍 [DEBUG] Cache de OJs carregado: ${this.ojCache.size} OJs em cache`);
+        
+    // Normalizar e filtrar OJs que precisam ser processados
+    console.log(`🔍 [DEBUG] this.config.orgaos: ${JSON.stringify(this.config.orgaos?.slice(0,3) || [])}${this.config.orgaos?.length > 3 ? '...' : ''}`);
+    const ojsNormalizados = this.config.orgaos.map(orgao => this.normalizeOrgaoName(orgao));
+    console.log(`🔍 [DEBUG] OJs normalizados: ${JSON.stringify(ojsNormalizados.slice(0,3))}${ojsNormalizados.length > 3 ? '...' : ''}`);
+    
+    const ojsToProcess = ojsNormalizados.filter(orgao => !this.ojCache.has(orgao));
+    console.log(`🔍 [DEBUG] OJs a processar (após filtro cache): ${JSON.stringify(ojsToProcess.slice(0,3))}${ojsToProcess.length > 3 ? '...' : ''}`);
+        
+    this.sendStatus('info', `⚡ ${ojsToProcess.length} novos OJs | ${this.ojCache.size} já cadastrados`, null, `Servidor: ${servidor.nome}`);
+    
+    if (ojsToProcess.length === 0) {
+      console.log('🔍 [DEBUG] NENHUM OJ para processar - todos já estão em cache');
+      return;
+    }
+        
+    // Processar cada OJ restante com tracking
+    console.log(`🔍 [DEBUG] INICIANDO loop de processamento de ${ojsToProcess.length} OJs`);
+    for (let i = 0; i < ojsToProcess.length; i++) {
+      const orgao = ojsToProcess[i];
+      console.log(`🔍 [DEBUG] Processando OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`);
+      serverResult.ojsProcessados++;
+      
+      this.sendStatus('info', `[${servidor.nome}] OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`, null, 'Processando vinculação');
+            
+      try {
+        const startOJ = Date.now();
+        await this.processOrgaoJulgador(orgao);
+        const timeOJ = Date.now() - startOJ;
+        
+        serverResult.sucessos++;
+        serverResult.detalhes.push({
+          orgao,
+          status: 'Incluído com Sucesso',
+          tempo: timeOJ,
+          perfil: this.config.perfil,
+          timestamp: new Date().toISOString()
+        });
+        
+        this.results.push({
+          servidor: servidor.nome,
+          orgao,
+          status: 'Incluído com Sucesso',
+          erro: null,
+          perfil: this.config.perfil,
+          cpf: this.config.cpf,
+          timestamp: new Date().toISOString()
+        });
+        
+      } catch (error) {
+        console.error(`❌ Erro OJ ${orgao} (${servidor.nome}):`, error.message);
+        
+        serverResult.erros++;
+        serverResult.detalhes.push({
+          orgao,
+          status: 'Erro',
+          erro: error.message,
+          timestamp: new Date().toISOString()
+        });
+        
+        this.results.push({
+          servidor: servidor.nome,
+          orgao,
+          status: 'Erro',
+          erro: error.message,
+          cpf: this.config.cpf,
+          timestamp: new Date().toISOString()
+        });
+                
+        // Recuperação rápida sem interromper processamento
+        await this.quickErrorRecovery();
+      }
+            
+      // Pausa ultra-otimizada entre OJs (25ms para velocidade máxima)
+      await this.delay(25);
+    }
+        
+    // Adicionar OJs já existentes ao relatório do servidor
+    for (const orgaoExistente of this.ojCache) {
+      if (this.config.orgaos.includes(orgaoExistente)) {
+        serverResult.jaIncluidos++;
+        serverResult.detalhes.push({
+          orgao: orgaoExistente,
+          status: 'Já Incluído',
+          perfil: this.config.perfil,
+          timestamp: new Date().toISOString()
+        });
+        
+        this.results.push({
+          servidor: servidor.nome,
+          orgao: orgaoExistente,
+          status: 'Já Incluído',
+          erro: null,
+          perfil: this.config.perfil,
+          cpf: this.config.cpf,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  async quickErrorRecovery() {
+    console.log('⚡ Recuperação rápida após erro...');
+    
+    try {
+      // Fechar modais rapidamente
+      await Promise.race([
+        this.closeAnyModalsRapido(),
+        this.delay(1000)
+      ]);
+      
+      // Escape como último recurso
+      await this.page.keyboard.press('Escape');
+      await this.delay(300);
+      
+    } catch (error) {
+      console.log('⚠️ Erro na recuperação rápida:', error.message);
+    }
+  }
+
+  async attemptErrorRecovery() {
+    console.log('🔧 Tentando recuperação automática...');
+    
+    try {
+      // Aguardar estabilização mínima
+      await this.delay(2000);
+      
+      // Tentar fechar modais de erro
+      await this.closeAnyModals();
+      
+      // Tentar navegar para uma página estável
+      await Promise.race([
+        this.page.goto('https://pje.trt15.jus.br/pjekz/pessoa-fisica', { waitUntil: 'domcontentloaded' }),
+        this.delay(5000)
+      ]);
+      
+      console.log('✅ Recuperação automática concluída');
+      
+    } catch (error) {
+      console.log('⚠️ Falha na recuperação automática:', error.message);
+    }
+  }
+
+  async ensureCleanState() {
+    console.log('🧹 Garantindo estado limpo do navegador...');
+    
+    try {
+      // Fechar quaisquer modais ou popups abertos
+      await this.closeAnyModals();
+      
+      // Aguardar estabilização
+      await this.delay(500);
+      
+      // Verificar se ainda está na página correta
+      const currentUrl = this.page.url();
+      console.log(`🔍 URL atual antes da limpeza: ${currentUrl}`);
+      
+      // Se não estiver na página de pessoas, navegar para ela
+      if (!currentUrl.includes('pessoa-fisica')) {
+        console.log('🔄 Navegando de volta para página de pessoas...');
+        await this.page.goto('https://pje.trt15.jus.br/pjekz/pessoa-fisica', { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 15000 
+        });
+        await this.delay(1000);
+      }
+      
+      console.log('✅ Estado limpo garantido');
+      
+    } catch (error) {
+      console.warn('⚠️ Erro ao garantir estado limpo:', error.message);
+      // Não propagar o erro, apenas log
+    }
+  }
+
+  async performRobustRecovery() {
+    console.log('🛠️ Executando recuperação robusta...');
+    
+    try {
+      // Verificar se o navegador ainda está ativo
+      if (!this.page || this.page.isClosed()) {
+        console.log('🔄 Navegador fechado detectado, reconectando...');
+        await this.reconnectBrowser();
+        return;
+      }
+      
+      // Aguardar estabilização extendida
+      await this.delay(3000);
+      
+      // Múltiplas tentativas de fechamento de modais
+      for (let i = 0; i < 3; i++) {
+        await this.closeAnyModals();
+        await this.delay(500);
+      }
+      
+      // Navegar para página base e aguardar carregamento completo
+      const baseUrl = 'https://pje.trt15.jus.br/pjekz/pessoa-fisica';
+      
+      console.log(`🔄 Navegando para página base: ${baseUrl}`);
+      await this.page.goto(baseUrl, { 
+        waitUntil: 'networkidle', 
+        timeout: 30000 
+      });
+      
+      // Aguardar página estabilizar completamente
+      await Promise.race([
+        this.page.waitForSelector('table', { timeout: 10000 }),
+        this.page.waitForSelector('.datatable', { timeout: 10000 }),
+        this.delay(5000) // Fallback
+      ]);
+      
+      // Aguardar estabilização final
+      await this.delay(2000);
+      
+      console.log('✅ Recuperação robusta concluída');
+      
+    } catch (error) {
+      console.error('❌ Falha na recuperação robusta:', error.message);
+      
+      // Verificar se o erro é devido ao navegador fechado
+      if (error.message.includes('Target page, context or browser has been closed') || 
+          error.message.includes('Session closed') ||
+          error.message.includes('Connection closed')) {
+        console.log('🔄 Erro de conexão detectado, reconectando navegador...');
+        await this.reconnectBrowser();
+        return;
+      }
+      
+      // Tentar recuperação básica como último recurso
+      try {
+        await this.delay(5000);
+        await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 });
+        await this.delay(2000);
+        console.log('✅ Recuperação básica (reload) executada');
+      } catch (reloadError) {
+        console.error('💥 Falha total na recuperação:', reloadError.message);
+        if (reloadError.message.includes('Target page, context or browser has been closed')) {
+          await this.reconnectBrowser();
+        }
+      }
+    }
+  }
+
+  async reconnectBrowser() {
+    console.log('🔌 Reconectando navegador...');
+    
+    try {
+      // Fechar conexões antigas se ainda existirem
+      if (this.browser && !this.browser.contexts().length === 0) {
+        try {
+          await this.browser.close();
+        } catch (e) {
+          console.log('⚠️ Erro ao fechar navegador antigo:', e.message);
+        }
+      }
+      
+      // Aguardar antes de reconectar
+      await this.delay(2000);
+      
+      // Reinicializar navegador
+      await this.initializeBrowser();
+      
+      // Realizar login novamente
+      await this.performLogin();
+      
+      console.log('✅ Navegador reconectado com sucesso');
+      
+    } catch (error) {
+      console.error('❌ Falha na reconexão do navegador:', error.message);
+      throw new Error(`Falha crítica na reconexão do navegador: ${error.message}`);
+    }
+  }
+
+  async ensureBrowserActive() {
+    if (!this.page || this.page.isClosed()) {
+      console.log('🔄 Página fechada detectada, reconectando...');
+      await this.reconnectBrowser();
+    }
+  }
+
   async handleErrorRecovery() {
     console.log('Iniciando recuperação após erro...');
         
@@ -1150,9 +2254,9 @@ class ServidorAutomationV2 {
         }
         
         orgaosMap.set(orgao, {
-          orgao: orgao,
+          orgao,
           status: statusFinal,
-          observacoes: observacoes,
+          observacoes,
           timestamp: resultado.timestamp
         });
       } else {
@@ -1180,6 +2284,194 @@ class ServidorAutomationV2 {
     console.log(`✅ Resultados otimizados: ${this.results.length} → ${resultadosFinais.length} (${this.results.length - resultadosFinais.length} duplicatas removidas)`);
     
     return resultadosFinais;
+  }
+
+  async generateMultiServerReport() {
+    this.sendStatus('info', '📊 Gerando relatório consolidado...', 95, 'Finalizando processamento de múltiplos servidores');
+        
+    // Configurar diretório de saída
+    const outputDir = path.join(__dirname, '..', '..', 'data');        
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    
+    // Calcular estatísticas globais
+    const totalServidores = this.processedServidores;
+    const servidoresBemSucedidos = this.successfulServidores;
+    const servidoresComFalha = this.failedServidores;
+    
+    let totalOJsProcessados = 0;
+    let totalSucessos = 0;
+    let totalErros = 0;
+    let totalJaIncluidos = 0;
+    
+    // Preparar dados detalhados por servidor
+    const servidoresDetalhados = [];
+    
+    Object.values(this.servidorResults).forEach(server => {
+      totalOJsProcessados += server.ojsProcessados;
+      totalSucessos += server.sucessos;
+      totalErros += server.erros;
+      totalJaIncluidos += server.jaIncluidos;
+      
+      servidoresDetalhados.push({
+        nome: server.nome,
+        cpf: server.cpf,
+        perfil: server.perfil,
+        status: server.status,
+        tentativas: {
+          realizadas: server.tentativas || 0,
+          maximas: server.maxTentativas || 2,
+          recuperacoes: server.tentativas > 1 ? server.tentativas - 1 : 0
+        },
+        estatisticas: {
+          totalOJs: server.totalOJs,
+          ojsProcessados: server.ojsProcessados,
+          sucessos: server.sucessos,
+          erros: server.erros,
+          jaIncluidos: server.jaIncluidos,
+          percentualSucesso: server.ojsProcessados > 0 ? 
+            parseFloat(((server.sucessos / server.ojsProcessados) * 100).toFixed(1)) : 0
+        },
+        tempo: {
+          inicioProcessamento: server.inicioProcessamento,
+          fimProcessamento: server.fimProcessamento,
+          tempoProcessamento: server.tempoProcessamento,
+          tempoProcessamentoFormatado: server.tempoProcessamento ? 
+            `${(server.tempoProcessamento/1000).toFixed(1)}s` : 'N/A'
+        },
+        detalhesOJs: server.detalhes,
+        erroGeral: server.erroGeral || null
+      });
+    });
+    
+    // Relatório consolidado
+    const relatorioConsolidado = {
+      timestamp: new Date().toISOString(),
+      tipoRelatorio: 'Múltiplos Servidores',
+      resumoGeral: {
+        totalServidores,
+        servidoresBemSucedidos,
+        servidoresComFalha,
+        errosConsecutivosMaximos: this.consecutiveErrors || 0,
+        percentualServidoresSucesso: totalServidores > 0 ? 
+          parseFloat(((servidoresBemSucedidos / totalServidores) * 100).toFixed(1)) : 0,
+        totalOJsProcessados,
+        totalSucessos,
+        totalErros,
+        totalJaIncluidos,
+        percentualOJsSucesso: totalOJsProcessados > 0 ? 
+          parseFloat(((totalSucessos / totalOJsProcessados) * 100).toFixed(1)) : 0,
+        processamentoSequencial: {
+          tentativasTotal: servidoresDetalhados.reduce((acc, s) => acc + (s.tentativas.realizadas || 0), 0),
+          recuperacoesTotal: servidoresDetalhados.reduce((acc, s) => acc + s.tentativas.recuperacoes, 0),
+          servidoresComRecuperacao: servidoresDetalhados.filter(s => s.tentativas.recuperacoes > 0).length,
+          eficienciaProcessamento: totalServidores > 0 ? 
+            parseFloat(((servidoresBemSucedidos / (servidoresDetalhados.reduce((acc, s) => acc + s.tentativas.realizadas, 0))) * 100).toFixed(1)) : 0
+        }
+      },
+      servidores: servidoresDetalhados,
+      resultadosDetalhados: this.results,
+      estatisticasAvancadas: {
+        tempoMedioProcessamentoServidor: servidoresDetalhados.length > 0 ? 
+          servidoresDetalhados
+            .filter(s => s.tempo.tempoProcessamento)
+            .reduce((acc, s) => acc + s.tempo.tempoProcessamento, 0) / 
+          servidoresDetalhados.filter(s => s.tempo.tempoProcessamento).length : 0,
+        servidorMaisRapido: servidoresDetalhados
+          .filter(s => s.tempo.tempoProcessamento && s.status === 'Concluído')
+          .reduce((min, s) => !min || s.tempo.tempoProcessamento < min.tempo.tempoProcessamento ? s : min, null),
+        servidorMaisLento: servidoresDetalhados
+          .filter(s => s.tempo.tempoProcessamento && s.status === 'Concluído')
+          .reduce((max, s) => !max || s.tempo.tempoProcessamento > max.tempo.tempoProcessamento ? s : max, null)
+      }
+    };
+        
+    // Salvar relatório JSON
+    const timestamp = Date.now();
+    const jsonPath = path.join(outputDir, `relatorio-multi-servidor-${timestamp}.json`);
+    fs.writeFileSync(jsonPath, JSON.stringify(relatorioConsolidado, null, 2));
+        
+    // Gerar CSV consolidado
+    const csvHeaders = [
+      'Servidor',
+      'CPF',
+      'Perfil',
+      'Status',
+      'Total OJs',
+      'Sucessos',
+      'Erros',
+      'Já Incluídos',
+      '% Sucesso',
+      'Tempo (s)',
+      'Erro Geral'
+    ];
+    
+    const csvRows = servidoresDetalhados.map(server => [
+      `"${server.nome}"`,
+      `"${server.cpf}"`,
+      `"${server.perfil}"`,
+      `"${server.status}"`,
+      server.estatisticas.totalOJs,
+      server.estatisticas.sucessos,
+      server.estatisticas.erros,
+      server.estatisticas.jaIncluidos,
+      `${server.estatisticas.percentualSucesso}%`,
+      server.tempo.tempoProcessamentoFormatado,
+      `"${server.erroGeral || ''}"`
+    ].join(','));
+    
+    const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
+    const csvPath = path.join(outputDir, `relatorio-multi-servidor-${timestamp}.csv`);
+    fs.writeFileSync(csvPath, csvContent);
+    
+    // Gerar relatório detalhado por OJ
+    const csvOJHeaders = [
+      'Servidor',
+      'CPF Servidor', 
+      'Órgão Julgador',
+      'Status',
+      'Perfil',
+      'Erro',
+      'Tempo (ms)',
+      'Timestamp'
+    ];
+    
+    const csvOJRows = [];
+    servidoresDetalhados.forEach(server => {
+      server.detalhesOJs.forEach(oj => {
+        csvOJRows.push([
+          `"${server.nome}"`,
+          `"${server.cpf}"`,
+          `"${oj.orgao}"`,
+          `"${oj.status}"`,
+          `"${oj.perfil || server.perfil}"`,
+          `"${oj.erro || ''}"`,
+          oj.tempo || '',
+          `"${oj.timestamp}"`
+        ].join(','));
+      });
+    });
+    
+    const csvOJContent = [csvOJHeaders.join(','), ...csvOJRows].join('\n');
+    const csvOJPath = path.join(outputDir, `relatorio-detalhado-ojs-${timestamp}.csv`);
+    fs.writeFileSync(csvOJPath, csvOJContent);
+        
+    console.log(`📄 Relatório JSON consolidado: ${jsonPath}`);
+    console.log(`📄 Relatório CSV servidores: ${csvPath}`);
+    console.log(`📄 Relatório CSV detalhado OJs: ${csvOJPath}`);
+        
+    // Imprimir resultado final
+    console.log('=== RESULTADO FINAL MÚLTIPLOS SERVIDORES ===');
+    console.log(JSON.stringify(relatorioConsolidado, null, 2));
+    console.log('=== FIM RESULTADO ===');
+        
+    // Calcular estatísticas de recuperação
+    const totalRecuperacoes = servidoresDetalhados.reduce((acc, s) => acc + s.tentativas.recuperacoes, 0);
+    const servidoresComRecuperacao = servidoresDetalhados.filter(s => s.tentativas.recuperacoes > 0).length;
+    
+    this.sendStatus('success', `🎉 Processamento SEQUENCIAL concluído: ${servidoresBemSucedidos}/${totalServidores} servidores | ${totalSucessos} sucessos`, 100, 
+      `${totalErros} erros | ${totalJaIncluidos} já incluídos | ${totalRecuperacoes} recuperações realizadas em ${servidoresComRecuperacao} servidores`);
   }
 
   async generateReport() {

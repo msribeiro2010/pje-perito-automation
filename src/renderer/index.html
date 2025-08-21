@@ -46,11 +46,46 @@
                         <i class="fas fa-plus"></i> Adicionar Perito
                     </button>
                     <button id="import-peritos" class="btn btn-secondary">
-                        <i class="fas fa-upload"></i> Importar
+                        <i class="fas fa-upload"></i> Importar em Lote
                     </button>
                     <button id="export-peritos" class="btn btn-secondary">
                         <i class="fas fa-download"></i> Exportar
                     </button>
+                    <button id="show-import-example" class="btn btn-info">
+                        <i class="fas fa-info-circle"></i> Exemplo de Importação
+                    </button>
+                    <button id="bulk-delete-peritos" class="btn btn-danger" disabled>
+                        <i class="fas fa-trash-alt"></i> Excluir Selecionados
+                    </button>
+                </div>
+            </div>
+
+            <!-- Informações sobre importação e vinculação em lote -->
+            <div class="info-panel" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px;">
+                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                    <i class="fas fa-info-circle" style="color: #007bff; margin-right: 8px;"></i>
+                    <strong>Importação e Vinculação em Lote</strong>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 14px;">
+                    <div>
+                        <strong>✅ Funcionalidades Implementadas:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Importar peritos em lote via arquivo JSON</li>
+                            <li>Validação automática de dados</li>
+                            <li>Seleção múltipla para vinculação</li>
+                            <li>Vinculação automática em lote</li>
+                            <li>Relatórios detalhados de progresso</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>📋 Como usar:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Use "Exemplo de Importação" para ver o formato</li>
+                            <li>Clique em "Importar em Lote" para carregar arquivo</li>
+                            <li>Selecione peritos usando checkboxes</li>
+                            <li>Vá para aba "Automação" e inicie vinculação</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
@@ -87,6 +122,9 @@
                     </button>
                     <button id="export-servidores" class="btn btn-secondary">
                         <i class="fas fa-download"></i> Exportar
+                    </button>
+                    <button id="bulk-delete-servidores" class="btn btn-danger" disabled>
+                        <i class="fas fa-trash-alt"></i> Excluir Selecionados
                     </button>
                 </div>
             </div>
@@ -195,6 +233,55 @@
                 <div id="status-log" class="status-log">
                     <p class="status-item info">Aguardando início da automação...</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para exemplo de importação -->
+    <div id="import-example-modal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Exemplo de Arquivo para Importação em Lote</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Para importar peritos em lote, crie um arquivo JSON com a seguinte estrutura:</p>
+                <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">
+[
+  {
+    "nome": "João Silva Santos",
+    "cpf": "123.456.789-00",
+    "ojs": [
+      "1ª Vara do Trabalho de Campinas",
+      "2ª Vara do Trabalho de Campinas",
+      "Vara do Trabalho de Jundiaí"
+    ]
+  },
+  {
+    "nome": "Maria Oliveira Costa",
+    "cpf": "987.654.321-11",
+    "ojs": [
+      "Vara do Trabalho de Atibaia",
+      "LIQ2 - Jundiaí",
+      "EXE1 - Campinas"
+    ]
+  }
+]</pre>
+                <div style="margin-top: 15px; padding: 10px; background-color: #e8f4fd; border-left: 4px solid #007bff; border-radius: 4px;">
+                    <strong>Instruções:</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        <li>O arquivo deve estar em formato JSON válido</li>
+                        <li>Cada perito deve ter <strong>nome</strong>, <strong>cpf</strong> e <strong>ojs</strong></li>
+                        <li>O campo "ojs" deve ser um array com os órgãos julgadores</li>
+                        <li>CPFs duplicados irão atualizar os dados existentes</li>
+                        <li>Registros inválidos serão ignorados com aviso</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('import-example-modal').style.display='none'">
+                    Fechar
+                </button>
             </div>
         </div>
     </div>

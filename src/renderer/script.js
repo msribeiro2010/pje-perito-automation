@@ -26,6 +26,7 @@ class PeritoApp {
     this.loadHistory(); // Carregar histórico
     this.updateSelectedPeritosDisplay();
     this.updateSelectedServidoresDisplay();
+    this.updateBulkDeleteButtons();
     this.initTabs();
     this.setupServidorAutomationListeners();
     this.setupServidorV2Listeners();
@@ -87,6 +88,14 @@ class PeritoApp {
       this.exportPeritos();
     });
 
+    document.getElementById('show-import-example').addEventListener('click', () => {
+      this.showImportExample();
+    });
+
+    document.getElementById('bulk-delete-peritos').addEventListener('click', () => {
+      this.bulkDeletePeritos();
+    });
+
     // Servidor management
     document.getElementById('add-servidor').addEventListener('click', () => {
       this.openServidorModal();
@@ -98,6 +107,10 @@ class PeritoApp {
 
     document.getElementById('export-servidores').addEventListener('click', () => {
       this.exportServidores();
+    });
+
+    document.getElementById('bulk-delete-servidores').addEventListener('click', () => {
+      this.bulkDeleteServidores();
     });
 
     // Modal events
@@ -263,6 +276,7 @@ class PeritoApp {
         }
         this.updateAutomationButton();
         this.updateSelectedPeritosDisplay();
+        this.updateBulkDeleteButtons();
       });
     });
 
@@ -283,11 +297,25 @@ class PeritoApp {
       }
     });
     this.updateAutomationButton();
+    this.updateBulkDeleteButtons();
   }
 
   updateAutomationButton() {
     const startButton = document.getElementById('start-automation');
     startButton.disabled = this.selectedPeritos.length === 0 || this.isAutomationRunning;
+  }
+
+  updateBulkDeleteButtons() {
+    const bulkDeletePeritoBtn = document.getElementById('bulk-delete-peritos');
+    const bulkDeleteServidorBtn = document.getElementById('bulk-delete-servidores');
+    
+    if (bulkDeletePeritoBtn) {
+      bulkDeletePeritoBtn.disabled = this.selectedPeritos.length === 0;
+    }
+    
+    if (bulkDeleteServidorBtn) {
+      bulkDeleteServidorBtn.disabled = this.selectedServidores.length === 0;
+    }
   }
 
   updateServidorAutomationButton() {
@@ -435,29 +463,158 @@ class PeritoApp {
     }
   }
 
+  async bulkDeletePeritos() {
+    if (this.selectedPeritos.length === 0) {
+      this.showNotification('Nenhum perito selecionado para exclusão', 'warning');
+      return;
+    }
+
+    const count = this.selectedPeritos.length;
+    const message = `Tem certeza que deseja excluir ${count} perito${count > 1 ? 's' : ''}?`;
+    
+    if (confirm(message)) {
+      // Sort indices in descending order to avoid index shifting issues
+      const sortedIndices = this.selectedPeritos.sort((a, b) => b - a);
+      
+      // Remove peritos in reverse order
+      sortedIndices.forEach(index => {
+        this.peritos.splice(index, 1);
+      });
+      
+      // Clear selected peritos
+      this.selectedPeritos = [];
+      
+      await this.savePeritos();
+      this.renderPeritosTable();
+      this.updateSelectedPeritosDisplay();
+      this.updateBulkDeleteButtons();
+      
+      this.showNotification(`${count} perito${count > 1 ? 's excluídos' : ' excluído'} com sucesso!`, 'success');
+    }
+  }
+
   async importPeritos() {
     try {
-      const result = await window.electronAPI.showOpenDialog();
-      if (!result.canceled && result.filePaths.length > 0) {
-        // Here you would read the file and parse it
-        // For now, we'll show a placeholder message
-        this.showNotification('Funcionalidade de importação será implementada', 'info');
+      const result = await window.electronAPI.importFile('peritos');
+      
+      if (result.success && result.data) {
+        // Validar se os dados importados têm a estrutura correta
+        if (!Array.isArray(result.data)) {
+          this.showNotification('Arquivo inválido: deve conter um array de peritos', 'error');
+          return;
+        }
+
+        const validPeritos = [];
+        let invalidCount = 0;
+
+        // Validar cada perito importado
+        result.data.forEach((perito, index) => {
+          if (this.validatePeritoData(perito)) {
+            // Verificar se já existe um perito com o mesmo CPF
+            const existingIndex = this.peritos.findIndex(p => p.cpf === perito.cpf);
+            if (existingIndex >= 0) {
+              // Atualizar perito existente
+              this.peritos[existingIndex] = { ...this.peritos[existingIndex], ...perito };
+            } else {
+              // Adicionar novo perito
+              validPeritos.push(perito);
+            }
+          } else {
+            invalidCount++;
+            console.warn(`Perito inválido na linha ${index + 1}:`, perito);
+          }
+        });
+
+        // Adicionar peritos válidos
+        if (validPeritos.length > 0) {
+          this.peritos.push(...validPeritos);
+          await this.savePeritos();
+          this.renderPeritosTable();
+          this.updateHistory(); // Atualizar histórico para autocomplete
+        }
+
+        // Mostrar resultado da importação
+        let message = `Importação concluída: ${validPeritos.length} peritos adicionados`;
+        if (invalidCount > 0) {
+          message += `, ${invalidCount} registros inválidos ignorados`;
+        }
+        
+        this.showNotification(message, validPeritos.length > 0 ? 'success' : 'warning');
+        
+      } else if (result.canceled) {
+        // Usuário cancelou a operação
+        return;
+      } else {
+        this.showNotification(`Erro ao importar arquivo: ${result.error || 'Formato inválido'}`, 'error');
       }
     } catch (error) {
-      this.showNotification('Erro ao importar peritos', 'error');
+      console.error('Erro na importação:', error);
+      this.showNotification('Erro ao importar peritos: ' + error.message, 'error');
     }
+  }
+
+  // Função para validar dados do perito
+  validatePeritoData(perito) {
+    return (
+      perito &&
+      typeof perito === 'object' &&
+      typeof perito.nome === 'string' &&
+      perito.nome.trim().length > 0 &&
+      typeof perito.cpf === 'string' &&
+      this.isValidCPF(perito.cpf) &&
+      Array.isArray(perito.ojs)
+    );
+  }
+
+  // Função para validar CPF (formato básico)
+  isValidCPF(cpf) {
+    if (!cpf) return false;
+    // Remove formatação
+    const cleanCPF = cpf.replace(/[^\d]/g, '');
+    // Verifica se tem 11 dígitos e não é sequência repetida
+    return cleanCPF.length === 11 && !/^(\d)\1{10}$/.test(cleanCPF);
+  }
+
+  // Função para mostrar exemplo de importação
+  showImportExample() {
+    const modal = document.getElementById('import-example-modal');
+    modal.style.display = 'block';
+
+    // Fechar modal ao clicar no X
+    const closeBtn = modal.querySelector('.close');
+    closeBtn.onclick = () => {
+      modal.style.display = 'none';
+    };
+
+    // Fechar modal ao clicar fora dele
+    window.onclick = (event) => {
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    };
   }
 
   async exportPeritos() {
     try {
-      const result = await window.electronAPI.showSaveDialog();
-      if (!result.canceled) {
-        // Here you would save the file
-        // For now, we'll show a placeholder message
-        this.showNotification('Funcionalidade de exportação será implementada', 'info');
+      if (this.peritos.length === 0) {
+        this.showNotification('Nenhum perito para exportar', 'warning');
+        return;
+      }
+
+      const filename = `peritos_${new Date().toISOString().split('T')[0]}.json`;
+      const result = await window.electronAPI.exportFile(this.peritos, filename);
+      
+      if (result.success) {
+        this.showNotification(`Peritos exportados com sucesso para: ${result.filePath}`, 'success');
+      } else if (result.canceled) {
+        // Usuário cancelou a operação
+        return;
+      } else {
+        this.showNotification(`Erro ao exportar: ${result.error || 'Erro desconhecido'}`, 'error');
       }
     } catch (error) {
-      this.showNotification('Erro ao exportar peritos', 'error');
+      console.error('Erro na exportação:', error);
+      this.showNotification('Erro ao exportar peritos: ' + error.message, 'error');
     }
   }
 
@@ -621,16 +778,62 @@ class PeritoApp {
     }
   }
 
+  async bulkDeleteServidores() {
+    if (this.selectedServidores.length === 0) {
+      this.showNotification('Nenhum servidor selecionado para exclusão', 'warning');
+      return;
+    }
+
+    const count = this.selectedServidores.length;
+    const message = `Tem certeza que deseja excluir ${count} servidor${count > 1 ? 'es' : ''}?`;
+    
+    if (confirm(message)) {
+      // Sort indices in descending order to avoid index shifting issues
+      const sortedIndices = this.selectedServidores.sort((a, b) => b - a);
+      
+      // Remove servidores in reverse order
+      sortedIndices.forEach(index => {
+        this.servidores.splice(index, 1);
+      });
+      
+      // Clear selected servidores
+      this.selectedServidores = [];
+      
+      await this.saveServidores();
+      this.renderServidoresTable();
+      this.updateSelectedServidoresDisplay();
+      this.updateBulkDeleteButtons();
+      
+      this.showNotification(`${count} servidor${count > 1 ? 'es excluídos' : ' excluído'} com sucesso!`, 'success');
+    }
+  }
+
   async importServidores() {
     try {
-      const result = await window.electronAPI.showOpenDialog();
-      if (!result.canceled && result.filePaths.length > 0) {
-        // Here you would read the file and parse it
-        // For now, we'll show a placeholder message
-        this.showNotification('Funcionalidade de importação será implementada', 'info');
+      const result = await window.electronAPI.importFile();
+      if (result.success && result.data) {
+        // Validar se é um array de servidores
+        if (Array.isArray(result.data) && result.data.length > 0) {
+          // Verificar se tem a estrutura esperada
+          const firstItem = result.data[0];
+          if (firstItem.nome && firstItem.cpf && firstItem.ojs) {
+            this.servidores = result.data;
+            this.selectedServidores = []; // Limpar seleções
+            this.renderServidoresTable();
+            await this.saveServidores();
+            this.showNotification(`${result.data.length} servidores importados com sucesso!`, 'success');
+          } else {
+            this.showNotification('Formato de arquivo inválido. Verifique se contém nome, cpf e ojs.', 'error');
+          }
+        } else {
+          this.showNotification('Arquivo vazio ou formato inválido', 'error');
+        }
+      } else if (result.error) {
+        this.showNotification(`Erro ao importar: ${result.error}`, 'error');
       }
     } catch (error) {
-      this.showNotification('Erro ao importar servidores', 'error');
+      console.error('Erro ao importar servidores:', error);
+      this.showNotification('Erro ao importar servidores: ' + error.message, 'error');
     }
   }
 
@@ -664,6 +867,7 @@ class PeritoApp {
         
     this.updateSelectedServidoresDisplay();
     this.renderServidoresTable();
+    this.updateBulkDeleteButtons();
   }
 
   selectAllServidores(selectAll) {
@@ -680,6 +884,7 @@ class PeritoApp {
         
     this.updateSelectedServidoresDisplay();
     this.renderServidoresTable();
+    this.updateBulkDeleteButtons();
   }
 
   selectAllPeritos(selectAll) {
@@ -692,6 +897,7 @@ class PeritoApp {
     this.updateSelectedPeritosDisplay();
     this.renderPeritosTable();
     this.updateAutomationButton();
+    this.updateBulkDeleteButtons();
   }
 
   updateSelectedServidoresDisplay() {
@@ -1048,20 +1254,20 @@ class PeritoApp {
     let history, key;
     
     switch (type) {
-      case 'cpf':
-        history = this.cpfHistory;
-        key = 'cpf';
-        break;
-      case 'oj':
-        history = this.ojHistory;
-        key = 'name';
-        break;
-      case 'profile':
-        history = this.profileHistory;
-        key = 'profile';
-        break;
-      default:
-        return;
+    case 'cpf':
+      history = this.cpfHistory;
+      key = 'cpf';
+      break;
+    case 'oj':
+      history = this.ojHistory;
+      key = 'name';
+      break;
+    case 'profile':
+      history = this.profileHistory;
+      key = 'profile';
+      break;
+    default:
+      return;
     }
     
     // Verificar se já existe
@@ -1095,8 +1301,8 @@ class PeritoApp {
     if (!cpf || cpf.length < 11) return;
     
     const cpfData = {
-      cpf: cpf,
-      type: type, // 'perito' ou 'servidor'
+      cpf,
+      type, // 'perito' ou 'servidor'
       lastUsed: new Date().toISOString()
     };
     
@@ -1231,7 +1437,7 @@ class PeritoApp {
         
         // Atualizar histórico de uso
         this.addToHistory('cpf', {
-          cpf: cpf,
+          cpf,
           type: item.dataset.type
         });
         

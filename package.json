@@ -2,6 +2,7 @@
   "name": "pje-automation-peritos-servidores",
   "version": "1.0.0",
   "description": "Sistema de automação para vinculação de peritos e servidores no PJE",
+  "author": "PJE Automation Team",
   "main": "src/main.js",
   "scripts": {
     "start": "electron src/main.js",
@@ -28,10 +29,14 @@
     "setup": "npm install && npm run create-shortcut",
     "prepare-icons": "echo 'Icons ready - using existing SVG for cross-platform builds'",
     "clean": "rimraf dist/ && echo 'Build directory cleaned'",
-    "rebuild": "npm run clean && npm run build"
+    "rebuild": "npm run clean && npm run build",
+    "build:cross-platform": "node build-cross-platform.js",
+    "build:cross-mac": "node build-cross-platform.js mac",
+    "build:cross-win": "node build-cross-platform.js windows",
+    "build:cross-linux": "node build-cross-platform.js linux",
+    "build:cross-clean": "node build-cross-platform.js clean"
   },
   "dependencies": {
-    "electron": "^27.0.0",
     "playwright": "^1.40.0",
     "dotenv": "^16.3.1",
     "winston": "^3.11.0",
@@ -40,6 +45,7 @@
     "lodash": "^4.17.21"
   },
   "devDependencies": {
+    "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
     "jest": "^29.7.0",
     "eslint": "^8.55.0",
