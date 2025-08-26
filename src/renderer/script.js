@@ -84,9 +84,7 @@ class PeritoApp {
       this.importPeritos();
     });
 
-    document.getElementById('export-peritos').addEventListener('click', () => {
-      this.exportPeritos();
-    });
+
 
     document.getElementById('show-import-example').addEventListener('click', () => {
       this.showImportExample();
@@ -105,9 +103,7 @@ class PeritoApp {
       this.importServidores();
     });
 
-    document.getElementById('export-servidores').addEventListener('click', () => {
-      this.exportServidores();
-    });
+
 
     document.getElementById('bulk-delete-servidores').addEventListener('click', () => {
       this.bulkDeleteServidores();
@@ -594,29 +590,7 @@ class PeritoApp {
     };
   }
 
-  async exportPeritos() {
-    try {
-      if (this.peritos.length === 0) {
-        this.showNotification('Nenhum perito para exportar', 'warning');
-        return;
-      }
 
-      const filename = `peritos_${new Date().toISOString().split('T')[0]}.json`;
-      const result = await window.electronAPI.exportFile(this.peritos, filename);
-      
-      if (result.success) {
-        this.showNotification(`Peritos exportados com sucesso para: ${result.filePath}`, 'success');
-      } else if (result.canceled) {
-        // Usuário cancelou a operação
-        return;
-      } else {
-        this.showNotification(`Erro ao exportar: ${result.error || 'Erro desconhecido'}`, 'error');
-      }
-    } catch (error) {
-      console.error('Erro na exportação:', error);
-      this.showNotification('Erro ao exportar peritos: ' + error.message, 'error');
-    }
-  }
 
   // ===== SERVIDOR METHODS =====
 
@@ -837,18 +811,7 @@ class PeritoApp {
     }
   }
 
-  async exportServidores() {
-    try {
-      const result = await window.electronAPI.showSaveDialog();
-      if (!result.canceled) {
-        // Here you would save the file
-        // For now, we'll show a placeholder message
-        this.showNotification('Funcionalidade de exportação será implementada', 'info');
-      }
-    } catch (error) {
-      this.showNotification('Erro ao exportar servidores', 'error');
-    }
-  }
+
 
   toggleServidorSelection(index) {
     console.log(`toggleServidorSelection chamado para índice: ${index}`);

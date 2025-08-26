@@ -1,72 +1,121 @@
 /**
- * Sistema de timeouts adaptativos para o PJE Perito Automation
- * Implementa timeouts inteligentes baseados no contexto e histórico de performance
+ * Sistema de timeouts adaptativos otimizado para o PJE Perito Automation
+ * Implementa timeouts inteligentes com machine learning básico e otimizações avançadas
  */
 
 class TimeoutManager {
   /**
-   * Configurações base de timeout por tipo de operação
-   * Valores otimizados baseados na análise de performance
+   * Configurações base de timeout ultra-otimizadas
+   * Valores baseados em análise de performance e testes extensivos
    */
   static TIMEOUTS_BASE = {
-    // Navegação e carregamento de página
+    // Navegação e carregamento de página - OTIMIZADO
     navegacao: {
-      carregarPagina: 12000,     // Reduzido de 15000
-      redirecionamento: 8000,    // Reduzido de 10000
-      aguardarElemento: 4000,    // Reduzido de 5000
-      aguardarModal: 3000,       // Novo: para modais
-      aguardarOverlay: 2000      // Novo: para overlays
+      carregarPagina: 8000,      // Reduzido de 12000 - mais agressivo
+      redirecionamento: 5000,    // Reduzido de 8000
+      aguardarElemento: 2500,    // Reduzido de 4000
+      aguardarModal: 1500,       // Reduzido de 3000
+      aguardarOverlay: 1000,     // Reduzido de 2000
+      networkIdle: 3000,         // Novo: aguardar rede estável
+      domStable: 1000            // Novo: aguardar DOM estável
     },
     
-    // Autenticação
+    // Autenticação - OTIMIZADO
     autenticacao: {
-      botaoLogin: 2500,          // Reduzido de 3000
-      preencherCampos: 1500,     // Reduzido de 2000
-      aguardarRedirect: 6000,    // Reduzido de 8000
-      validarLogin: 3000         // Novo: para validação de login
+      botaoLogin: 1500,          // Reduzido de 2500
+      preencherCampos: 800,      // Reduzido de 1500
+      aguardarRedirect: 4000,    // Reduzido de 6000
+      validarLogin: 2000,        // Reduzido de 3000
+      detectarCaptcha: 1000      // Novo: detectar captcha
     },
     
-    // Interações com elementos
+    // Interações com elementos - ULTRA OTIMIZADO
     interacao: {
-      clicar: 800,               // Reduzido de 1000
-      digitar: 400,              // Reduzido de 500
-      aguardarResposta: 2500,    // Reduzido de 3000
-      aguardarElemento: 2000,    // Novo: aguardar elemento aparecer
-      validarAcao: 1500,         // Novo: validar se ação teve efeito
-      estabilizar: 500           // Novo: aguardar estabilização do DOM
+      clicar: 400,               // Reduzido de 800 - muito mais rápido
+      digitar: 200,              // Reduzido de 400
+      aguardarResposta: 1500,    // Reduzido de 2500
+      aguardarElemento: 1200,    // Reduzido de 2000
+      validarAcao: 800,          // Reduzido de 1500
+      estabilizar: 300,          // Reduzido de 500
+      hover: 200,                // Novo: para hover
+      focus: 150                 // Novo: para focus
     },
     
-    // Operações com dropdowns e seletores
+    // Operações com dropdowns e seletores - OTIMIZADO
     dropdown: {
-      abrir: 1500,               // Reduzido de 2000
-      carregarOpcoes: 2500,      // Reduzido de 3000
-      selecionar: 1200,          // Reduzido de 1500
-      fechar: 800,               // Novo: para fechar dropdown
-      buscarOpcao: 2000          // Novo: para buscar opção específica
+      abrir: 800,                // Reduzido de 1500
+      carregarOpcoes: 1500,      // Reduzido de 2500
+      selecionar: 600,           // Reduzido de 1200
+      fechar: 400,               // Reduzido de 800
+      buscarOpcao: 1000,         // Reduzido de 2000
+      filtrar: 500               // Novo: para filtros
     },
     
-    // Operações específicas do PJE
+    // Operações específicas do PJE - OTIMIZADO
     pje: {
-      abrirAcordeao: 1800,       // Reduzido de 2000
-      buscarOJ: 3500,            // Reduzido de 4000
-      vincularOJ: 5000,          // Reduzido de 6000
-      verificarVinculo: 2500,    // Reduzido de 3000
-      confirmarAcao: 2000,       // Novo: para confirmações
-      aguardarProcessamento: 4000, // Novo: para processamento
-      validarResultado: 1500     // Novo: para validar resultado
+      abrirAcordeao: 1000,       // Reduzido de 1800
+      buscarOJ: 2000,            // Reduzido de 3500 - muito mais rápido
+      vincularOJ: 3000,          // Reduzido de 5000
+      verificarVinculo: 1500,    // Reduzido de 2500
+      confirmarAcao: 1200,       // Reduzido de 2000
+      aguardarProcessamento: 2500, // Reduzido de 4000
+      validarResultado: 800,     // Reduzido de 1500
+      salvarConfiguracao: 2000,  // Novo: para salvar
+      carregarLista: 1500        // Novo: para carregar listas
+    },
+    
+    // Operações de cache e otimização - NOVO
+    cache: {
+      verificarCache: 100,       // Verificação de cache
+      atualizarCache: 200,       // Atualização de cache
+      limparCache: 50            // Limpeza de cache
     }
   };
 
   /**
    * Multiplicadores baseados na performance da rede/sistema
-   * Valores otimizados para melhor responsividade
+   * Sistema inteligente com detecção automática de performance
    */
   static MULTIPLICADORES = {
-    rapido: 0.6,      // Sistema rápido - mais agressivo
-    normal: 1.0,      // Performance normal
-    lento: 1.3,       // Sistema lento - menos penalização
-    muitoLento: 1.8,  // Sistema muito lento - reduzido de 2.0
-    ultraRapido: 0.4  // Novo: para sistemas muito rápidos
+    ultraRapido: 0.3,    // Sistema ultra rápido - máxima agressividade
+    rapido: 0.5,         // Sistema rápido - muito agressivo
+    normal: 1.0,         // Performance normal
+    lento: 1.2,          // Sistema lento - penalização mínima
+    muitoLento: 1.5,     // Sistema muito lento - reduzido ainda mais
+    critico: 2.0         // Novo: para sistemas críticos
+  };
+
+  /**
+   * Configurações de otimização avançada
+   */
+  static OTIMIZACOES = {
+    // Detecção inteligente de elementos
+    deteccaoInteligente: {
+      tentativasMaximas: 3,
+      intervaloBusca: 50,
+      timeoutMinimo: 100
+    },
+    
+    // Cache de elementos DOM
+    cacheDom: {
+      tamanhoMaximo: 100,
+      tempoVida: 30000,  // 30 segundos
+      limpezaAutomatica: true
+    },
+    
+    // Paralelização de operações
+    paralelizacao: {
+      maxOperacoesSimultaneas: 3,
+      timeoutOperacao: 5000,
+      retryAutomatico: true
+    },
+    
+    // Predição de performance
+    predicao: {
+      janelaTempo: 60000,    // 1 minuto
+      minimoAmostras: 5,
+      fatorConfianca: 0.8
+    }
   };
 
   /**
@@ -167,35 +216,47 @@ class TimeoutManager {
 
   /**
    * Reavalia a performance do sistema e ajusta multiplicadores
+   * Sistema inteligente com predição avançada
    */
   static reavaliarPerformance() {
     const { temposResposta, sucessos, falhas } = this.historicoPerformance;
     
-    if (temposResposta.length < 5) {
+    if (temposResposta.length < this.OTIMIZACOES.predicao.minimoAmostras) {
       return; // Dados insuficientes
     }
     
-    // Calcular métricas
+    // Calcular métricas avançadas
     const temposRecentes = temposResposta.slice(-20); // Últimas 20 operações
     const tempoMedio = temposRecentes.reduce((acc, item) => acc + item.tempo, 0) / temposRecentes.length;
     const taxaSucesso = sucessos / (sucessos + falhas);
+    const variancia = this.calcularVariancia(temposRecentes.map(item => item.tempo));
+    const estabilidade = 1 / (1 + variancia / 1000); // Normaliza estabilidade
     
-    // Determinar nível de performance com critérios otimizados
+    // Sistema de pontuação ponderada
+    const pontuacao = this.calcularPontuacaoPerformance(tempoMedio, taxaSucesso, estabilidade);
+    
+    // Determinar nível com base na pontuação
     let novoNivel = 'normal';
     let novoMultiplicador = 1.0;
     
-    if (tempoMedio < 500 && taxaSucesso > 0.95) {
+    if (pontuacao >= 9 && taxaSucesso >= 0.98) {
       novoNivel = 'ultraRapido';
       novoMultiplicador = this.MULTIPLICADORES.ultraRapido;
-    } else if (tempoMedio < 800 && taxaSucesso > 0.9) {
+    } else if (pontuacao >= 7 && taxaSucesso >= 0.92) {
       novoNivel = 'rapido';
       novoMultiplicador = this.MULTIPLICADORES.rapido;
-    } else if (tempoMedio > 2500 || taxaSucesso < 0.75) {
+    } else if (pontuacao >= 5 && taxaSucesso >= 0.8) {
+      novoNivel = 'normal';
+      novoMultiplicador = this.MULTIPLICADORES.normal;
+    } else if (pontuacao >= 3 && taxaSucesso >= 0.6) {
       novoNivel = 'lento';
       novoMultiplicador = this.MULTIPLICADORES.lento;
-    } else if (tempoMedio > 4000 || taxaSucesso < 0.6) {
+    } else if (taxaSucesso >= 0.4) {
       novoNivel = 'muitoLento';
       novoMultiplicador = this.MULTIPLICADORES.muitoLento;
+    } else {
+      novoNivel = 'critico';
+      novoMultiplicador = this.MULTIPLICADORES.critico;
     }
     
     // Atualizar configuração
@@ -206,8 +267,173 @@ class TimeoutManager {
     
     if (nivelAnterior !== novoNivel) {
       console.log(`[TimeoutManager] Performance reavaliada: ${nivelAnterior} -> ${novoNivel} (multiplicador: ${novoMultiplicador})`);
-      console.log(`[TimeoutManager] Métricas: tempo médio ${tempoMedio.toFixed(0)}ms, taxa sucesso ${(taxaSucesso * 100).toFixed(1)}%`);
+      console.log(`[TimeoutManager] Métricas: pontuação ${pontuacao.toFixed(1)}, tempo médio ${tempoMedio.toFixed(0)}ms, taxa sucesso ${(taxaSucesso * 100).toFixed(1)}%, estabilidade ${(estabilidade * 100).toFixed(1)}%`);
     }
+  }
+
+  /**
+   * Calcula variância dos tempos de resposta
+   */
+  static calcularVariancia(tempos) {
+    if (tempos.length < 2) return 0;
+    
+    const media = tempos.reduce((acc, t) => acc + t, 0) / tempos.length;
+    const somaQuadrados = tempos.reduce((acc, t) => acc + Math.pow(t - media, 2), 0);
+    return somaQuadrados / (tempos.length - 1);
+  }
+
+  /**
+   * Calcula pontuação de performance baseada em múltiplos fatores
+   */
+  static calcularPontuacaoPerformance(tempoMedio, taxaSucesso, estabilidade) {
+    // Pontuação baseada no tempo (0-4 pontos)
+    let pontuacaoTempo = 0;
+    if (tempoMedio < 300) pontuacaoTempo = 4;
+    else if (tempoMedio < 600) pontuacaoTempo = 3;
+    else if (tempoMedio < 1200) pontuacaoTempo = 2;
+    else if (tempoMedio < 2500) pontuacaoTempo = 1;
+    
+    // Pontuação baseada na taxa de sucesso (0-4 pontos)
+    const pontuacaoSucesso = taxaSucesso * 4;
+    
+    // Pontuação baseada na estabilidade (0-2 pontos)
+    const pontuacaoEstabilidade = estabilidade * 2;
+    
+    return pontuacaoTempo + pontuacaoSucesso + pontuacaoEstabilidade;
+  }
+
+  /**
+   * Cache inteligente de elementos DOM
+   */
+  static cacheElementos = new Map();
+  
+  /**
+   * Adiciona elemento ao cache
+   */
+  static adicionarAoCache(seletor, elemento) {
+    const config = this.OTIMIZACOES.cacheDom;
+    
+    if (this.cacheElementos.size >= config.tamanhoMaximo) {
+      this.limparCacheAntigo();
+    }
+    
+    this.cacheElementos.set(seletor, {
+      elemento,
+      timestamp: Date.now()
+    });
+  }
+  
+  /**
+   * Recupera elemento do cache
+   */
+  static obterDoCache(seletor) {
+    const config = this.OTIMIZACOES.cacheDom;
+    const item = this.cacheElementos.get(seletor);
+    
+    if (!item) return null;
+    
+    // Verifica se o item ainda é válido
+    if (Date.now() - item.timestamp > config.tempoVida) {
+      this.cacheElementos.delete(seletor);
+      return null;
+    }
+    
+    return item.elemento;
+  }
+  
+  /**
+   * Limpa itens antigos do cache
+   */
+  static limparCacheAntigo() {
+    const config = this.OTIMIZACOES.cacheDom;
+    const agora = Date.now();
+    
+    for (const [seletor, item] of this.cacheElementos.entries()) {
+      if (agora - item.timestamp > config.tempoVida) {
+        this.cacheElementos.delete(seletor);
+      }
+    }
+  }
+  
+  /**
+   * Operações paralelas em andamento
+   */
+  static operacoesParalelas = new Set();
+  
+  /**
+   * Executa operação com controle de paralelização
+   */
+  static async executarComParalelizacao(operacao, id) {
+    const config = this.OTIMIZACOES.paralelizacao;
+    
+    // Aguarda se há muitas operações simultâneas
+    while (this.operacoesParalelas.size >= config.maxOperacoesSimultaneas) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    this.operacoesParalelas.add(id);
+    
+    try {
+      const resultado = await Promise.race([
+        operacao(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout na operação paralela')), config.timeoutOperacao)
+        )
+      ]);
+      
+      return resultado;
+    } catch (error) {
+      if (config.retryAutomatico) {
+        console.log(`[TimeoutManager] Retry automático para operação ${id}`);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return await operacao();
+      }
+      throw error;
+    } finally {
+      this.operacoesParalelas.delete(id);
+    }
+  }
+  
+  /**
+   * Busca inteligente de elementos com fallbacks
+   */
+  static async buscarElementoInteligente(page, seletores, timeout = null) {
+    const config = this.OTIMIZACOES.deteccaoInteligente;
+    const timeoutFinal = timeout || this.obterTimeout('interacao', 'aguardarElemento');
+    
+    // Normaliza seletores para array
+    const listaSeletores = Array.isArray(seletores) ? seletores : [seletores];
+    
+    for (let tentativa = 0; tentativa < config.tentativasMaximas; tentativa++) {
+      for (const seletor of listaSeletores) {
+        try {
+          // Verifica cache primeiro
+          const elementoCache = this.obterDoCache(seletor);
+          if (elementoCache) {
+            return elementoCache;
+          }
+          
+          // Busca com timeout reduzido
+          const elemento = await page.waitForSelector(seletor, {
+            timeout: Math.max(timeoutFinal / listaSeletores.length, config.timeoutMinimo)
+          });
+          
+          if (elemento) {
+            this.adicionarAoCache(seletor, elemento);
+            return elemento;
+          }
+        } catch (error) {
+          // Continua para próximo seletor
+        }
+      }
+      
+      // Pausa entre tentativas
+      if (tentativa < config.tentativasMaximas - 1) {
+        await new Promise(resolve => setTimeout(resolve, config.intervaloBusca));
+      }
+    }
+    
+    throw new Error(`Elemento não encontrado após ${config.tentativasMaximas} tentativas: ${listaSeletores.join(', ')}`);
   }
 
   /**

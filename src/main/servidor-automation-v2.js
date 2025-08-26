@@ -3,6 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const { login } = require('../login.js');
 const { loadConfig } = require('../util.js');
+const ParallelOJProcessor = require('./parallel-oj-processor.js');
+const TimeoutManager = require('../timeouts.js');
+const ContextualDelayManager = require('./contextual-delay-manager.js');
+const DOMCacheManager = require('./dom-cache-manager.js');
+const SmartRetryManager = require('./smart-retry-manager.js');
+const NavigationOptimizer = require('./navigation-optimizer.js');
+const PerformanceMonitor = require('./performance-monitor.js');
 
 /**
  * Automação moderna para vinculação de OJs a servidores
@@ -20,15 +27,43 @@ class ServidorAutomationV2 {
     this.results = [];
     this.ojCache = new Set(); // Cache para OJs já cadastrados
     this.isProduction = process.env.NODE_ENV === 'production';
+    this.timeoutManager = new TimeoutManager();
+    this.delayManager = new ContextualDelayManager(this.timeoutManager);
+    this.retryManager = new SmartRetryManager(this.timeoutManager);
+    this.navigationOptimizer = new NavigationOptimizer(this.timeoutManager, this.retryManager);
+    this.performanceMonitor = new PerformanceMonitor();
+    this.domCache = null;
+    this.parallelProcessor = null;
   }
 
   setMainWindow(window) {
     this.mainWindow = window;
   }
 
-  // Função helper para delay
-  async delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  /**
+   * Inicializa o cache DOM quando a página estiver disponível
+   */
+  initializeDOMCache() {
+    if (this.page && !this.domCache) {
+      this.domCache = new DOMCacheManager(this.page, this.timeoutManager);
+      console.log('✅ Cache DOM inicializado');
+    }
+  }
+
+  // Função helper para delay contextual otimizado
+  async delay(ms, context = 'default') {
+    if (context === 'default') {
+      // Manter compatibilidade com delays fixos existentes
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
+    // Usar delay contextual adaptativo
+    return await this.delayManager.smartDelay(context, { priority: 'normal' });
+  }
+  
+  // Novo método para delay contextual com opções
+  async contextualDelay(context, options = {}) {
+    return await this.delayManager.smartDelay(context, options);
   }
 
   // Normalizar nomes de órgãos julgadores para corrigir erros de digitação
@@ -77,6 +112,9 @@ class ServidorAutomationV2 {
     this.config = config;
     this.currentProgress = 0;
     this.results = [];
+    
+    // Iniciar monitoramento de performance
+    this.performanceMonitor.startMonitoring();
 
     try {
       // Suporte para processamento em lote de múltiplos servidores
@@ -286,11 +324,11 @@ class ServidorAutomationV2 {
           console.log('✅ Cache de OJs limpo - próximo servidor processará todos os OJs');
           
           await this.closeAnyModals();
-          await this.delay(800); // Pausa maior para estabilidade
+          await this.contextualDelay('stabilization', { priority: 'high' }); // Pausa maior para estabilidade
           console.log('✅ Sistema estabilizado para próximo servidor');
         } catch (transitionError) {
           console.log('⚠️ Erro na transição entre servidores:', transitionError.message);
-          await this.delay(1000); // Pausa extra se houver erro
+          await this.contextualDelay('errorRecovery', { priority: 'high' }); // Pausa extra se houver erro
         }
       } else {
         console.log('🏁 ===== ÚLTIMO SERVIDOR PROCESSADO - FINALIZANDO =====');
@@ -360,6 +398,9 @@ class ServidorAutomationV2 {
         
     // Configurar timeouts mais generosos
     this.page.setDefaultTimeout(30000); // 30s para elementos
+    
+    // Inicializar cache DOM
+    this.initializeDOMCache();
     this.page.setDefaultNavigationTimeout(60000); // 60s para navegação
 
     // Capturar logs do console
@@ -387,6 +428,9 @@ class ServidorAutomationV2 {
   }
 
   async navigateDirectlyToPerson(cpf) {
+    const startTime = Date.now();
+    this.performanceMonitor.recordNavigationStart('navigateDirectlyToPerson', `CPF: ${cpf}`);
+    
     this.sendStatus('info', 'Navegando diretamente para pessoa...', 35, `CPF: ${cpf}`);
         
     const cpfFormatado = cpf; // Manter formatação original
@@ -400,7 +444,7 @@ class ServidorAutomationV2 {
     try {
       console.log('🧹 Limpando modais antes da navegação...');
       await this.closeAnyModals();
-      await this.delay(500);
+      await this.contextualDelay('navigation', { priority: 'normal' });
     } catch (cleanError) {
       console.log('⚠️ Erro na limpeza inicial:', cleanError.message);
     }
@@ -419,10 +463,7 @@ class ServidorAutomationV2 {
       try {
         this.sendStatus('info', `Tentando navegação: ${strategy.description}`, 36, `Timeout: ${strategy.timeout/1000}s`);
                 
-        await this.page.goto(directUrl, { 
-          waitUntil: strategy.waitUntil, 
-          timeout: strategy.timeout 
-        });
+        await this.navigationOptimizer.optimizedNavigate(this.page, directUrl);
                 
         // Aguardar elementos críticos aparecerem
         await Promise.race([
@@ -435,7 +476,7 @@ class ServidorAutomationV2 {
         // IMPORTANTE: Verificar se não há modais bloqueando após navegação
         console.log('🧹 Limpando modais após navegação...');
         await this.closeAnyModals();
-        await this.delay(1000);
+        await this.contextualDelay('pageLoad', { priority: 'normal' });
                 
         navigationSuccess = true;
         this.sendStatus('success', `Navegação bem-sucedida com: ${strategy.description}`, 40, 'Pessoa encontrada');
@@ -465,14 +506,20 @@ class ServidorAutomationV2 {
     // Final cleanup para garantir página limpa
     try {
       await this.closeAnyModals();
-      await this.delay(500);
+      await this.contextualDelay('elementWait', { priority: 'normal' });
       console.log('✅ Página limpa e pronta para processar');
     } catch (finalCleanError) {
       console.log('⚠️ Erro na limpeza final:', finalCleanError.message);
     }
+    
+    // Registrar fim da navegação
+    this.performanceMonitor.recordNavigationEnd('navigateDirectlyToPerson', Date.now() - startTime);
   }
 
   async searchByCPF(cpf) {
+    const searchStartTime = Date.now();
+    this.performanceMonitor.recordElementSearchStart('searchByCPF');
+    
     this.sendStatus('info', 'Buscando por CPF...', 35, `CPF: ${cpf}`);
         
     const cpfLimpo = cpf.replace(/\D/g, '');
@@ -565,9 +612,10 @@ class ServidorAutomationV2 {
     }
         
     // Aguardar os resultados carregarem
-    await this.page.waitForTimeout(3000);
+    await this.contextualDelay('searchPJE', { priority: 'high' });
         
     this.sendStatus('success', 'Busca realizada', 40, 'CPF encontrado');
+    this.performanceMonitor.recordElementSearchEnd('searchByCPF', Date.now() - searchStartTime, true);
   }
 
   async navigateToServerTab() {
@@ -582,7 +630,7 @@ class ServidorAutomationV2 {
       console.log('✅ Ícone de edição clicado com sucesso');
       
       // Aguardar navegação
-      await this.delay(2000);
+      await this.contextualDelay('networkWait', { priority: 'normal' });
       
       // Clicar na aba Servidor
       await this.clickServerTab();
@@ -610,11 +658,11 @@ class ServidorAutomationV2 {
           for (const editUrl of possibleEditUrls) {
             try {
               console.log(`🔗 Tentando URL direta: ${editUrl}`);
-              await this.page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-              await this.delay(2000);
+              await this.navigationOptimizer.fastNavigate(this.page, editUrl);
+              await this.contextualDelay('networkWait', { priority: 'normal' });
               
               // Verificar se chegamos numa página de edição (procurar pela aba Servidor)
-              const serverTabExists = await this.page.$('text=Servidor, a[href*="servidor"], button:has-text("Servidor")');
+              const serverTabExists = await this.domCache.findElement('text=Servidor, a[href*="servidor"], button:has-text("Servidor")');
               if (serverTabExists) {
                 console.log('✅ FALLBACK SUCEDIDO: Página de edição alcançada');
                 editSuccessful = true;
@@ -660,6 +708,9 @@ class ServidorAutomationV2 {
   }
 
   async clickEditIcon() {
+    const clickStartTime = Date.now();
+    this.performanceMonitor.recordClickStart('clickEditIcon');
+    
     console.log('🎯 VERSÃO MELHORADA: Detecção robusta de ícone de edição...');
     
     // Debug: verificar elementos visíveis na página
@@ -738,7 +789,7 @@ class ServidorAutomationV2 {
       console.log('✅ Visibilidade forçada via JavaScript');
       
       // 1.2: Fazer hover intensivo em todas as linhas da tabela
-      const allRows = await this.page.$$('table tbody tr, .table tbody tr, .datatable tbody tr, #cdk-drop-list-1 > tr');
+      const allRows = await this.domCache.findElements('table tbody tr, .table tbody tr, .datatable tbody tr, #cdk-drop-list-1 > tr');
       console.log(`📋 Fazendo hover intensivo em ${allRows.length} linhas...`);
       
       for (let i = 0; i < Math.min(allRows.length, 3); i++) {
@@ -778,7 +829,7 @@ class ServidorAutomationV2 {
     if (!editButtonElement) {
       console.log('🎯 ESTRATÉGIA 2: Clique direto na linha da tabela...');
       try {
-        const firstRow = await this.page.$('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child, #cdk-drop-list-1 > tr:first-child');
+        const firstRow = await this.domCache.findElement('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child, #cdk-drop-list-1 > tr:first-child');
         if (firstRow) {
           console.log('✅ Executando clique direto na primeira linha...');
           
@@ -829,7 +880,7 @@ class ServidorAutomationV2 {
           await this.page.waitForSelector(selector, { timeout: 500, state: 'attached' });
         
           // Obter o elemento
-          editButtonElement = await this.page.$(selector);
+          editButtonElement = await this.domCache.findElement(selector);
         
           if (editButtonElement) {
           // Verificar se está visível
@@ -855,12 +906,12 @@ class ServidorAutomationV2 {
       console.log('🔄 ESTRATÉGIA ALTERNATIVA: Análise completa da tabela');
       try {
         // Primeiro, tentar encontrar qualquer tabela
-        const tableExists = await this.page.$('table, .table, .datatable');
+        const tableExists = await this.domCache.findElement('table, .table, .datatable');
         if (tableExists) {
           console.log('✅ Tabela encontrada, analisando linhas...');
           
           // Buscar todas as linhas da tabela
-          const rows = await this.page.$$('table tbody tr, .table tbody tr, .datatable tbody tr');
+          const rows = await this.domCache.findElements('table tbody tr, .table tbody tr, .datatable tbody tr');
           console.log(`🗂️ Encontradas ${rows.length} linhas na tabela`);
           
           if (rows.length > 0) {
@@ -871,7 +922,7 @@ class ServidorAutomationV2 {
             console.log('🖱️ Fazendo hover na primeira linha para revelar botões...');
             try {
               await firstRow.hover();
-              await this.delay(1000); // Aguardar botões aparecerem
+              await this.contextualDelay('elementWait', { priority: 'high' }); // Aguardar botões aparecerem
               console.log('✅ Hover realizado na linha');
             } catch (hoverError) {
               console.log('⚠️ Erro no hover:', hoverError.message);
@@ -933,7 +984,7 @@ class ServidorAutomationV2 {
                 // Fazer hover na célula também
                 try {
                   await cell.hover();
-                  await this.delay(300);
+                  await this.contextualDelay('click', { priority: 'high' });
                 } catch (cellHoverError) {
                   console.log(`⚠️ Erro hover célula ${cellIndex + 1}:`, cellHoverError.message);
                 }
@@ -972,7 +1023,7 @@ class ServidorAutomationV2 {
         if (!editButton || !editButtonElement) {
           console.log('🔄 PENÚLTIMA TENTATIVA: Busca por qualquer elemento clicável com indicação de edição');
           
-          const allClickableElements = await this.page.$$('button:visible, a:visible');
+          const allClickableElements = await this.domCache.findElements('button:visible, a:visible');
           console.log(`🔘 Total de elementos clicáveis visíveis: ${allClickableElements.length}`);
           
           for (let i = 0; i < Math.min(allClickableElements.length, 15); i++) { // Aumentar para 15 elementos
@@ -1020,7 +1071,7 @@ class ServidorAutomationV2 {
             for (const editUrl of editUrlPatterns) {
               try {
                 console.log(`🔗 Tentando navegar para: ${editUrl}`);
-                await this.page.goto(editUrl, { waitUntil: 'networkidle', timeout: 10000 });
+                await this.navigationOptimizer.optimizedNavigate(this.page, editUrl);
                 
                 const finalUrl = this.page.url();
                 console.log(`📍 URL final: ${finalUrl}`);
@@ -1046,7 +1097,7 @@ class ServidorAutomationV2 {
           
           try {
             // Buscar primeira linha da tabela
-            const firstRow = await this.page.$('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child');
+            const firstRow = await this.domCache.findElement('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child');
             if (firstRow) {
               console.log('✅ Primeira linha encontrada para clique direto');
               
@@ -1162,11 +1213,16 @@ class ServidorAutomationV2 {
         await this.delay(3000); // Aguardar navegação
         
         console.log('✅ Clique no ícone de edição executado com sucesso');
+        this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, true);
       } catch (clickError) {
         console.error('❌ Erro ao clicar no ícone de edição:', clickError.message);
+        this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, false);
         throw new Error(`Falha ao clicar no ícone de edição: ${clickError.message}`);
       }
     }
+    
+    // Registrar fim da operação se não houve clique
+    this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, false);
   }
 
   async clickServerTab() {
@@ -1198,12 +1254,76 @@ class ServidorAutomationV2 {
       throw new Error('Aba Servidor não encontrada');
     }
         
-    await this.page.click(servidorTab);
+    await this.retryManager.retryClick(
+        async (selector) => {
+          const element = await this.page.$(selector);
+          if (element) {
+            await element.click();
+          } else {
+            throw new Error('Element not found');
+          }
+        },
+        servidorTab
+      );
     await this.delay(2000);
   }
 
   async processOrgaosJulgadores() {
-    this.sendStatus('info', 'Iniciando processamento dos OJs...', 55, 'Verificando OJs cadastrados');
+    this.sendStatus('info', 'Iniciando processamento paralelo dos OJs...', 55, 'Otimizando performance');
+    
+    try {
+      // Inicializar processador paralelo
+      if (!this.parallelProcessor) {
+        this.parallelProcessor = new ParallelOJProcessor(
+          this.page, 
+          this.timeoutManager, 
+          this.config,
+          this.domCache
+        );
+      }
+      
+      // Usar processamento paralelo otimizado
+      const startTime = Date.now();
+      const results = await this.parallelProcessor.processOJsInParallel(this.config.orgaos);
+      const duration = Date.now() - startTime;
+      
+      // Consolidar resultados
+      this.results = results;
+      
+      // Atualizar cache local
+      this.ojCache = this.parallelProcessor.ojCache;
+      
+      const sucessos = results.filter(r => r.status.includes('Sucesso')).length;
+      const erros = results.filter(r => r.status === 'Erro').length;
+      const jaIncluidos = results.filter(r => r.status.includes('Já')).length;
+      
+      this.sendStatus('success', 
+        `Processamento paralelo concluído em ${(duration/1000).toFixed(1)}s`, 
+        95, 
+        `${sucessos} sucessos, ${erros} erros, ${jaIncluidos} já incluídos`
+      );
+      
+      console.log(`🚀 Processamento paralelo concluído:`);
+      console.log(`   ✅ Sucessos: ${sucessos}`);
+      console.log(`   ❌ Erros: ${erros}`);
+      console.log(`   📋 Já incluídos: ${jaIncluidos}`);
+      console.log(`   ⏱️ Tempo total: ${(duration/1000).toFixed(1)}s`);
+      console.log(`   📊 Performance: ${(results.length / (duration/1000)).toFixed(1)} OJs/s`);
+      
+    } catch (error) {
+      console.error('❌ Erro no processamento paralelo:', error);
+      this.sendStatus('error', `Erro no processamento paralelo: ${error.message}`, 60, 'Tentando fallback');
+      
+      // Fallback para processamento sequencial
+      await this.processOrgaosJulgadoresSequential();
+    }
+  }
+  
+  /**
+   * Fallback para processamento sequencial (método original)
+   */
+  async processOrgaosJulgadoresSequential() {
+    this.sendStatus('info', 'Usando processamento sequencial (fallback)...', 55, 'Verificando OJs cadastrados');
         
     // Verificar OJs já cadastrados em lote (otimização com cache)
     await this.loadExistingOJs();
@@ -1247,8 +1367,9 @@ class ServidorAutomationV2 {
         await this.handleErrorRecovery();
       }
             
-      // Pausa ultra-otimizada (50ms para máxima velocidade)
-      await this.delay(50);
+      // Pausa otimizada com timeouts adaptativos
+      const delay = this.timeoutManager.obterTimeout('pausaEntreOJs') || 25;
+      await this.delay(delay);
     }
         
     // Adicionar OJs já existentes ao relatório
@@ -1338,6 +1459,9 @@ class ServidorAutomationV2 {
   }
 
   async processOrgaoJulgador(orgao) {
+    const processStartTime = Date.now();
+    this.performanceMonitor.recordPJEOperationStart('processOrgaoJulgador', orgao);
+    
     console.log(`🚀 INICIANDO processamento otimizado para: ${orgao}`);
     
     // Verificação rápida se OJ já está cadastrado (verificação dupla para garantir)
@@ -1352,6 +1476,10 @@ class ServidorAutomationV2 {
         cpf: this.config.cpf,
         timestamp: new Date().toISOString()
       });
+      
+      // Registrar fim da operação PJE com sucesso (cache hit)
+      this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', Date.now() - processStartTime, true);
+      
       return; // Skip processamento
     }
     
@@ -1418,6 +1546,9 @@ class ServidorAutomationV2 {
         timestamp: new Date().toISOString()
       });
       
+      // Registrar fim da operação PJE com erro
+      this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', Date.now() - processStartTime, false);
+      
       throw error;
     }
   }
@@ -1435,7 +1566,7 @@ class ServidorAutomationV2 {
         
     for (const selector of modalCloseSelectors) {
       try {
-        const element = await this.page.$(selector);
+        const element = await this.domCache.findElement(selector);
         if (element && await element.isVisible()) {
           await element.click();
           console.log(`⚡ Modal fechado: ${selector}`);
@@ -1468,7 +1599,17 @@ class ServidorAutomationV2 {
       await this.page.waitForSelector(seletorEspecifico, { timeout: 3000 });
       
       // Clicar UMA vez apenas
-      await this.page.click(seletorEspecifico);
+      await this.retryManager.retryClick(
+          async (selector) => {
+            const element = await this.page.$(selector);
+            if (element) {
+              await element.click();
+            } else {
+              throw new Error('Element not found');
+            }
+          },
+          seletorEspecifico
+        );
       console.log('✅ CLIQUE ÚNICO realizado no botão Adicionar');
       
       // 3. TERCEIRO: Aguardar modal abrir de forma assertiva
@@ -1520,7 +1661,17 @@ class ServidorAutomationV2 {
         throw new Error('Mat-select de Órgão Julgador não encontrado no modal');
       }
       
-      await this.page.click(matSelectElement);
+      await this.retryManager.retryClick(
+          async (selector) => {
+            const element = await this.page.$(selector);
+            if (element) {
+              await element.click();
+            } else {
+              throw new Error('Element not found');
+            }
+          },
+          matSelectElement
+        );
       console.log('✅ Mat-select de OJ clicado');
       
       // 2. AGUARDAR: Opções aparecerem
@@ -1549,8 +1700,8 @@ class ServidorAutomationV2 {
         throw new Error(`OJ "${orgao}" não encontrado nas opções disponíveis`);
       }
       
-      // 4. AGUARDAR: Processamento da seleção
-      await this.page.waitForTimeout(500);
+      // 4. AGUARDAR: Processamento da seleção com delay contextual
+      await this.contextualDelay('ojSelection', { priority: 'high' });
       console.log('✅ Seleção de OJ concluída');
       
     } catch (error) {
@@ -1568,7 +1719,7 @@ class ServidorAutomationV2 {
       const matSelectPapel = this.page.locator('mat-dialog-container mat-select[placeholder*="Papel"]');
       if (await matSelectPapel.count() > 0) {
         await matSelectPapel.click();
-        await this.page.waitForTimeout(300);
+        await this.contextualDelay('dropdown', { priority: 'high' });
         
         const opcoesPapel = this.page.locator('mat-option');
         let perfilSelecionado = false;
@@ -1678,7 +1829,17 @@ class ServidorAutomationV2 {
       const botaoGravar = 'mat-dialog-container button:has-text("Gravar"):not([disabled])';
       
       await this.page.waitForSelector(botaoGravar, { timeout: 3000 });
-      await this.page.click(botaoGravar);
+      await this.retryManager.retryPJEOperation(
+        async () => {
+          const element = await this.page.$(botaoGravar);
+          if (element) {
+            await element.click();
+          } else {
+            throw new Error('Save button not found');
+          }
+        },
+        'saveConfiguration'
+      );
       console.log('✅ CLIQUE no botão Gravar realizado');
       
       // 2. AGUARDAR: Modal fechar ou sucesso
@@ -1804,7 +1965,7 @@ class ServidorAutomationV2 {
         
     for (const selector of modalCloseSelectors) {
       try {
-        const elements = await this.page.$$(selector);
+        const elements = await this.domCache.findElements(selector);
         
         for (const element of elements) {
           if (await element.isVisible()) {
@@ -2064,7 +2225,7 @@ class ServidorAutomationV2 {
       
       // Tentar navegar para uma página estável
       await Promise.race([
-        this.page.goto('https://pje.trt15.jus.br/pjekz/pessoa-fisica', { waitUntil: 'domcontentloaded' }),
+        this.navigationOptimizer.fastNavigate(this.page, 'https://pje.trt15.jus.br/pjekz/pessoa-fisica'),
         this.delay(5000)
       ]);
       
@@ -2092,10 +2253,7 @@ class ServidorAutomationV2 {
       // Se não estiver na página de pessoas, navegar para ela
       if (!currentUrl.includes('pessoa-fisica')) {
         console.log('🔄 Navegando de volta para página de pessoas...');
-        await this.page.goto('https://pje.trt15.jus.br/pjekz/pessoa-fisica', { 
-          waitUntil: 'domcontentloaded', 
-          timeout: 15000 
-        });
+        await this.navigationOptimizer.fastNavigate(this.page, 'https://pje.trt15.jus.br/pjekz/pessoa-fisica');
         await this.delay(1000);
       }
       
@@ -2131,10 +2289,7 @@ class ServidorAutomationV2 {
       const baseUrl = 'https://pje.trt15.jus.br/pjekz/pessoa-fisica';
       
       console.log(`🔄 Navegando para página base: ${baseUrl}`);
-      await this.page.goto(baseUrl, { 
-        waitUntil: 'networkidle', 
-        timeout: 30000 
-      });
+      await this.navigationOptimizer.optimizedNavigate(this.page, baseUrl);
       
       // Aguardar página estabilizar completamente
       await Promise.race([
@@ -2549,6 +2704,11 @@ class ServidorAutomationV2 {
 
   async cleanup() {
     try {
+      // Parar monitoramento de performance
+      if (this.performanceMonitor) {
+        this.performanceMonitor.stopMonitoring();
+      }
+      
       if (this.page && !this.page.isClosed()) {
         if (this.isProduction) {
           await this.page.close();
