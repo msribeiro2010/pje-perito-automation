@@ -217,7 +217,7 @@ class ParallelOJProcessor {
   async loadFromTable() {
     const ojs = new Set();
     try {
-      const rows = this.domCache ? await this.domCache.findElements('table tbody tr') : await this.page.$$('table tbody tr');
+      const rows = await this.page.$$('table tbody tr');
       for (const row of rows.slice(0, 20)) { // Limitar para performance
         const text = await row.textContent();
         this.extractOJsFromText(text, ojs);
@@ -231,7 +231,7 @@ class ParallelOJProcessor {
   async loadFromMaterialTable() {
     const ojs = new Set();
     try {
-      const rows = this.domCache ? await this.domCache.findElements('.mat-table .mat-row') : await this.page.$$('.mat-table .mat-row');
+      const rows = await this.page.$$('.mat-table .mat-row');
       for (const row of rows.slice(0, 20)) {
         const text = await row.textContent();
         this.extractOJsFromText(text, ojs);
@@ -245,7 +245,7 @@ class ParallelOJProcessor {
   async loadFromDataTable() {
     const ojs = new Set();
     try {
-      const rows = this.domCache ? await this.domCache.findElements('.datatable tbody tr') : await this.page.$$('.datatable tbody tr');
+      const rows = await this.page.$$('.datatable tbody tr');
       for (const row of rows.slice(0, 20)) {
         const text = await row.textContent();
         this.extractOJsFromText(text, ojs);
@@ -259,7 +259,7 @@ class ParallelOJProcessor {
   async loadFromAriaRows() {
     const ojs = new Set();
     try {
-      const rows = this.domCache ? await this.domCache.findElements('[role="row"]') : await this.page.$$('[role="row"]');
+      const rows = await this.page.$$('[role="row"]');
       for (const row of rows.slice(0, 20)) {
         const text = await row.textContent();
         this.extractOJsFromText(text, ojs);
@@ -345,7 +345,7 @@ class ParallelOJProcessor {
       const papelSelector = 'select[name*="papel"], .papel-select';
       const papelElement = await this.page.$(papelSelector);
       if (papelElement) {
-        await papelElement.selectOption({ label: this.config.perfil || 'Servidor' });
+        await papelElement.selectOption({ label: this.config.perfil || 'Assessor' });
       }
       
       // Configurar visibilidade (se necessário)

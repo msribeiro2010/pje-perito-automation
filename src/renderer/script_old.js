@@ -320,7 +320,7 @@ class PeritoApp {
                     <div class="selected-item">
                         <h4>Configuração Ativa</h4>
                         <p><strong>CPF:</strong> ${config.cpf}</p>
-                        <p><strong>Perfil:</strong> ${config.perfil || 'Secretário de Audiência'}</p>
+                        <p><strong>Perfil:</strong> ${config.perfil || 'Assessor'}</p>
                         <p><strong>OJs:</strong> ${config.orgaos ? config.orgaos.length : 0} órgão(s) julgador(es)</p>
                         ${config.orgaos && config.orgaos.length > 0 ? `<small class="oj-preview">${config.orgaos.slice(0, 2).join(', ')}${config.orgaos.length > 2 ? '...' : ''}</small>` : ''}
                     </div>
@@ -1566,7 +1566,7 @@ class PeritoApp {
     const maxLoginAttemptsInput = document.getElementById('v2-max-login-attempts');
         
     if (cpfInput) cpfInput.value = config.cpf || '';
-    if (perfilInput) perfilInput.value = config.perfil || 'Secretário de Audiência';
+    if (perfilInput) perfilInput.value = config.perfil || 'Assessor';
     if (productionInput) productionInput.checked = config.production !== false;
     if (detailedReportInput) detailedReportInput.checked = config.detailedReport !== false;
     if (useCacheInput) useCacheInput.checked = config.useCache !== false;
@@ -1628,7 +1628,7 @@ class PeritoApp {
         
     const config = {
       cpf,
-      perfil: perfil || 'Secretário de Audiência',
+      perfil: perfil || 'Assessor',
       orgaos,
       url: pjeUrlInput ? pjeUrlInput.value : 'https://pje.trt15.jus.br',
       production: productionInput ? productionInput.checked : true,
@@ -2167,6 +2167,10 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+class ServidorManager {
+  constructor(app) {
+    this.app = app;
+  }
 
   openServidorModal(index = -1) {
     this.app.currentEditingServidorIndex = index;
@@ -2220,9 +2224,6 @@ document.head.appendChild(style);
     }, 100);
   }
 
-
-
-
   initializeOJSelector() {
     const containerId = 'oj-selector-main';
     const container = document.getElementById(containerId);
@@ -2241,7 +2242,6 @@ document.head.appendChild(style);
       window.ojSelectors[containerId] = new OJSelector(containerId, ojList);
     }
   }
-
 
   async importServidores() {
     try {

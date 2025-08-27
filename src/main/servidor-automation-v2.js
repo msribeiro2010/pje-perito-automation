@@ -662,7 +662,7 @@ class ServidorAutomationV2 {
               await this.contextualDelay('networkWait', { priority: 'normal' });
               
               // Verificar se chegamos numa página de edição (procurar pela aba Servidor)
-              const serverTabExists = await this.domCache.findElement('text=Servidor, a[href*="servidor"], button:has-text("Servidor")');
+              const serverTabExists = await this.page.$('text=Servidor, a[href*="servidor"], button:has-text("Servidor")');
               if (serverTabExists) {
                 console.log('✅ FALLBACK SUCEDIDO: Página de edição alcançada');
                 editSuccessful = true;
@@ -788,8 +788,8 @@ class ServidorAutomationV2 {
       
       console.log('✅ Visibilidade forçada via JavaScript');
       
-      // 1.2: Fazer hover intensivo em todas as linhas da tabela
-      const allRows = await this.domCache.findElements('table tbody tr, .table tbody tr, .datatable tbody tr, #cdk-drop-list-1 > tr');
+      // 1.2: Fazer hover intensivo em todas as linhas da tabela (otimizado)
+      const allRows = await this.page.$$('table tbody tr, .table tbody tr, .datatable tbody tr, #cdk-drop-list-1 > tr');
       console.log(`📋 Fazendo hover intensivo em ${allRows.length} linhas...`);
       
       for (let i = 0; i < Math.min(allRows.length, 3); i++) {
@@ -829,7 +829,7 @@ class ServidorAutomationV2 {
     if (!editButtonElement) {
       console.log('🎯 ESTRATÉGIA 2: Clique direto na linha da tabela...');
       try {
-        const firstRow = await this.domCache.findElement('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child, #cdk-drop-list-1 > tr:first-child');
+        const firstRow = await this.page.$('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child, #cdk-drop-list-1 > tr:first-child');
         if (firstRow) {
           console.log('✅ Executando clique direto na primeira linha...');
           
@@ -879,8 +879,8 @@ class ServidorAutomationV2 {
           // Timeout muito reduzido para chegar logo nas estratégias especiais
           await this.page.waitForSelector(selector, { timeout: 500, state: 'attached' });
         
-          // Obter o elemento
-          editButtonElement = await this.domCache.findElement(selector);
+          // Obter o elemento (otimizado)
+          editButtonElement = await this.page.$(selector);
         
           if (editButtonElement) {
           // Verificar se está visível
@@ -905,13 +905,13 @@ class ServidorAutomationV2 {
       console.log('🔄 ===== SELETORES TRADICIONAIS FALHARAM - INICIANDO ESTRATÉGIAS ESPECIAIS =====');
       console.log('🔄 ESTRATÉGIA ALTERNATIVA: Análise completa da tabela');
       try {
-        // Primeiro, tentar encontrar qualquer tabela
-        const tableExists = await this.domCache.findElement('table, .table, .datatable');
+        // Primeiro, tentar encontrar qualquer tabela (otimizado)
+        const tableExists = await this.page.$('table, .table, .datatable');
         if (tableExists) {
           console.log('✅ Tabela encontrada, analisando linhas...');
           
-          // Buscar todas as linhas da tabela
-          const rows = await this.domCache.findElements('table tbody tr, .table tbody tr, .datatable tbody tr');
+          // Buscar todas as linhas da tabela (otimizado)
+          const rows = await this.page.$$('table tbody tr, .table tbody tr, .datatable tbody tr');
           console.log(`🗂️ Encontradas ${rows.length} linhas na tabela`);
           
           if (rows.length > 0) {
@@ -1023,7 +1023,7 @@ class ServidorAutomationV2 {
         if (!editButton || !editButtonElement) {
           console.log('🔄 PENÚLTIMA TENTATIVA: Busca por qualquer elemento clicável com indicação de edição');
           
-          const allClickableElements = await this.domCache.findElements('button:visible, a:visible');
+          const allClickableElements = await this.page.$$('button:visible, a:visible');
           console.log(`🔘 Total de elementos clicáveis visíveis: ${allClickableElements.length}`);
           
           for (let i = 0; i < Math.min(allClickableElements.length, 15); i++) { // Aumentar para 15 elementos
@@ -1558,24 +1558,36 @@ class ServidorAutomationV2 {
   async closeAnyModalsRapido() {
     console.log('⚡ Fechando modais rapidamente...');
     const modalCloseSelectors = [
+      '.mat-overlay-backdrop',
+      '.cdk-overlay-backdrop',
+      '.modal-backdrop',
       'button:has-text("OK")',
-      'button:has-text("Fechar")',
-      '.mat-dialog-actions button',
-      '[data-dismiss="modal"]'
+      'button:has-text("Fechar")'
     ];
         
     for (const selector of modalCloseSelectors) {
       try {
-        const element = await this.domCache.findElement(selector);
-        if (element && await element.isVisible()) {
-          await element.click();
-          console.log(`⚡ Modal fechado: ${selector}`);
-          await this.page.waitForTimeout(200); // Reduzido de 500ms
-          return;
+        // Usar page.$$ diretamente para evitar timeout longo do domCache
+        const element = await this.page.$(selector);
+        if (element) {
+          const isVisible = await element.isVisible();
+          if (isVisible) {
+            await element.click();
+            console.log(`⚡ Modal fechado: ${selector}`);
+            await this.page.waitForTimeout(50); // Delay muito reduzido
+            return; // Sair imediatamente após fechar
+          }
         }
       } catch (error) {
         // Ignorar erros
       }
+    }
+    
+    // ESC como fallback rápido
+    try {
+      await this.page.keyboard.press('Escape');
+    } catch (error) {
+      // Ignorar erros
     }
   }
 
@@ -1714,30 +1726,178 @@ class ServidorAutomationV2 {
     console.log('🎯 ASSERTIVO: Configuração direta de papel/visibilidade...');
     
     try {
+      // Verificar se o navegador ainda está ativo
+      await this.ensureBrowserActive();
+      
       // 1. PAPEL: Selecionar perfil configurado
       console.log(`🎯 Verificando campo Papel - Configurado: ${this.config.perfil || 'Não especificado'}`);
       console.log(`🔍 [DEBUG] Config completo:`, JSON.stringify(this.config, null, 2));
       
-      const matSelectPapel = this.page.locator('mat-dialog-container mat-select[placeholder*="Papel"]');
-      if (await matSelectPapel.count() > 0) {
+      // Aguardar mais tempo para garantir que o modal esteja carregado
+      await this.page.waitForTimeout(1500);
+      
+      // Verificar novamente se a página ainda está válida
+      if (this.page.isClosed()) {
+        console.log('⚠️ [DEBUG] Página foi fechada, tentando reconectar...');
+        await this.reconnectBrowser();
+        return;
+      }
+      
+      // Tentar múltiplos seletores para o campo Papel
+      const seletoresPapel = [
+        'mat-dialog-container mat-select[placeholder*="Papel"]',
+        'mat-dialog-container mat-select[formcontrolname*="papel"]',
+        'mat-dialog-container mat-select[aria-label*="Papel"]',
+        'mat-select[placeholder*="Papel"]',
+        'mat-select:has-text("Papel")',
+        '.mat-select-trigger:has-text("Papel")'
+      ];
+      
+      let matSelectPapel = null;
+      for (const seletor of seletoresPapel) {
+        try {
+          // Verificar se a página ainda está válida antes de cada tentativa
+          if (this.page.isClosed()) {
+            console.log('⚠️ [DEBUG] Página fechada durante busca do seletor');
+            await this.reconnectBrowser();
+            return;
+          }
+          
+          console.log(`🔍 [DEBUG] Testando seletor: ${seletor}`);
+          const elemento = this.page.locator(seletor);
+          if (await elemento.count() > 0) {
+            console.log(`✅ [DEBUG] Campo Papel encontrado com seletor: ${seletor}`);
+            matSelectPapel = elemento;
+            break;
+          }
+        } catch (error) {
+          console.log(`⚠️ [DEBUG] Erro ao testar seletor ${seletor}: ${error.message}`);
+          if (error.message.includes('Target page, context or browser has been closed')) {
+            console.log('🔄 [DEBUG] Navegador fechado detectado, reconectando...');
+            await this.reconnectBrowser();
+            return;
+          }
+        }
+      }
+      
+      if (matSelectPapel && await matSelectPapel.count() > 0) {
         console.log('🔍 [DEBUG] Campo Papel encontrado, clicando...');
-        await matSelectPapel.click();
-        await this.contextualDelay('dropdown', { priority: 'high' });
+        
+        // Verificar se a página ainda está válida antes do clique
+        if (this.page.isClosed()) {
+          console.log('⚠️ [DEBUG] Página fechada antes do clique no campo Papel');
+          await this.reconnectBrowser();
+          return;
+        }
+        
+        // Tentar clicar com diferentes estratégias e timeouts mais longos
+        try {
+          console.log('🔍 [DEBUG] Tentando clique normal com timeout de 5 segundos...');
+          await matSelectPapel.click({ timeout: 5000 });
+          console.log('✅ [DEBUG] Clique normal bem-sucedido');
+        } catch (error) {
+          console.log(`⚠️ [DEBUG] Clique normal falhou: ${error.message}`);
+          if (error.message.includes('Target page, context or browser has been closed')) {
+            console.log('🔄 [DEBUG] Navegador fechado durante clique, reconectando...');
+            await this.reconnectBrowser();
+            return;
+          }
+          try {
+            console.log('🔍 [DEBUG] Tentando clique forçado...');
+            await matSelectPapel.click({ force: true, timeout: 5000 });
+            console.log('✅ [DEBUG] Clique forçado bem-sucedido');
+          } catch (forceError) {
+            console.log(`⚠️ [DEBUG] Clique forçado falhou: ${forceError.message}`);
+            if (forceError.message.includes('Target page, context or browser has been closed')) {
+              console.log('🔄 [DEBUG] Navegador fechado durante clique forçado, reconectando...');
+              await this.reconnectBrowser();
+              return;
+            }
+            // Tentar uma última estratégia: aguardar e tentar novamente
+            console.log('🔍 [DEBUG] Aguardando 2 segundos e tentando clique final...');
+            await this.page.waitForTimeout(2000);
+            try {
+              await matSelectPapel.click({ force: true, timeout: 3000 });
+              console.log('✅ [DEBUG] Clique final bem-sucedido');
+            } catch (finalError) {
+              console.log(`❌ [DEBUG] Todos os cliques falharam: ${finalError.message}`);
+            }
+          }
+        }
+        
+        // Verificar se a página ainda está válida após o clique
+        if (this.page.isClosed()) {
+          console.log('⚠️ [DEBUG] Página fechada após clique no campo Papel');
+          await this.reconnectBrowser();
+          return;
+        }
+        
+        // Aguardar as opções aparecerem com estratégia mais robusta
+        console.log('⏳ [DEBUG] Aguardando opções do dropdown aparecerem...');
+        
+        try {
+          // Tentar aguardar as opções aparecerem com waitForSelector
+          await this.page.waitForSelector('mat-option', { timeout: 8000 });
+          console.log('✅ [DEBUG] Opções encontradas com waitForSelector');
+        } catch (waitError) {
+          console.log(`⚠️ [DEBUG] waitForSelector falhou: ${waitError.message}`);
+          console.log('🔍 [DEBUG] Tentando aguardar com timeout fixo...');
+          await this.page.waitForTimeout(3000);
+        }
         
         const opcoesPapel = this.page.locator('mat-option');
-        const totalOpcoes = await opcoesPapel.count();
+        let totalOpcoes = await opcoesPapel.count();
         console.log(`🔍 [DEBUG] Total de opções de papel disponíveis: ${totalOpcoes}`);
         
+        // Se ainda não encontrou opções, tentar estratégias adicionais
+        if (totalOpcoes === 0) {
+          console.log('⚠️ [DEBUG] Nenhuma opção encontrada, tentando seletores alternativos...');
+          
+          const seletoresAlternativos = [
+            '.mat-option',
+            '[role="option"]',
+            '.mat-select-panel mat-option',
+            'mat-select-panel mat-option'
+          ];
+          
+          for (const seletor of seletoresAlternativos) {
+            try {
+              await this.page.waitForSelector(seletor, { timeout: 3000 });
+              const opcoesAlt = this.page.locator(seletor);
+              const totalAlt = await opcoesAlt.count();
+              if (totalAlt > 0) {
+                console.log(`✅ [DEBUG] Opções encontradas com seletor alternativo: ${seletor} (${totalAlt} opções)`);
+                totalOpcoes = totalAlt;
+                break;
+              }
+            } catch (altError) {
+              console.log(`⚠️ [DEBUG] Seletor alternativo ${seletor} falhou: ${altError.message}`);
+            }
+          }
+          
+          // Última tentativa com timeout longo
+          if (totalOpcoes === 0) {
+            console.log('⚠️ [DEBUG] Ainda sem opções, aguardando mais 5 segundos...');
+            await this.page.waitForTimeout(5000);
+            totalOpcoes = await opcoesPapel.count();
+            console.log(`🔍 [DEBUG] Total final de opções: ${totalOpcoes}`);
+          }
+        }
+        
         // Listar todas as opções disponíveis para debug
-        for (let i = 0; i < totalOpcoes; i++) {
-          const opcaoTexto = await opcoesPapel.nth(i).textContent();
-          console.log(`🔍 [DEBUG] Opção ${i + 1}: "${opcaoTexto?.trim()}"`);
+        for (let i = 0; i < Math.min(totalOpcoes, 10); i++) {
+          try {
+            const opcaoTexto = await opcoesPapel.nth(i).textContent();
+            console.log(`🔍 [DEBUG] Opção ${i + 1}: "${opcaoTexto?.trim()}"`);
+          } catch (error) {
+            console.log(`⚠️ [DEBUG] Erro ao ler opção ${i + 1}: ${error.message}`);
+          }
         }
         
         let perfilSelecionado = false;
         
         // Se perfil foi configurado, procurar pela opção correta
-        if (this.config.perfil) {
+        if (this.config.perfil && this.config.perfil.trim() !== '') {
           console.log(`🔍 Procurando perfil: "${this.config.perfil}"`);
           
           // Verificar diferentes variações do nome do perfil
@@ -1747,25 +1907,33 @@ class ServidorAutomationV2 {
             this.config.perfil.replace(/Secretario/gi, 'Secretário'),
             this.config.perfil.replace(/Secretário/gi, 'Secretario'),
             this.config.perfil.replace(/Audiencia/gi, 'Audiência'),
-            this.config.perfil.replace(/Audiência/gi, 'Audiencia')
+            this.config.perfil.replace(/Audiência/gi, 'Audiencia'),
+            this.config.perfil.toLowerCase(),
+            this.config.perfil.toUpperCase()
           ];
           
           console.log(`🔍 [DEBUG] Variações do perfil a testar:`, perfilVariacoes);
           
           // Tentar encontrar o perfil exato
           for (const variacao of perfilVariacoes) {
-            console.log(`🔍 [DEBUG] Testando variação: "${variacao}"`);
-            const opcaoPerfil = opcoesPapel.filter({ hasText: new RegExp(variacao.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') });
-            const countOpcao = await opcaoPerfil.count();
-            console.log(`🔍 [DEBUG] Opções encontradas para "${variacao}": ${countOpcao}`);
+            if (perfilSelecionado) break;
             
-            if (countOpcao > 0) {
-              const textoEncontrado = await opcaoPerfil.first().textContent();
-              console.log(`🔍 [DEBUG] Texto da opção encontrada: "${textoEncontrado?.trim()}"`);
-              await opcaoPerfil.first().click();
-              console.log(`✅ Papel encontrado e selecionado: ${variacao}`);
-              perfilSelecionado = true;
-              break;
+            console.log(`🔍 [DEBUG] Testando variação: "${variacao}"`);
+            try {
+              const opcaoPerfil = opcoesPapel.filter({ hasText: new RegExp(variacao.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') });
+              const countOpcao = await opcaoPerfil.count();
+              console.log(`🔍 [DEBUG] Opções encontradas para "${variacao}": ${countOpcao}`);
+              
+              if (countOpcao > 0) {
+                const textoEncontrado = await opcaoPerfil.first().textContent();
+                console.log(`🔍 [DEBUG] Texto da opção encontrada: "${textoEncontrado?.trim()}"`);
+                await opcaoPerfil.first().click({ timeout: 2000 });
+                console.log(`✅ Papel encontrado e selecionado: ${variacao}`);
+                perfilSelecionado = true;
+                break;
+              }
+            } catch (error) {
+              console.log(`⚠️ [DEBUG] Erro ao testar variação "${variacao}": ${error.message}`);
             }
           }
           
@@ -1823,19 +1991,63 @@ class ServidorAutomationV2 {
           }
         }
         
-        // Se ainda não encontrou, selecionar primeira opção
+        // Se ainda não encontrou, tentar estratégias de fallback
         if (!perfilSelecionado) {
-          console.log('⚠️ [DEBUG] Nenhum perfil específico encontrado, selecionando primeira opção...');
-          if (totalOpcoes > 0) {
-            await opcoesPapel.first().click();
-            const textoSelecionado = await opcoesPapel.first().textContent();
-            console.log(`✅ Papel: Primeira opção selecionada - "${textoSelecionado?.trim()}"`);
-          } else {
-            console.log('❌ [DEBUG] Nenhuma opção de papel disponível!');
+          console.log('⚠️ [DEBUG] Nenhum perfil específico encontrado, tentando fallbacks...');
+          
+          // Estratégia 1: Procurar por palavras-chave comuns
+          const palavrasChave = ['Secretário', 'Secretario', 'Assessor', 'Diretor', 'Analista'];
+          for (const palavra of palavrasChave) {
+            if (perfilSelecionado) break;
+            try {
+              const opcaoChave = opcoesPapel.filter({ hasText: new RegExp(palavra, 'i') });
+              if (await opcaoChave.count() > 0) {
+                const textoChave = await opcaoChave.first().textContent();
+                console.log(`🔍 [DEBUG] Encontrado por palavra-chave "${palavra}": "${textoChave?.trim()}"`);
+                await opcaoChave.first().click({ timeout: 2000 });
+                console.log(`✅ Papel selecionado por palavra-chave: ${palavra}`);
+                perfilSelecionado = true;
+                break;
+              }
+            } catch (error) {
+              console.log(`⚠️ [DEBUG] Erro ao testar palavra-chave "${palavra}": ${error.message}`);
+            }
+          }
+          
+          // Estratégia 2: Selecionar primeira opção se ainda não selecionou
+          if (!perfilSelecionado && totalOpcoes > 0) {
+            try {
+              console.log('⚠️ [DEBUG] Selecionando primeira opção disponível...');
+              await opcoesPapel.first().click({ timeout: 2000 });
+              const textoSelecionado = await opcoesPapel.first().textContent();
+              console.log(`✅ Papel: Primeira opção selecionada - "${textoSelecionado?.trim()}"`);
+              perfilSelecionado = true;
+            } catch (error) {
+              console.log(`❌ [DEBUG] Erro ao selecionar primeira opção: ${error.message}`);
+            }
+          }
+          
+          if (!perfilSelecionado) {
+            console.log('❌ [DEBUG] Nenhuma opção de papel pôde ser selecionada!');
           }
         }
       } else {
-        console.log('❌ [DEBUG] Campo Papel não encontrado!');
+        console.log('❌ [DEBUG] Campo Papel não encontrado com nenhum dos seletores!');
+        
+        // Tentar encontrar qualquer campo select no modal
+        const todosSelects = this.page.locator('mat-dialog-container mat-select, mat-select');
+        const totalSelects = await todosSelects.count();
+        console.log(`🔍 [DEBUG] Total de campos select encontrados no modal: ${totalSelects}`);
+        
+        for (let i = 0; i < totalSelects; i++) {
+          try {
+            const selectTexto = await todosSelects.nth(i).textContent();
+            const placeholder = await todosSelects.nth(i).getAttribute('placeholder');
+            console.log(`🔍 [DEBUG] Select ${i + 1}: texto="${selectTexto?.trim()}", placeholder="${placeholder}"`);
+          } catch (error) {
+            console.log(`⚠️ [DEBUG] Erro ao analisar select ${i + 1}: ${error.message}`);
+          }
+        }
       }
       
       // 2. VISIBILIDADE: Selecionar "Público" rapidamente  
@@ -2007,57 +2219,36 @@ class ServidorAutomationV2 {
   async closeAnyModals() {
     console.log('🧹 Procurando modais/overlays para fechar...');
     
-    // Tentar fechar modais de erro genéricos e overlays
-    const modalCloseSelectors = [
-      // Botões de texto comum
-      'button:has-text("OK")',
-      'button:has-text("Fechar")',
-      'button:has-text("Cancelar")',
-      'button:has-text("Confirmar")',
-      'button:has-text("Sim")',
-      'button:has-text("Não")',
-      
-      // Seletores Material Design
+    // Seletores prioritários com timeout reduzido
+    const prioritySelectors = [
       '.mat-dialog-actions button',
-      '.mat-dialog-container .mat-button',
       '.mat-overlay-backdrop',
       '.cdk-overlay-backdrop',
-      
-      // Seletores genéricos de modal
-      '[data-dismiss="modal"]',
-      '.modal-footer button',
-      '.modal-header .close',
-      '.close',
-      '.modal-close',
-      
-      // Ícones de fechar
-      'i.fa-times',
-      'i.fa-close',
-      'i.fa-x',
-      '.fas.fa-times',
-      
-      // Overlay/backdrop clicáveis
-      '.overlay',
-      '.backdrop',
+      'button:has-text("OK")',
+      'button:has-text("Fechar")',
       '.modal-backdrop'
     ];
     
     let modalsFound = 0;
-        
-    for (const selector of modalCloseSelectors) {
+    
+    // Primeira passada: seletores prioritários com timeout muito baixo
+    for (const selector of prioritySelectors) {
       try {
-        const elements = await this.domCache.findElements(selector);
+        // Usar timeout muito baixo (100ms) para não travar
+        const elements = await this.page.$$(selector);
         
         for (const element of elements) {
-          if (await element.isVisible()) {
-            try {
+          try {
+            const isVisible = await element.isVisible();
+            if (isVisible) {
               await element.click();
               modalsFound++;
               console.log(`✅ Fechou modal/overlay: ${selector}`);
-              await this.delay(300);
-            } catch (clickError) {
-              console.log(`⚠️ Erro ao clicar em ${selector}:`, clickError.message);
+              await this.delay(100); // Delay reduzido
+              return; // Sair após fechar o primeiro modal
             }
+          } catch (clickError) {
+            // Ignorar erros de clique
           }
         }
       } catch (error) {
@@ -2065,7 +2256,7 @@ class ServidorAutomationV2 {
       }
     }
     
-    // Tentar pressionar ESC para fechar qualquer modal restante
+    // Se não encontrou modais prioritários, tentar ESC rapidamente
     try {
       await this.page.keyboard.press('Escape');
       await this.delay(300);
@@ -2129,7 +2320,7 @@ class ServidorAutomationV2 {
     await vincularOJMelhorado(
       this.page, 
       orgao, // Nome do órgão como string
-      this.config.perfil || 'Secretário de Audiência', // Usar perfil configurado
+      this.config.perfil || 'Assessor', // Usar perfil configurado
       'Público'
     );
     console.log(`✅ vincularOJMelhorado concluído para: ${orgao}`);
