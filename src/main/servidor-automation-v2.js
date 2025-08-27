@@ -1368,7 +1368,7 @@ class ServidorAutomationV2 {
       }
             
       // Pausa otimizada com timeouts adaptativos
-      const delay = this.timeoutManager.obterTimeout('pausaEntreOJs') || 25;
+      const delay = TimeoutManager.obterTimeout('pje', 'aguardarProcessamento') || 25;
       await this.delay(delay);
     }
         

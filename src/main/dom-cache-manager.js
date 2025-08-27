@@ -3,6 +3,8 @@
  * Reduz o tempo de busca e melhora a performance da automação
  */
 
+const TimeoutManager = require('../utils/timeouts.js');
+
 class DOMCacheManager {
   constructor(page, timeoutManager) {
     this.page = page;
@@ -84,7 +86,7 @@ class DOMCacheManager {
    * Busca elemento com estratégias otimizadas
    */
   async searchElement(selector, options = {}) {
-    const timeout = options.timeout || this.timeoutManager.obterTimeout('interacao', 'aguardarElemento');
+    const timeout = options.timeout || TimeoutManager.obterTimeout('interacao', 'aguardarElemento');
     const strategies = this.getSearchStrategies(selector);
     
     for (const strategy of strategies) {
@@ -105,7 +107,7 @@ class DOMCacheManager {
    * Busca múltiplos elementos
    */
   async searchElements(selector, options = {}) {
-    const timeout = options.timeout || this.timeoutManager.obterTimeout('interacao', 'aguardarElemento');
+    const timeout = options.timeout || TimeoutManager.obterTimeout('interacao', 'aguardarElemento');
     
     try {
       await this.page.waitForSelector(selector, { timeout });

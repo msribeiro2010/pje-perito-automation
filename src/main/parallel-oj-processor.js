@@ -5,6 +5,7 @@
 
 const ContextualDelayManager = require('./contextual-delay-manager');
 const SmartRetryManager = require('./smart-retry-manager');
+const TimeoutManager = require('../utils/timeouts.js');
 
 class ParallelOJProcessor {
   constructor(page, timeoutManager, config, domCache = null) {
@@ -178,7 +179,7 @@ class ParallelOJProcessor {
     
     try {
       // Usar timeouts adaptativos
-      const timeout = this.timeoutManager.obterTimeout('vincularOJ');
+      const timeout = TimeoutManager.obterTimeout('pje', 'vincularOJ');
       
       // Executar ações em sequência otimizada
       await this.executeWithTimeout(async () => {
@@ -284,7 +285,7 @@ class ParallelOJProcessor {
       try {
         const element = await this.retryManager.retryElementSearch(
           async (sel) => await this.page.waitForSelector(sel, { 
-            timeout: this.timeoutManager.obterTimeout('interacao') 
+            timeout: TimeoutManager.obterTimeout('interacao', 'aguardarElemento') 
           }),
           selector
         );
@@ -303,7 +304,7 @@ class ParallelOJProcessor {
   
   async selectOrgaoJulgadorOptimized(orgao) {
     // Implementação otimizada da seleção de OJ
-    const timeout = this.timeoutManager.obterTimeout('dropdown');
+    const timeout = TimeoutManager.obterTimeout('dropdown', 'selecionar');
     
     try {
       // Aguardar dropdown aparecer
@@ -337,7 +338,7 @@ class ParallelOJProcessor {
   
   async configurePapelVisibilidadeOptimized() {
     // Configuração rápida de papel e visibilidade
-    const timeout = this.timeoutManager.obterTimeout('interacao');
+    const timeout = TimeoutManager.obterTimeout('interacao', 'configurar');
     
     try {
       // Selecionar papel (se necessário)
@@ -374,7 +375,7 @@ class ParallelOJProcessor {
       try {
         const element = await this.retryManager.retryElementSearch(
           async (sel) => await this.page.waitForSelector(sel, { 
-            timeout: this.timeoutManager.obterTimeout('interacao') 
+            timeout: TimeoutManager.obterTimeout('interacao', 'salvar') 
           }),
           selector
         );
@@ -392,7 +393,7 @@ class ParallelOJProcessor {
   }
   
   async verifySuccessOptimized() {
-    const timeout = this.timeoutManager.obterTimeout('networkIdle');
+    const timeout = TimeoutManager.obterTimeout('pje', 'aguardarProcessamento');
     
     try {
       // Aguardar indicadores de sucesso
