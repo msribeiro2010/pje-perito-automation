@@ -1716,17 +1716,29 @@ class ServidorAutomationV2 {
     try {
       // 1. PAPEL: Selecionar perfil configurado
       console.log(`🎯 Verificando campo Papel - Configurado: ${this.config.perfil || 'Não especificado'}`);
+      console.log(`🔍 [DEBUG] Config completo:`, JSON.stringify(this.config, null, 2));
+      
       const matSelectPapel = this.page.locator('mat-dialog-container mat-select[placeholder*="Papel"]');
       if (await matSelectPapel.count() > 0) {
+        console.log('🔍 [DEBUG] Campo Papel encontrado, clicando...');
         await matSelectPapel.click();
         await this.contextualDelay('dropdown', { priority: 'high' });
         
         const opcoesPapel = this.page.locator('mat-option');
+        const totalOpcoes = await opcoesPapel.count();
+        console.log(`🔍 [DEBUG] Total de opções de papel disponíveis: ${totalOpcoes}`);
+        
+        // Listar todas as opções disponíveis para debug
+        for (let i = 0; i < totalOpcoes; i++) {
+          const opcaoTexto = await opcoesPapel.nth(i).textContent();
+          console.log(`🔍 [DEBUG] Opção ${i + 1}: "${opcaoTexto?.trim()}"`);
+        }
+        
         let perfilSelecionado = false;
         
         // Se perfil foi configurado, procurar pela opção correta
         if (this.config.perfil) {
-          console.log(`🔍 Procurando perfil: ${this.config.perfil}`);
+          console.log(`🔍 Procurando perfil: "${this.config.perfil}"`);
           
           // Verificar diferentes variações do nome do perfil
           const perfilVariacoes = [
@@ -1738,10 +1750,18 @@ class ServidorAutomationV2 {
             this.config.perfil.replace(/Audiência/gi, 'Audiencia')
           ];
           
+          console.log(`🔍 [DEBUG] Variações do perfil a testar:`, perfilVariacoes);
+          
           // Tentar encontrar o perfil exato
           for (const variacao of perfilVariacoes) {
+            console.log(`🔍 [DEBUG] Testando variação: "${variacao}"`);
             const opcaoPerfil = opcoesPapel.filter({ hasText: new RegExp(variacao.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') });
-            if (await opcaoPerfil.count() > 0) {
+            const countOpcao = await opcaoPerfil.count();
+            console.log(`🔍 [DEBUG] Opções encontradas para "${variacao}": ${countOpcao}`);
+            
+            if (countOpcao > 0) {
+              const textoEncontrado = await opcaoPerfil.first().textContent();
+              console.log(`🔍 [DEBUG] Texto da opção encontrada: "${textoEncontrado?.trim()}"`);
               await opcaoPerfil.first().click();
               console.log(`✅ Papel encontrado e selecionado: ${variacao}`);
               perfilSelecionado = true;
@@ -1756,20 +1776,48 @@ class ServidorAutomationV2 {
             if (this.config.perfil.toLowerCase().includes('secretario') || this.config.perfil.toLowerCase().includes('secretário')) {
               if (this.config.perfil.toLowerCase().includes('audiencia') || this.config.perfil.toLowerCase().includes('audiência')) {
                 // Procurar "Secretário de Audiência"
+                console.log('🔍 [DEBUG] Procurando "Secretário de Audiência"...');
                 const secretarioAudiencia = opcoesPapel.filter({ hasText: /Secretári[oa].*Audiênc/i });
-                if (await secretarioAudiencia.count() > 0) {
+                const countSecretario = await secretarioAudiencia.count();
+                console.log(`🔍 [DEBUG] Opções "Secretário de Audiência" encontradas: ${countSecretario}`);
+                
+                if (countSecretario > 0) {
+                  const textoSecretario = await secretarioAudiencia.first().textContent();
+                  console.log(`🔍 [DEBUG] Texto "Secretário de Audiência": "${textoSecretario?.trim()}"`);
                   await secretarioAudiencia.first().click();
                   console.log('✅ Papel: Secretário de Audiência selecionado');
                   perfilSelecionado = true;
                 }
               } else {
                 // Procurar "Diretor de Secretaria" como fallback
+                console.log('🔍 [DEBUG] Procurando "Diretor de Secretaria"...');
                 const diretorSecretaria = opcoesPapel.filter({ hasText: /Diretor.*Secretaria/i });
-                if (await diretorSecretaria.count() > 0) {
+                const countDiretor = await diretorSecretaria.count();
+                console.log(`🔍 [DEBUG] Opções "Diretor de Secretaria" encontradas: ${countDiretor}`);
+                
+                if (countDiretor > 0) {
+                  const textoDiretor = await diretorSecretaria.first().textContent();
+                  console.log(`🔍 [DEBUG] Texto "Diretor de Secretaria": "${textoDiretor?.trim()}"`);
                   await diretorSecretaria.first().click();
                   console.log('✅ Papel: Diretor de Secretaria selecionado (fallback)');
                   perfilSelecionado = true;
                 }
+              }
+            }
+            
+            // Procurar especificamente por "Assessor" se for o perfil configurado
+            if (!perfilSelecionado && this.config.perfil.toLowerCase().includes('assessor')) {
+              console.log('🔍 [DEBUG] Procurando especificamente por "Assessor"...');
+              const assessorOpcao = opcoesPapel.filter({ hasText: /Assessor/i });
+              const countAssessor = await assessorOpcao.count();
+              console.log(`🔍 [DEBUG] Opções "Assessor" encontradas: ${countAssessor}`);
+              
+              if (countAssessor > 0) {
+                const textoAssessor = await assessorOpcao.first().textContent();
+                console.log(`🔍 [DEBUG] Texto "Assessor": "${textoAssessor?.trim()}"`);
+                await assessorOpcao.first().click();
+                console.log('✅ Papel: Assessor selecionado');
+                perfilSelecionado = true;
               }
             }
           }
@@ -1777,10 +1825,17 @@ class ServidorAutomationV2 {
         
         // Se ainda não encontrou, selecionar primeira opção
         if (!perfilSelecionado) {
-          await opcoesPapel.first().click();
-          const textoSelecionado = await opcoesPapel.first().textContent();
-          console.log(`✅ Papel: Primeira opção selecionada - ${textoSelecionado?.trim()}`);
+          console.log('⚠️ [DEBUG] Nenhum perfil específico encontrado, selecionando primeira opção...');
+          if (totalOpcoes > 0) {
+            await opcoesPapel.first().click();
+            const textoSelecionado = await opcoesPapel.first().textContent();
+            console.log(`✅ Papel: Primeira opção selecionada - "${textoSelecionado?.trim()}"`);
+          } else {
+            console.log('❌ [DEBUG] Nenhuma opção de papel disponível!');
+          }
         }
+      } else {
+        console.log('❌ [DEBUG] Campo Papel não encontrado!');
       }
       
       // 2. VISIBILIDADE: Selecionar "Público" rapidamente  
@@ -1828,12 +1883,27 @@ class ServidorAutomationV2 {
       console.log('🎯 Procurando botão Gravar...');
       const botaoGravar = 'mat-dialog-container button:has-text("Gravar"):not([disabled])';
       
+      // Debug: listar todos os botões disponíveis
+      const todosBotoes = await this.page.locator('mat-dialog-container button').all();
+      console.log(`🔍 [DEBUG] Total de botões no modal: ${todosBotoes.length}`);
+      
+      for (let i = 0; i < todosBotoes.length; i++) {
+        const botaoTexto = await todosBotoes[i].textContent();
+        const botaoDisabled = await todosBotoes[i].isDisabled();
+        console.log(`🔍 [DEBUG] Botão ${i + 1}: "${botaoTexto?.trim()}" (disabled: ${botaoDisabled})`);
+      }
+      
+      console.log(`🔍 [DEBUG] Aguardando seletor: ${botaoGravar}`);
       await this.page.waitForSelector(botaoGravar, { timeout: 3000 });
+      console.log('🔍 [DEBUG] Seletor encontrado, executando clique...');
+      
       await this.retryManager.retryPJEOperation(
         async () => {
           const element = await this.page.$(botaoGravar);
           if (element) {
+            console.log('🔍 [DEBUG] Elemento encontrado, clicando...');
             await element.click();
+            console.log('🔍 [DEBUG] Clique executado com sucesso');
           } else {
             throw new Error('Save button not found');
           }
@@ -1855,23 +1925,34 @@ class ServidorAutomationV2 {
       
     } catch (error) {
       console.log(`⚠️ Erro no salvamento assertivo: ${error.message}`);
+      console.log(`🔍 [DEBUG] Stack trace:`, error.stack);
       
       // Fallback: tentar outros botões
       const fallbackSelectors = [
         '[role="dialog"] button:has-text("Gravar")',
         'button:has-text("Salvar")',
-        'button:has-text("Confirmar")'
+        'button:has-text("Confirmar")',
+        'mat-dialog-container button[type="submit"]',
+        'mat-dialog-container button:not([disabled])'
       ];
       
+      console.log('🔍 [DEBUG] Tentando fallback selectors...');
       for (const selector of fallbackSelectors) {
         try {
+          console.log(`🔍 [DEBUG] Testando selector: ${selector}`);
           const botao = this.page.locator(selector);
-          if (await botao.count() > 0) {
-            await botao.click();
+          const count = await botao.count();
+          console.log(`🔍 [DEBUG] Elementos encontrados para "${selector}": ${count}`);
+          
+          if (count > 0) {
+            const textoFallback = await botao.first().textContent();
+            console.log(`🔍 [DEBUG] Texto do botão fallback: "${textoFallback?.trim()}"`);
+            await botao.first().click();
             console.log(`✅ Fallback: ${selector} clicado`);
             return;
           }
         } catch (fallbackError) {
+          console.log(`🔍 [DEBUG] Erro no fallback "${selector}": ${fallbackError.message}`);
           continue;
         }
       }
