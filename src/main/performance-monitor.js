@@ -107,6 +107,28 @@ class PerformanceMonitor {
   }
   
   /**
+   * Inicia o registro de uma navegação
+   */
+  recordNavigationStart(operation, details = '') {
+    this.currentOperations = this.currentOperations || {};
+    this.currentOperations[`nav_${operation}`] = {
+      startTime: Date.now(),
+      operation,
+      details
+    };
+  }
+
+  /**
+   * Finaliza o registro de uma navegação
+   */
+  recordNavigationEnd(operation, duration) {
+    if (this.currentOperations && this.currentOperations[`nav_${operation}`]) {
+      delete this.currentOperations[`nav_${operation}`];
+    }
+    this.recordNavigation(operation, duration);
+  }
+
+  /**
    * Registra uma operação de navegação
    */
   recordNavigation(url, duration) {
@@ -129,6 +151,28 @@ class PerformanceMonitor {
   }
   
   /**
+   * Inicia o registro de um clique
+   */
+  recordClickStart(operation, selector = '') {
+    this.currentOperations = this.currentOperations || {};
+    this.currentOperations[`click_${operation}`] = {
+      startTime: Date.now(),
+      operation,
+      selector
+    };
+  }
+
+  /**
+   * Finaliza o registro de um clique
+   */
+  recordClickEnd(operation, duration, success = true) {
+    if (this.currentOperations && this.currentOperations[`click_${operation}`]) {
+      delete this.currentOperations[`click_${operation}`];
+    }
+    this.recordClick(operation, duration);
+  }
+
+  /**
    * Registra uma operação de clique
    */
   recordClick(selector, duration) {
@@ -150,6 +194,28 @@ class PerformanceMonitor {
   }
   
   /**
+   * Inicia o registro de uma busca de elemento
+   */
+  recordElementSearchStart(operation, selector = '') {
+    this.currentOperations = this.currentOperations || {};
+    this.currentOperations[`search_${operation}`] = {
+      startTime: Date.now(),
+      operation,
+      selector
+    };
+  }
+
+  /**
+   * Finaliza o registro de uma busca de elemento
+   */
+  recordElementSearchEnd(operation, duration, found = true) {
+    if (this.currentOperations && this.currentOperations[`search_${operation}`]) {
+      delete this.currentOperations[`search_${operation}`];
+    }
+    this.recordElementSearch(operation, duration, found);
+  }
+
+  /**
    * Registra uma busca por elemento
    */
   recordElementSearch(selector, duration, found = true) {
@@ -163,14 +229,35 @@ class PerformanceMonitor {
       search.slowestSelector = selector;
     }
     
-    if (duration > this.thresholds.elementSearch) {
-      const status = found ? 'encontrado' : 'não encontrado';
-      this.addAlert('elementSearch', `Busca lenta: ${selector} (${duration}ms, ${status})`, 'warning');
+    if (duration > this.thresholds.elementSearch || !found) {
+      this.addAlert('elementSearch', `Busca de elemento ${found ? 'lenta' : 'falhou'}: ${selector} (${duration}ms)`, found ? 'warning' : 'error');
     }
     
     this.updateHourlyStats('elementSearch', duration);
   }
   
+  /**
+   * Inicia o registro de uma operação PJE
+   */
+  recordPJEOperationStart(operation, details = '') {
+    this.currentOperations = this.currentOperations || {};
+    this.currentOperations[`pje_${operation}`] = {
+      startTime: Date.now(),
+      operation,
+      details
+    };
+  }
+
+  /**
+   * Finaliza o registro de uma operação PJE
+   */
+  recordPJEOperationEnd(operation, duration, success = true) {
+    if (this.currentOperations && this.currentOperations[`pje_${operation}`]) {
+      delete this.currentOperations[`pje_${operation}`];
+    }
+    this.recordPJEOperation(operation, duration);
+  }
+
   /**
    * Registra uma operação PJE
    */
