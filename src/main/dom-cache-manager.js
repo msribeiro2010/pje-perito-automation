@@ -84,7 +84,7 @@ class DOMCacheManager {
    * Busca elemento com estratégias otimizadas
    */
   async searchElement(selector, options = {}) {
-    const timeout = options.timeout || this.timeoutManager.getOptimizedTimeout('elementSearch');
+    const timeout = options.timeout || this.timeoutManager.obterTimeout('interacao', 'aguardarElemento');
     const strategies = this.getSearchStrategies(selector);
     
     for (const strategy of strategies) {
@@ -105,7 +105,7 @@ class DOMCacheManager {
    * Busca múltiplos elementos
    */
   async searchElements(selector, options = {}) {
-    const timeout = options.timeout || this.timeoutManager.getOptimizedTimeout('elementSearch');
+    const timeout = options.timeout || this.timeoutManager.obterTimeout('interacao', 'aguardarElemento');
     
     try {
       await this.page.waitForSelector(selector, { timeout });
