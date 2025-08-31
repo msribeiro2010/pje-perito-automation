@@ -27,13 +27,50 @@
         <!-- Loading Overlay -->
         <div id="loading-overlay" class="loading-overlay hidden">
             <div class="loading-content">
-                <div class="spinner"></div>
-                <div id="loading-title" class="loading-text">Processando...</div>
-                <div id="loading-subtitle" class="loading-details">Aguarde enquanto o sistema trabalha</div>
-                <div class="progress-container">
-                    <div id="progress-bar" class="progress-bar"></div>
+
+                
+                <!-- Informações do Processamento -->
+                <div class="processing-info">
+                    <div id="loading-title" class="loading-text">🤖 Robô trabalhando...</div>
+                    <div id="loading-subtitle" class="loading-details">Aguarde enquanto o sistema processa</div>
+                    
+                    <!-- Nome do Servidor -->
+                    <div id="loading-servidor" class="loading-servidor" style="display: none;">
+                        Servidor: ---
+                    </div>
+                    
+                    <!-- Campo CPF Destacado -->
+                    <div class="cpf-display">
+                        <div class="cpf-label">📋 CPF do Servidor:</div>
+                        <div id="current-cpf" class="cpf-value">---.--.------</div>
+                    </div>
+                    
+                    <!-- Campo Perfil Destacado -->
+                    <div class="perfil-display">
+                        <div class="perfil-label">👤 Perfil do Servidor:</div>
+                        <div id="current-perfil" class="perfil-value">---</div>
+                    </div>
+                    
+                    <!-- OJ Atual -->
+                    <div id="loading-oj" class="loading-oj" style="display: none;">
+                        OJ: ---
+                    </div>
+                    
+                    <!-- Contador de OJs -->
+                    <div class="oj-counter">
+                        <div class="oj-icon">⚖️</div>
+                        <div id="oj-progress" class="oj-text">OJs processadas: 0/0</div>
+                    </div>
+                    
+                    <!-- Barra de Progresso -->
+                    <div class="progress-container">
+                        <div id="progress-bar" class="progress-bar"></div>
+                        <!-- progress-glow removido para evitar cansaço visual -->
+                    </div>
+                    <div id="progress-text" class="progress-text">Iniciando automação...</div>
+                    
+                    <!-- Botão de pausar removido conforme solicitação do usuário -->
                 </div>
-                <div id="progress-text" class="progress-text">0/0 passos concluídos</div>
             </div>
         </div>
 
@@ -114,8 +151,14 @@
                     <button id="add-servidor" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Adicionar Servidor
                     </button>
-                    <button id="import-servidores" class="btn btn-secondary">
-                        <i class="fas fa-download"></i> Importar
+                    <button id="open-servidor-v2-modal" class="btn btn-success">
+                        <i class="fas fa-user-cog"></i> Configurar Servidor V2
+                    </button>
+                    <button id="import-servidores-bulk" class="btn btn-secondary">
+                        <i class="fas fa-download"></i> Importar em Lote
+                    </button>
+                    <button id="servidor-import-example" class="btn btn-info">
+                        <i class="fas fa-info-circle"></i> Exemplo de Importação
                     </button>
                     <button id="bulk-delete-servidores" class="btn btn-danger" disabled>
                         <i class="fas fa-trash-alt"></i> Excluir Selecionados
@@ -191,6 +234,9 @@
                     <button id="start-automation" class="btn btn-success" disabled>
                         <i class="fas fa-play"></i> Iniciar Automação de Peritos
                     </button>
+                    <button id="pause-resume-automation" class="btn btn-warning" disabled>
+                        <i class="fas fa-pause"></i> Pausar
+                    </button>
                     <button id="stop-automation" class="btn btn-danger" disabled>
                         <i class="fas fa-stop"></i> Parar Automação
                     </button>
@@ -215,6 +261,9 @@
                 <div class="automation-buttons">
                     <button id="start-servidor-automation" class="btn btn-success" disabled>
                         <i class="fas fa-play"></i> Iniciar Automação de Servidores
+                    </button>
+                    <button id="pause-resume-servidor-automation" class="btn btn-warning" disabled>
+                        <i class="fas fa-pause"></i> Pausar
                     </button>
                     <button id="stop-servidor-automation" class="btn btn-danger" disabled>
                         <i class="fas fa-stop"></i> Parar Automação
@@ -274,6 +323,71 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="document.getElementById('import-example-modal').style.display='none'">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de exemplo de importação para servidores -->
+    <div id="servidor-import-example-modal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Exemplo de Arquivo para Importação de Servidores em Lote</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Para importar servidores em lote, crie um arquivo JSON com a seguinte estrutura:</p>
+                <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">
+[
+  {
+    "nome": "João Silva Santos",
+    "cpf": "123.456.789-00",
+    "perfil": "Assessor",
+    "ojs": [
+      "1ª Vara do Trabalho de Campinas",
+      "2ª Vara do Trabalho de Campinas",
+      "Vara do Trabalho de Jundiaí"
+    ]
+  },
+  {
+    "nome": "Maria Oliveira Costa",
+    "cpf": "987.654.321-11",
+    "perfil": "Secretário de Audiência",
+    "ojs": [
+      "Vara do Trabalho de Atibaia",
+      "LIQ2 - Jundiaí",
+      "EXE1 - Campinas"
+    ]
+  },
+  {
+    "nome": "Carlos Eduardo Ferreira",
+    "cpf": "456.789.123-22",
+    "perfil": "Administrador",
+    "ojs": [
+      "3ª Vara do Trabalho de Sorocaba",
+      "Vara do Trabalho de Salto",
+      "Vara do Trabalho de Itapetininga"
+    ]
+  }
+]</pre>
+                <div style="margin-top: 15px; padding: 10px; background-color: #e8f4fd; border-left: 4px solid #007bff; border-radius: 4px;">
+                    <strong>Instruções:</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        <li>O arquivo deve estar em formato JSON válido</li>
+                        <li>Cada servidor deve ter <strong>nome</strong>, <strong>cpf</strong>, <strong>perfil</strong> e <strong>ojs</strong></li>
+                        <li>O campo "perfil" pode ser: Assessor, Secretário de Audiência, Administrador, Servidor</li>
+                        <li>O campo "ojs" deve ser um array com os órgãos julgadores</li>
+                        <li>CPFs duplicados irão atualizar os dados existentes</li>
+                        <li>Registros inválidos serão ignorados com aviso</li>
+                    </ul>
+                </div>
+                <div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                    <strong>💡 Dica:</strong> Use o arquivo <code>exemplo_importacao_servidores.json</code> na raiz do projeto como referência.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('servidor-import-example-modal').style.display='none'">
                     Fechar
                 </button>
             </div>
@@ -541,37 +655,80 @@
 
     <!-- Modal para configuração da Automação V2 -->
     <div id="servidor-v2-modal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <div class="modal-header">
-                <h3>Configuração da Automação - Servidores</h3>
-                <span class="close">&times;</span>
+        <div class="modal-content modern-modal" style="max-width: 900px;">
+            <div class="modal-header modern-header">
+                <div class="header-content">
+                    <div class="header-icon">
+                        <i class="fas fa-user-cog"></i>
+                    </div>
+                    <div class="header-text">
+                        <h3>Configuração da Automação - Servidores</h3>
+                        <p class="header-subtitle">Configure os dados do servidor e perfis de acesso</p>
+                    </div>
+                </div>
+                <span class="close modern-close">&times;</span>
             </div>
-            <div class="modal-body">
+            <div class="modal-body modern-body">
                 <form id="servidor-v2-form">
-                    <div class="form-group">
-                        <label for="v2-cpf">CPF do Servidor:</label>
-                        <div class="autocomplete-container">
-                            <input type="text" id="v2-cpf" placeholder="000.000.000-00" required autocomplete="off">
-                            <div class="autocomplete-suggestions" id="v2-cpf-suggestions"></div>
+                    <!-- Seção de Dados do Servidor -->
+                    <div class="form-section">
+                        <div class="section-header">
+                            <i class="fas fa-user"></i>
+                            <h4>Dados do Servidor</h4>
                         </div>
-                        <small>CPF do servidor que receberá os vínculos</small>
+                        
+                        <div class="form-group">
+                            <label for="v2-cpf">
+                                <i class="fas fa-id-card"></i>
+                                CPF do Servidor:
+                            </label>
+                            <div class="autocomplete-container">
+                                <input type="text" id="v2-cpf" placeholder="000.000.000-00" required autocomplete="off">
+                                <div class="autocomplete-suggestions" id="v2-cpf-suggestions"></div>
+                            </div>
+                            <small class="help-text">CPF do servidor que receberá os vínculos nos órgãos julgadores</small>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="v2-perfil">Perfil:</label>
-                        <select id="v2-perfil" required>
-                            <option value="">Selecione...</option>
-                            <option value="Administrador">Administrador</option>
-                            <option value="Assessor" selected>Assessor</option>
-                            <option value="Diretor de Central de Atendimento">Diretor de Central de Atendimento</option>
-                            <option value="Diretor de Secretaria">Diretor de Secretaria</option>
-                            <option value="Estagiário Conhecimento">Estagiário Conhecimento</option>
-                            <option value="Estagiário de Central de Atendimento">Estagiário de Central de Atendimento</option>
-                            <option value="Secretário de Audiência">Secretário de Audiência</option>
-                            <option value="Servidor">Servidor</option>
-                            <option value="Perito Judicial">Perito Judicial</option>
-                        </select>
-                        <small>Perfil do servidor no sistema</small>
+                    <!-- Seção de Perfil e Permissões -->
+                    <div class="form-section">
+                        <div class="section-header">
+                            <i class="fas fa-shield-alt"></i>
+                            <h4>Perfil e Permissões</h4>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="v2-perfil">
+                                <i class="fas fa-user-tag"></i>
+                                Perfil de Acesso:
+                            </label>
+                            <select id="v2-perfil" required class="modern-select">
+                                <option value="">Selecione o perfil...</option>
+                                <option value="Administrador" data-description="Acesso total ao sistema, pode gerenciar usuários e configurações">👑 Administrador</option>
+                                <option value="Assessor" selected data-description="Auxilia magistrados, acesso a processos e documentos">📋 Assessor</option>
+                                <option value="Diretor de Central de Atendimento" data-description="Gerencia atendimento ao público e distribuição">🏢 Diretor de Central de Atendimento</option>
+                                <option value="Diretor de Secretaria" data-description="Supervisiona atividades administrativas da secretaria">📊 Diretor de Secretaria</option>
+                                <option value="Estagiário Conhecimento" data-description="Estudante em formação, acesso limitado para aprendizado">🎓 Estagiário Conhecimento</option>
+                                <option value="Estagiário de Central de Atendimento" data-description="Estudante que auxilia no atendimento ao público">📞 Estagiário de Central de Atendimento</option>
+                                <option value="Secretário de Audiência" data-description="Responsável por audiências e atos processuais">⚖️ Secretário de Audiência</option>
+                                <option value="Servidor" data-description="Servidor público com acesso padrão ao sistema">👤 Servidor</option>
+                                <option value="Perito Judicial" data-description="Especialista técnico nomeado pelo juiz">🔬 Perito Judicial</option>
+                            </select>
+                            <div id="perfil-description" class="perfil-info">
+                                <div class="perfil-card">
+                                    <div class="perfil-icon">📋</div>
+                                    <div class="perfil-details">
+                                        <h5>Assessor</h5>
+                                        <p>Auxilia magistrados, acesso a processos e documentos</p>
+                                        <div class="perfil-permissions">
+                                            <span class="permission-tag">📄 Processos</span>
+                                            <span class="permission-tag">📝 Documentos</span>
+                                            <span class="permission-tag">👨‍⚖️ Apoio Magistrado</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="form-group">

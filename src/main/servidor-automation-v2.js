@@ -26,6 +26,7 @@ class ServidorAutomationV2 {
     this.config = null;
     this.results = [];
     this.ojCache = new Set(); // Cache para OJs já cadastrados
+    this.currentServidor = null; // Servidor sendo processado atualmente
     this.isProduction = process.env.NODE_ENV === 'production';
     this.timeoutManager = new TimeoutManager();
     this.delayManager = new ContextualDelayManager(this.timeoutManager);
@@ -78,7 +79,7 @@ class ServidorAutomationV2 {
       .trim();
   }
 
-  sendStatus(type, message, progress = null, subtitle = null, orgao = null) {
+  sendStatus(type, message, progress = null, subtitle = null, orgao = null, servidor = null, ojProcessed = null, totalOjs = null) {
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('automation-progress', {
@@ -86,8 +87,13 @@ class ServidorAutomationV2 {
           message,
           progress,
           subtitle,
-          orgao,
-          automationType: 'servidor-v2'
+          orgaoJulgador: orgao,
+          servidor: servidor,
+          cpf: this.config?.cpf || null,
+          perfil: this.config?.perfil || null,
+          automationType: 'servidor-v2',
+          ojProcessed: ojProcessed,
+          totalOjs: totalOjs
         });
       }
     } catch (error) {
@@ -96,7 +102,7 @@ class ServidorAutomationV2 {
     }
         
     try {
-      console.log(`[${type.toUpperCase()}] ${message}${subtitle ? ` - ${subtitle}` : ''}${orgao ? ` (${orgao})` : ''}`);
+      console.log(`[${type.toUpperCase()}] ${message}${subtitle ? ` - ${subtitle}` : ''}${orgao ? ` (${orgao})` : ''}${servidor ? ` [${servidor}]` : ''}`);
     } catch (error) {
       // Em caso de erro até no console.log, usar process.stdout
       process.stdout.write(`[${type.toUpperCase()}] ${message}\n`);
@@ -186,7 +192,7 @@ class ServidorAutomationV2 {
       };
       
       this.sendStatus('info', `🎯 [${i + 1}/${servidores.length}] ${servidor.nome}`, 
-        progressBase, `CPF: ${servidor.cpf} | ${servidor.orgaos?.length || 0} OJs | Erros consecutivos: ${this.consecutiveErrors}`);
+            progressBase, `CPF: ${servidor.cpf} | Perfil: ${servidor.perfil} | ${servidor.orgaos?.length || 0} OJs | Erros consecutivos: ${this.consecutiveErrors}`, null, servidor.nome);
       
       const startTime = Date.now();
       let servidorProcessado = false;
@@ -197,7 +203,7 @@ class ServidorAutomationV2 {
         
         try {
           this.sendStatus('info', `🔄 [${i + 1}/${servidores.length}] Tentativa ${tentativa}/${this.servidorResults[servidor.cpf].maxTentativas} - ${servidor.nome}`, 
-            progressBase, 'Preparando processamento...');
+            progressBase, `CPF: ${servidor.cpf} | Perfil: ${servidor.perfil}`, null, servidor.nome);
           
           console.log(`🎯 ===== INICIANDO PROCESSAMENTO DO SERVIDOR ${i + 1}: ${servidor.nome} =====`);
           
@@ -1331,18 +1337,23 @@ class ServidorAutomationV2 {
     // Normalizar e filtrar OJs que precisam ser processados
     const ojsNormalizados = this.config.orgaos.map(orgao => this.normalizeOrgaoName(orgao));
     const ojsToProcess = ojsNormalizados.filter(orgao => !this.ojCache.has(orgao));
+    
+    // Contador de OJs processadas
+    let ojsProcessadasTotal = 0; // Começar em 0
+    const totalOjs = this.config.orgaos.length;
         
-    this.sendStatus('info', `${ojsToProcess.length} OJs para processar`, 60, `${this.ojCache.size} já cadastrados`);
+    this.sendStatus('info', `${ojsToProcess.length} OJs para processar`, 60, `${this.ojCache.size} já cadastrados`, null, null, ojsProcessadasTotal, totalOjs);
         
     // Processar cada OJ restante
     for (let i = 0; i < ojsToProcess.length; i++) {
       const orgao = ojsToProcess[i];
       const progress = 60 + (i / ojsToProcess.length) * 35;
             
-      this.sendStatus('info', `Processando OJ ${i + 1}/${ojsToProcess.length}`, progress, orgao);
+      this.sendStatus('info', `Processando OJ ${i + 1}/${ojsToProcess.length}`, progress, 'Vinculando órgão julgador', orgao, this.currentServidor?.nome, ojsProcessadasTotal, totalOjs);
             
       try {
         await this.processOrgaoJulgador(orgao);
+        ojsProcessadasTotal++; // Incrementar contador
         this.results.push({
           orgao,
           status: 'Incluído com Sucesso',
@@ -1351,9 +1362,10 @@ class ServidorAutomationV2 {
           cpf: this.config.cpf,
           timestamp: new Date().toISOString()
         });
-        this.sendStatus('success', 'OJ processado com sucesso', progress, orgao);
+        this.sendStatus('success', 'OJ processado com sucesso', progress, 'Vinculação concluída', orgao, this.currentServidor?.nome, ojsProcessadasTotal, totalOjs);
       } catch (error) {
         console.error(`Erro ao processar OJ ${orgao}:`, error);
+        ojsProcessadasTotal++; // Incrementar contador mesmo em caso de erro
         this.results.push({
           orgao,
           status: 'Erro',
@@ -1361,7 +1373,7 @@ class ServidorAutomationV2 {
           cpf: this.config.cpf,
           timestamp: new Date().toISOString()
         });
-        this.sendStatus('error', `Erro ao processar OJ: ${error.message}`, progress, orgao);
+        this.sendStatus('error', `Erro ao processar OJ: ${error.message}`, progress, 'Erro na vinculação', orgao, this.currentServidor?.nome, ojsProcessadasTotal, totalOjs);
                 
         // Proteções após erro
         await this.handleErrorRecovery();
@@ -1385,6 +1397,9 @@ class ServidorAutomationV2 {
         });
       }
     }
+    
+    // Enviar status final de conclusão
+    this.sendStatus('success', 'Processamento finalizado com sucesso!', 100, 'Todas as OJs foram processadas', 'Finalizado', this.currentServidor?.nome, totalOjs, totalOjs);
   }
 
   async loadExistingOJs() {
@@ -2348,6 +2363,9 @@ class ServidorAutomationV2 {
     console.log(`🎯 [DEBUG] INICIANDO processOrgaosJulgadoresWithServerTracking para ${servidor.nome}`);
     console.log(`🎯 [DEBUG] CPF: ${servidor.cpf}, Perfil: ${servidor.perfil}, OJs: ${servidor.orgaos?.length || 0}`);
     
+    // Definir o servidor atual para uso em outras funções
+    this.currentServidor = servidor;
+    
     const serverResult = this.servidorResults[servidor.cpf];
     if (!serverResult) {
       console.error(`❌ [ERROR] serverResult não encontrado para CPF ${servidor.cpf}`);
@@ -2373,8 +2391,12 @@ class ServidorAutomationV2 {
     
     const ojsToProcess = ojsNormalizados.filter(orgao => !this.ojCache.has(orgao));
     console.log(`🔍 [DEBUG] OJs a processar (após filtro cache): ${JSON.stringify(ojsToProcess.slice(0,3))}${ojsToProcess.length > 3 ? '...' : ''}`);
+    
+    // Contador de OJs processadas
+    let ojsProcessadasTotal = 0; // Começar em 0
+    const totalOjs = this.config.orgaos.length;
         
-    this.sendStatus('info', `⚡ ${ojsToProcess.length} novos OJs | ${this.ojCache.size} já cadastrados`, null, `Servidor: ${servidor.nome}`);
+    this.sendStatus('info', `⚡ ${ojsToProcess.length} novos OJs | ${this.ojCache.size} já cadastrados`, null, `Processando servidor`, null, servidor.nome, ojsProcessadasTotal, totalOjs);
     
     if (ojsToProcess.length === 0) {
       console.log('🔍 [DEBUG] NENHUM OJ para processar - todos já estão em cache');
@@ -2388,12 +2410,14 @@ class ServidorAutomationV2 {
       console.log(`🔍 [DEBUG] Processando OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`);
       serverResult.ojsProcessados++;
       
-      this.sendStatus('info', `[${servidor.nome}] OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`, null, 'Processando vinculação');
+      this.sendStatus('info', `OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`, null, 'Processando vinculação', orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
             
       try {
         const startOJ = Date.now();
         await this.processOrgaoJulgador(orgao);
         const timeOJ = Date.now() - startOJ;
+        
+        ojsProcessadasTotal++; // Incrementar contador após sucesso
         
         serverResult.sucessos++;
         serverResult.detalhes.push({
@@ -2414,8 +2438,12 @@ class ServidorAutomationV2 {
           timestamp: new Date().toISOString()
         });
         
+        this.sendStatus('success', `✅ OJ ${orgao} incluído com sucesso`, null, null, orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
+        
       } catch (error) {
         console.error(`❌ Erro OJ ${orgao} (${servidor.nome}):`, error.message);
+        
+        ojsProcessadasTotal++; // Incrementar contador mesmo com erro
         
         serverResult.erros++;
         serverResult.detalhes.push({
@@ -2433,6 +2461,8 @@ class ServidorAutomationV2 {
           cpf: this.config.cpf,
           timestamp: new Date().toISOString()
         });
+        
+        this.sendStatus('error', `❌ Erro ao processar OJ ${orgao}: ${error.message}`, null, null, orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
                 
         // Recuperação rápida sem interromper processamento
         await this.quickErrorRecovery();
@@ -2464,6 +2494,9 @@ class ServidorAutomationV2 {
         });
       }
     }
+    
+    // Enviar status final de conclusão
+    this.sendStatus('success', `✅ Processamento do servidor ${servidor.nome} finalizado`, null, 'Finalizado', 'Finalizado', servidor.nome, totalOjs, totalOjs);
   }
 
   async quickErrorRecovery() {

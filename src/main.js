@@ -21,12 +21,17 @@ let activeBrowser = null;
 let automationInProgress = false;
 // let servidorAutomation = null; // Removido V1
 let servidorAutomationV2 = null;
-function sendStatus(type, message, progress = null, subtitle = null) {
+function sendStatus(type, message, progress = null, subtitle = null, ojData = null) {
   try {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const data = { type, message };
       if (progress !== null) data.progress = progress;
       if (subtitle) data.subtitle = subtitle;
+      if (ojData) {
+        if (ojData.ojProcessed !== undefined) data.ojProcessed = ojData.ojProcessed;
+        if (ojData.totalOjs !== undefined) data.totalOjs = ojData.totalOjs;
+        if (ojData.orgaoJulgador) data.orgaoJulgador = ojData.orgaoJulgador;
+      }
       mainWindow.webContents.send('automation-status', data);
     }
   } catch (e) {
@@ -211,6 +216,9 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
       ojsComErro: [],
       detalhes: []
     };
+    
+    // Contador global de OJs processadas
+    let ojsProcessadasTotal = 0;
 
     for (let i = 0; i < selectedPeritos.length; i++) {
       const perito = selectedPeritos[i];
@@ -244,9 +252,14 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
         for (let j = 0; j < perito.ojs.length; j++) {
           const oj = perito.ojs[j];
           resultadoPerito.ojsProcessados++;
+          ojsProcessadasTotal++;
           
           try {
-            sendStatus('info', `Processando OJ ${j + 1}/${perito.ojs.length}: ${oj}`, currentStep++, 'Analisando órgão julgador');
+            sendStatus('info', `Processando OJ ${j + 1}/${perito.ojs.length}: ${oj}`, currentStep++, 'Analisando órgão julgador', {
+              ojProcessed: ojsProcessadasTotal,
+              totalOjs: relatorio.totalOJs,
+              orgaoJulgador: oj
+            });
             
             // 1. Verificar se o OJ já está vinculado (apenas verificação conservadora)
             console.log(`\n=== PROCESSANDO OJ: "${oj}" ===`);
@@ -259,7 +272,11 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
               console.log(`   - Texto encontrado: "${verificacao.textoEncontrado}"`);
               console.log(`   - Tipo: ${verificacao.tipoCorrespondencia || 'padrão'}`);
               
-              sendStatus('warning', `OJ "${oj}" já está vinculado - pulando`, currentStep, 'Vínculo já existe');
+              sendStatus('warning', `OJ "${oj}" já está vinculado - pulando`, currentStep, 'Vínculo já existe', {
+                ojProcessed: ojsProcessadasTotal,
+                totalOjs: relatorio.totalOJs,
+                orgaoJulgador: oj
+              });
               resultadoPerito.ojsJaVinculados++;
               relatorio.ojsJaVinculados++;
               continue;
@@ -271,7 +288,11 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
             sendStatus('info', `Vinculando OJ: ${oj}`, currentStep, 'Executando vinculação');
             await vincularOJ(page, oj);
             
-            sendStatus('success', `OJ ${oj} vinculado com sucesso`, currentStep, 'Vínculo criado');
+            sendStatus('success', `OJ ${oj} vinculado com sucesso`, currentStep, 'Vínculo criado', {
+              ojProcessed: ojsProcessadasTotal,
+              totalOjs: relatorio.totalOJs,
+              orgaoJulgador: oj
+            });
             resultadoPerito.ojsVinculados++;
             relatorio.ojsVinculados++;
             console.log(`✅ SUCESSO: OJ "${oj}" vinculado!`);
@@ -363,6 +384,13 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
         await page.waitForTimeout(400);
       }
     }
+    
+    // Enviar status final com contador completo
+    sendStatus('success', 'Processamento finalizado com sucesso!', totalSteps, 'Todas as OJs foram processadas', {
+      ojProcessed: relatorio.totalOJs,
+      totalOjs: relatorio.totalOJs,
+      orgaoJulgador: 'Finalizado'
+    });
     
     // Enviar relatório final
     enviarRelatorioFinal(relatorio);

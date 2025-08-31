@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Automação de Peritos
   startAutomation: (data) => ipcRenderer.invoke('start-automation', data),
   stopAutomation: () => ipcRenderer.invoke('stop-automation'),
+  pauseAutomation: () => ipcRenderer.invoke('pause-automation'),
+  resumeAutomation: () => ipcRenderer.invoke('resume-automation'),
   
   // Automação de Servidores
   startServidorAutomation: (data) => ipcRenderer.invoke('start-servidor-automation', data),

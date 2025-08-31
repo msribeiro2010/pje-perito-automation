@@ -10,10 +10,20 @@ class PeritoApp {
     this.currentProgress = 0;
     this.totalSteps = 0;
     
+    // Timer de automação
+    this.automationStartTime = null;
+    this.automationTimer = null;
+    
     // Sistema de memória/histórico
     this.cpfHistory = [];
     this.ojHistory = [];
     this.profileHistory = [];
+    
+    // Controle de pausa/retomada
+    this.isPaused = false;
+    this.isServidorPaused = false;
+    this.pausedState = null;
+    this.pausedServidorState = null;
     
     this.init();
   }
@@ -40,12 +50,26 @@ class PeritoApp {
       this.updateLoadingProgress(data);
     });
     
+    // Listen for automation progress updates
+    window.electronAPI.onAutomationProgress((data) => {
+      this.updateLoadingProgress(data);
+    });
+    
     // Listen for automation reports
     window.electronAPI.onAutomationReport((data) => {
       if (data.type === 'final-report') {
         this.showFinalReport(data.relatorio);
+      } else if (data.type === 'error') {
+        this.showAutomationError(data.error, data.context);
       }
     });
+    
+    // Listen for automation errors
+    if (window.electronAPI.onAutomationError) {
+      window.electronAPI.onAutomationError((error) => {
+        this.showAutomationError(error.message, error.context);
+      });
+    }
   }
 
   initTabs() {
@@ -99,15 +123,19 @@ class PeritoApp {
       this.openServidorModal();
     });
 
-    document.getElementById('import-servidores').addEventListener('click', () => {
+    document.getElementById('import-servidores-bulk').addEventListener('click', () => {
       this.importServidores();
     });
 
-
+    document.getElementById('servidor-import-example').addEventListener('click', () => {
+      this.showServidorImportExample();
+    });
 
     document.getElementById('bulk-delete-servidores').addEventListener('click', () => {
       this.bulkDeleteServidores();
     });
+
+    // Controle de pausa/retomada removido
 
     // Modal events
     document.querySelectorAll('.close').forEach(closeBtn => {
@@ -169,6 +197,15 @@ class PeritoApp {
 
     document.getElementById('stop-servidor-automation').addEventListener('click', () => {
       this.stopServidorAutomation();
+    });
+
+    // Novos botões de pausar/reiniciar
+    document.getElementById('pause-resume-automation').addEventListener('click', () => {
+      this.togglePauseAutomation();
+    });
+
+    document.getElementById('pause-resume-servidor-automation').addEventListener('click', () => {
+      this.togglePauseServidorAutomation();
     });
 
     // Close modals when clicking outside
@@ -571,6 +608,18 @@ class PeritoApp {
     return cleanCPF.length === 11 && !/^(\d)\1{10}$/.test(cleanCPF);
   }
 
+  // Função para formatar CPF no padrão XXX.XXX.XXX-XX
+  formatCpf(cpf) {
+    if (!cpf) return '---.--.------';
+    // Remove formatação existente
+    const cleanCPF = cpf.replace(/[^\d]/g, '');
+    // Aplica formatação se tiver 11 dígitos
+    if (cleanCPF.length === 11) {
+      return cleanCPF.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    return cpf; // Retorna original se não conseguir formatar
+  }
+
   // Função para mostrar exemplo de importação
   showImportExample() {
     const modal = document.getElementById('import-example-modal');
@@ -784,37 +833,95 @@ class PeritoApp {
 
   async importServidores() {
     try {
-      const result = await window.electronAPI.importFile();
+      const result = await window.electronAPI.importFile('servidores');
+      
       if (result.success && result.data) {
-        // Validar se é um array de servidores
-        if (Array.isArray(result.data) && result.data.length > 0) {
-          // Verificar se tem a estrutura esperada
-          const firstItem = result.data[0];
-          if (firstItem.nome && firstItem.cpf && firstItem.ojs) {
-            // Processar dados e adicionar perfil padrão se não existir
-            const servidoresProcessados = result.data.map(servidor => ({
-              ...servidor,
-              perfil: servidor.perfil || 'Assessor' // Perfil padrão se não especificado
-            }));
-            
-            this.servidores = servidoresProcessados;
-            this.selectedServidores = []; // Limpar seleções
-            this.renderServidoresTable();
-            await this.saveServidores();
-            this.showNotification(`${result.data.length} servidores importados com sucesso!`, 'success');
-          } else {
-            this.showNotification('Formato de arquivo inválido. Verifique se contém nome, cpf e ojs.', 'error');
-          }
-        } else {
-          this.showNotification('Arquivo vazio ou formato inválido', 'error');
+        // Validar se os dados importados têm a estrutura correta
+        if (!Array.isArray(result.data)) {
+          this.showNotification('Arquivo inválido: deve conter um array de servidores', 'error');
+          return;
         }
-      } else if (result.error) {
-        this.showNotification(`Erro ao importar: ${result.error}`, 'error');
+
+        const validServidores = [];
+        let invalidCount = 0;
+
+        // Validar cada servidor importado
+        result.data.forEach((servidor, index) => {
+          if (this.validateServidorData(servidor)) {
+            // Verificar se já existe um servidor com o mesmo CPF
+            const existingIndex = this.servidores.findIndex(s => s.cpf === servidor.cpf);
+            if (existingIndex >= 0) {
+              // Atualizar servidor existente
+              this.servidores[existingIndex] = { ...this.servidores[existingIndex], ...servidor };
+            } else {
+              // Adicionar novo servidor
+              validServidores.push(servidor);
+            }
+          } else {
+            invalidCount++;
+            console.warn(`Servidor inválido na linha ${index + 1}:`, servidor);
+          }
+        });
+
+        // Adicionar servidores válidos
+        if (validServidores.length > 0) {
+          this.servidores.push(...validServidores);
+          await this.saveServidores();
+          this.renderServidoresTable();
+        }
+
+        // Mostrar resultado da importação
+        let message = `Importação concluída: ${validServidores.length} servidores adicionados`;
+        if (invalidCount > 0) {
+          message += `, ${invalidCount} registros inválidos ignorados`;
+        }
+        
+        this.showNotification(message, validServidores.length > 0 ? 'success' : 'warning');
+        
+      } else if (result.canceled) {
+        // Usuário cancelou a operação
+        return;
+      } else {
+        this.showNotification(`Erro ao importar arquivo: ${result.error || 'Formato inválido'}`, 'error');
       }
     } catch (error) {
-      console.error('Erro ao importar servidores:', error);
+      console.error('Erro na importação:', error);
       this.showNotification('Erro ao importar servidores: ' + error.message, 'error');
     }
+  }
+
+  // Função para validar dados do servidor
+  validateServidorData(servidor) {
+    return (
+      servidor &&
+      typeof servidor === 'object' &&
+      typeof servidor.nome === 'string' &&
+      servidor.nome.trim().length > 0 &&
+      typeof servidor.cpf === 'string' &&
+      this.isValidCPF(servidor.cpf) &&
+      typeof servidor.perfil === 'string' &&
+      servidor.perfil.trim().length > 0 &&
+      Array.isArray(servidor.ojs)
+    );
+  }
+
+  // Função para mostrar exemplo de importação de servidores
+  showServidorImportExample() {
+    const modal = document.getElementById('servidor-import-example-modal');
+    modal.style.display = 'block';
+
+    // Fechar modal ao clicar no X
+    const closeBtn = modal.querySelector('.close');
+    closeBtn.onclick = () => {
+      modal.style.display = 'none';
+    };
+
+    // Fechar modal ao clicar fora dele
+    window.onclick = (event) => {
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    };
   }
 
 
@@ -928,6 +1035,9 @@ class PeritoApp {
       return total + 3 + perito.ojs.length; // login + navegação + verificação + OJs
     }, 0);
     this.currentProgress = 0;
+    
+    // Iniciar timer
+    this.startAutomationTimer();
         
     this.showLoading('Iniciando automação...', 'Preparando sistema e abrindo navegador');
     this.clearStatusLog();
@@ -965,6 +1075,7 @@ class PeritoApp {
       startButton.disabled = false;
       stopButton.disabled = true;
       this.updateAutomationButton();
+      this.stopAutomationTimer();
     });
   }
 
@@ -987,6 +1098,9 @@ class PeritoApp {
       return total + 3 + (servidor.ojs ? servidor.ojs.length : 0); // login + navegação + verificação + OJs
     }, 0);
     this.currentProgress = 0;
+    
+    // Iniciar timer
+    this.startAutomationTimer();
         
     this.showLoading('Iniciando automação de servidores...', 'Preparando sistema e abrindo navegador');
     this.clearStatusLog();
@@ -1031,6 +1145,7 @@ class PeritoApp {
     } catch (error) {
       this.addStatusMessage('error', 'Erro ao executar automação de servidores: ' + error.message);
     } finally {
+      this.stopAutomationTimer();
       this.hideLoading();
       startButton.classList.remove('loading');
       this.isAutomationRunning = false;
@@ -1054,6 +1169,128 @@ class PeritoApp {
       const stopButton = document.getElementById('stop-servidor-automation');
       if (startButton) startButton.disabled = false;
       if (stopButton) stopButton.disabled = true;
+    }
+  }
+
+  // ===== MÉTODOS DE PAUSAR/REINICIAR =====
+
+  // Métodos de pausar/reiniciar para peritos
+  togglePauseAutomation() {
+    if (this.isPaused) {
+      this.resumeAutomation();
+    } else {
+      this.pauseAutomation();
+    }
+  }
+
+  pauseAutomation() {
+    if (!this.isAutomationRunning) {
+      this.showNotification('Nenhuma automação em execução', 'warning');
+      return;
+    }
+
+    this.isPaused = true;
+    this.pausedState = {
+      selectedPeritos: [...this.selectedPeritos],
+      currentProgress: this.currentProgress,
+      totalSteps: this.totalSteps,
+      startTime: this.automationStartTime
+    };
+
+    // Parar a automação atual
+    this.stopAutomation();
+    
+    // Atualizar interface
+    this.updatePauseButton('pause-resume-automation', true);
+    this.addStatusMessage('info', 'Automação pausada. Clique em "Reiniciar" para continuar de onde parou.');
+  }
+
+  resumeAutomation() {
+    if (!this.pausedState) {
+      this.showNotification('Nenhuma automação pausada para reiniciar', 'warning');
+      return;
+    }
+
+    // Restaurar estado pausado
+    this.selectedPeritos = [...this.pausedState.selectedPeritos];
+    this.currentProgress = this.pausedState.currentProgress;
+    this.totalSteps = this.pausedState.totalSteps;
+    this.automationStartTime = this.pausedState.startTime;
+
+    // Reiniciar automação
+    this.isPaused = false;
+    this.pausedState = null;
+    this.startAutomation();
+    
+    // Atualizar interface
+    this.updatePauseButton('pause-resume-automation', false);
+    this.addStatusMessage('success', 'Automação reiniciada de onde parou.');
+  }
+
+  // Métodos de pausar/reiniciar para servidores
+  togglePauseServidorAutomation() {
+    if (this.isServidorPaused) {
+      this.resumeServidorAutomation();
+    } else {
+      this.pauseServidorAutomation();
+    }
+  }
+
+  pauseServidorAutomation() {
+    if (!this.isAutomationRunning) {
+      this.showNotification('Nenhuma automação em execução', 'warning');
+      return;
+    }
+
+    this.isServidorPaused = true;
+    this.pausedServidorState = {
+      selectedServidores: [...this.selectedServidores],
+      currentProgress: this.currentProgress,
+      totalSteps: this.totalSteps,
+      startTime: this.automationStartTime
+    };
+
+    // Parar a automação atual
+    this.stopServidorAutomation();
+    
+    // Atualizar interface
+    this.updatePauseButton('pause-resume-servidor-automation', true);
+    this.addStatusMessage('info', 'Automação de servidores pausada. Clique em "Reiniciar" para continuar de onde parou.');
+  }
+
+  resumeServidorAutomation() {
+    if (!this.pausedServidorState) {
+      this.showNotification('Nenhuma automação pausada para reiniciar', 'warning');
+      return;
+    }
+
+    // Restaurar estado pausado
+    this.selectedServidores = [...this.pausedServidorState.selectedServidores];
+    this.currentProgress = this.pausedServidorState.currentProgress;
+    this.totalSteps = this.pausedServidorState.totalSteps;
+    this.automationStartTime = this.pausedServidorState.startTime;
+
+    // Reiniciar automação
+    this.isServidorPaused = false;
+    this.pausedServidorState = null;
+    this.startServidorAutomation();
+    
+    // Atualizar interface
+    this.updatePauseButton('pause-resume-servidor-automation', false);
+    this.addStatusMessage('success', 'Automação de servidores reiniciada de onde parou.');
+  }
+
+  // Método auxiliar para atualizar botões de pausa
+  updatePauseButton(buttonId, isPaused) {
+    const button = document.getElementById(buttonId);
+    if (button) {
+      if (isPaused) {
+        button.innerHTML = '<i class="fas fa-play"></i> Reiniciar';
+        button.classList.add('paused');
+      } else {
+        button.innerHTML = '<i class="fas fa-pause"></i> Pausar';
+        button.classList.remove('paused');
+      }
     }
   }
 
@@ -1111,31 +1348,185 @@ class PeritoApp {
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingTitle = document.getElementById('loading-title');
     const loadingSubtitle = document.getElementById('loading-subtitle');
+    const currentCpf = document.getElementById('current-cpf');
+    const currentPerfil = document.getElementById('current-perfil');
+    const ojProgress = document.getElementById('oj-progress');
+    const loadingServidor = document.getElementById('loading-servidor');
+    const loadingOj = document.getElementById('loading-oj');
         
     loadingTitle.textContent = title;
     loadingSubtitle.textContent = subtitle;
+    
+    // Inicializar elementos do CPF, perfil e contador de OJs
+    if (currentCpf) {
+      currentCpf.textContent = '---.--.------';
+    }
+    
+    if (currentPerfil) {
+      currentPerfil.textContent = '---';
+    }
+    
+    // Calcular total de OJs para o contador
+    let totalOjs = 0;
+    if (this.selectedPeritos && this.selectedPeritos.length > 0) {
+      const selectedPeritosList = this.selectedPeritos.map(index => this.peritos[index]);
+      totalOjs = selectedPeritosList.reduce((total, perito) => total + (perito.ojs ? perito.ojs.length : 0), 0);
+    } else if (this.selectedServidores && this.selectedServidores.length > 0) {
+      const selectedServidoresList = this.selectedServidores.map(index => this.servidores[index]);
+      totalOjs = selectedServidoresList.reduce((total, servidor) => total + (servidor.ojs ? servidor.ojs.length : 0), 0);
+    }
+    
+    if (ojProgress) {
+      ojProgress.textContent = `OJs processadas: 0/${totalOjs}`;
+    }
+    
+    // Inicializar elementos de servidor e OJ
+    if (loadingServidor) {
+      loadingServidor.textContent = 'Servidor: ---';
+      loadingServidor.style.display = 'block';
+    }
+    
+    if (loadingOj) {
+      loadingOj.textContent = 'OJ: ---';
+      loadingOj.style.display = 'block';
+    }
+    
+    // Resetar contadores
+    this.currentOjCount = 0;
+    this.totalOjCount = totalOjs;
+    
+    // Funcionalidade de pausar removida
+    
     loadingOverlay.style.display = 'flex';
+    loadingOverlay.classList.remove('hidden');
   }
 
   hideLoading() {
     const loadingOverlay = document.getElementById('loading-overlay');
     loadingOverlay.style.display = 'none';
+    loadingOverlay.classList.add('hidden');
+    
+    // Funcionalidade de pausar removida
   }
 
   updateLoadingProgress(data) {
-    if (data.progress !== undefined) {
-      this.currentProgress = data.progress;
-      const progressBar = document.getElementById('progress-bar');
-      const progressText = document.getElementById('progress-text');
-            
-      const percentage = this.totalSteps > 0 ? (this.currentProgress / this.totalSteps) * 100 : 0;
-      progressBar.style.width = `${percentage}%`;
-      progressText.textContent = `${this.currentProgress}/${this.totalSteps} passos concluídos`;
+    // Aguardar DOM estar pronto
+    if (document.readyState !== 'complete') {
+      setTimeout(() => this.updateLoadingProgress(data), 100);
+      return;
+    }
+    
+    if (data && data.progress !== undefined && data.progress !== null) {
+      this.currentProgress = Math.max(0, parseInt(data.progress) || 0);
+    }
+    
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const currentCpf = document.getElementById('current-cpf');
+    const currentPerfil = document.getElementById('current-perfil');
+    const ojProgress = document.getElementById('oj-progress');
+    
+    // Atualizar CPF do servidor atual
+    if (data && data.cpf && currentCpf) {
+      const formattedCpf = this.formatCpf(data.cpf);
+      currentCpf.textContent = formattedCpf;
+    }
+    
+    // Atualizar perfil do servidor atual
+    if (data && data.perfil && currentPerfil) {
+      currentPerfil.textContent = data.perfil;
+    }
+    
+    // Atualizar contador de OJs
+    if (data && data.ojProcessed !== undefined && ojProgress) {
+      this.currentOjCount = parseInt(data.ojProcessed) || 0;
+      if (data.totalOjs !== undefined) {
+        this.totalOjCount = parseInt(data.totalOjs) || 0;
+      }
+      ojProgress.textContent = `OJs processadas: ${this.currentOjCount}/${this.totalOjCount}`;
+      
+      // Verificar se todas as OJs foram processadas e exibir alerta
+      if (this.currentOjCount === this.totalOjCount && this.totalOjCount > 0 && data.orgaoJulgador === 'Finalizado') {
+        setTimeout(() => {
+          alert(`Processamento finalizado com sucesso!\n\nTotal de OJs processadas: ${this.totalOjCount}`);
+        }, 500);
+      }
+    }
+    
+    if (progressBar && progressText) {
+      // Garantir que currentProgress e totalSteps sejam números válidos
+      const current = Math.max(0, this.currentProgress || 0);
+      const total = Math.max(1, this.totalSteps || 1);
+      
+      const percentage = (current / total) * 100;
+      progressBar.style.width = `${Math.min(100, percentage)}%`;
+      
+      // Formatar contador como 01/90 com tempo decorrido
+      const currentFormatted = String(current).padStart(2, '0');
+      const totalFormatted = String(total).padStart(2, '0');
+      const timeElapsed = this.getElapsedTime();
+      progressText.textContent = `${currentFormatted}/${totalFormatted} passos concluídos ${timeElapsed ? '• ' + timeElapsed : ''}`;
     }
         
     if (data.subtitle) {
       const loadingSubtitle = document.getElementById('loading-subtitle');
-      loadingSubtitle.textContent = data.subtitle;
+      if (loadingSubtitle) {
+        loadingSubtitle.textContent = data.subtitle;
+      }
+    }
+    
+    // Atualizar nome do servidor
+    if (data.servidor) {
+      const loadingServidor = document.getElementById('loading-servidor');
+      if (loadingServidor) {
+        loadingServidor.textContent = `Servidor: ${data.servidor}`;
+        loadingServidor.style.display = 'block';
+      }
+    }
+    
+    // Atualizar OJ atual
+    if (data.orgaoJulgador) {
+      const loadingOj = document.getElementById('loading-oj');
+      if (loadingOj) {
+        loadingOj.textContent = `OJ: ${data.orgaoJulgador}`;
+        loadingOj.style.display = 'block';
+      }
+    }
+  }
+
+  // Métodos de controle de pausa/retomada
+  // Métodos de pausar removidos conforme solicitação do usuário
+
+  startAutomationTimer() {
+    this.automationStartTime = Date.now();
+    // Atualizar o timer a cada segundo
+    this.automationTimer = setInterval(() => {
+      this.updateLoadingProgress({});
+    }, 1000);
+  }
+
+  stopAutomationTimer() {
+    if (this.automationTimer) {
+      clearInterval(this.automationTimer);
+      this.automationTimer = null;
+    }
+    this.automationStartTime = null;
+  }
+
+  getElapsedTime() {
+    if (!this.automationStartTime) return '';
+    
+    const elapsed = Date.now() - this.automationStartTime;
+    const seconds = Math.floor(elapsed / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds % 60}s`;
+    } else {
+      return `${seconds}s`;
     }
   }
 
@@ -1451,7 +1842,136 @@ class PeritoApp {
   }
 
   setupServidorV2Listeners() {
-    // Placeholder for V2 listeners
+    // Event listener para mudança do perfil
+    const perfilSelect = document.getElementById('v2-perfil');
+    const perfilInfo = document.getElementById('perfil-description');
+    
+    if (perfilSelect && perfilInfo) {
+      perfilSelect.addEventListener('change', (e) => {
+        this.updatePerfilInfo(e.target.value, e.target.selectedOptions[0]);
+      });
+      
+      // Inicializar com o valor padrão (Assessor)
+      if (perfilSelect.value) {
+        this.updatePerfilInfo(perfilSelect.value, perfilSelect.selectedOptions[0]);
+      }
+    }
+    
+    // Event listener para abrir o modal servidor-v2
+    const openV2ModalBtn = document.getElementById('open-servidor-v2-modal');
+    if (openV2ModalBtn) {
+      openV2ModalBtn.addEventListener('click', () => {
+        this.openServidorV2Modal();
+      });
+    }
+    
+    // Event listener para fechar o modal servidor-v2
+    const closeV2ModalBtn = document.querySelector('#servidor-v2-modal .close');
+    if (closeV2ModalBtn) {
+      closeV2ModalBtn.addEventListener('click', () => {
+        this.closeServidorV2Modal();
+      });
+    }
+    
+    // Event listener para submit do formulário servidor-v2
+    const v2Form = document.getElementById('servidor-v2-form');
+    if (v2Form) {
+      v2Form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.saveServidorV2();
+      });
+    }
+  }
+  
+  updatePerfilInfo(perfilValue, selectedOption) {
+    const perfilInfo = document.getElementById('perfil-description');
+    const perfilCard = perfilInfo.querySelector('.perfil-card');
+    const perfilIcon = perfilCard.querySelector('.perfil-icon');
+    const perfilTitle = perfilCard.querySelector('h5');
+    const perfilDescription = perfilCard.querySelector('p');
+    const perfilPermissions = perfilCard.querySelector('.perfil-permissions');
+    
+    if (!perfilValue) {
+      perfilInfo.classList.remove('show');
+      return;
+    }
+    
+    // Obter dados do perfil selecionado
+    const description = selectedOption ? selectedOption.getAttribute('data-description') : '';
+    const emoji = selectedOption ? selectedOption.textContent.split(' ')[0] : '👤';
+    
+    // Definir permissões baseadas no perfil
+    const permissionsMap = {
+      'Administrador': ['🔧 Sistema', '👥 Usuários', '⚙️ Configurações', '📊 Relatórios'],
+      'Assessor': ['📄 Processos', '📝 Documentos', '👨‍⚖️ Apoio Magistrado'],
+      'Diretor de Central de Atendimento': ['📞 Atendimento', '📋 Distribuição', '👥 Equipe'],
+      'Diretor de Secretaria': ['📊 Administração', '👥 Secretaria', '📋 Supervisão'],
+      'Estagiário Conhecimento': ['📚 Aprendizado', '📄 Consulta', '🎓 Formação'],
+      'Estagiário de Central de Atendimento': ['📞 Atendimento', '📋 Apoio', '🎓 Formação'],
+      'Secretário de Audiência': ['⚖️ Audiências', '📝 Atos', '📋 Processuais'],
+      'Servidor': ['📄 Processos', '📝 Documentos', '👤 Padrão'],
+      'Perito Judicial': ['🔬 Perícias', '📊 Laudos', '⚖️ Técnico']
+    };
+    
+    const permissions = permissionsMap[perfilValue] || ['👤 Acesso Básico'];
+    
+    // Atualizar elementos
+    perfilIcon.textContent = emoji;
+    perfilTitle.textContent = perfilValue;
+    perfilDescription.textContent = description || 'Perfil de acesso ao sistema';
+    
+    // Atualizar permissões
+    perfilPermissions.innerHTML = '';
+    permissions.forEach(permission => {
+      const tag = document.createElement('span');
+      tag.className = 'permission-tag';
+      tag.textContent = permission;
+      perfilPermissions.appendChild(tag);
+    });
+    
+    // Mostrar o card com animação
+    perfilInfo.classList.add('show');
+  }
+  
+  openServidorV2Modal() {
+    const modal = document.getElementById('servidor-v2-modal');
+    if (modal) {
+      modal.style.display = 'block';
+      // Trigger da animação
+      setTimeout(() => {
+        modal.querySelector('.modern-modal').style.opacity = '1';
+      }, 10);
+    }
+  }
+  
+  closeServidorV2Modal() {
+    const modal = document.getElementById('servidor-v2-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      // Reset do formulário
+      document.getElementById('servidor-v2-form').reset();
+      // Reset da informação do perfil
+      document.getElementById('perfil-description').classList.remove('show');
+    }
+  }
+  
+  saveServidorV2() {
+    const cpf = document.getElementById('v2-cpf').value;
+    const perfil = document.getElementById('v2-perfil').value;
+    
+    if (!cpf || !perfil) {
+      alert('Por favor, preencha todos os campos obrigatórios.');
+      return;
+    }
+    
+    // Aqui você pode implementar a lógica de salvamento
+    console.log('Salvando servidor V2:', { cpf, perfil });
+    
+    // Fechar modal após salvar
+    this.closeServidorV2Modal();
+    
+    // Mostrar mensagem de sucesso
+    this.showNotification('Servidor configurado com sucesso!', 'success');
   }
 
   loadServidorV2Config() {
@@ -1464,7 +1984,470 @@ class PeritoApp {
 
   showFinalReport(relatorio) {
     console.log('Final report:', relatorio);
-    this.showNotification('Automação concluída! Verifique os detalhes no console.', 'success');
+    this.hideLoading();
+    this.showReportModal(relatorio);
+  }
+
+  showReportModal(relatorio) {
+    // Criar modal de relatório
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'report-modal';
+    
+    // Calcular estatísticas
+    const totalOJs = relatorio.resultados ? relatorio.resultados.length : 0;
+    const sucessos = relatorio.resultados ? relatorio.resultados.filter(r => r.status === 'Incluído com Sucesso' || r.status === 'Sucesso').length : 0;
+    const jaIncluidos = relatorio.resultados ? relatorio.resultados.filter(r => r.status === 'Já Incluído' || r.status === 'Já Cadastrado').length : 0;
+    const erros = relatorio.resultados ? relatorio.resultados.filter(r => r.status === 'Erro').length : 0;
+    const percentualSucesso = totalOJs > 0 ? ((sucessos + jaIncluidos) / totalOJs * 100).toFixed(1) : 0;
+    
+    modal.innerHTML = `
+      <div class="modal-content report-modal">
+        <div class="modal-header">
+          <h2>📊 Relatório de Automação</h2>
+          <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <!-- Resumo Geral -->
+          <div class="report-summary">
+            <div class="summary-card success">
+              <div class="summary-number">${sucessos}</div>
+              <div class="summary-label">Cadastrados com Sucesso</div>
+            </div>
+            <div class="summary-card info">
+              <div class="summary-number">${jaIncluidos}</div>
+              <div class="summary-label">Já Cadastrados</div>
+            </div>
+            <div class="summary-card error">
+              <div class="summary-number">${erros}</div>
+              <div class="summary-label">Erros</div>
+            </div>
+            <div class="summary-card total">
+              <div class="summary-number">${totalOJs}</div>
+              <div class="summary-label">Total de OJs</div>
+            </div>
+          </div>
+          
+          <!-- Barra de Progresso -->
+          <div class="progress-section">
+            <div class="progress-bar-container">
+              <div class="progress-bar" style="width: ${percentualSucesso}%"></div>
+            </div>
+            <div class="progress-text">${percentualSucesso}% de sucesso</div>
+          </div>
+          
+          <!-- Lista Detalhada de OJs -->
+          <div class="report-details">
+            <h3>Detalhes por Órgão Julgador</h3>
+            <div class="oj-list">
+              ${relatorio.resultados ? relatorio.resultados.map(oj => `
+                <div class="oj-item ${this.getStatusClass(oj.status)}">
+                  <div class="oj-name">${oj.orgao}</div>
+                  <div class="oj-status">
+                    <span class="status-badge ${this.getStatusClass(oj.status)}">
+                      ${this.getStatusIcon(oj.status)} ${this.getStatusText(oj.status)}
+                    </span>
+                  </div>
+                  ${oj.observacoes ? `<div class="oj-details">${oj.observacoes}</div>` : ''}
+                </div>
+              `).join('') : '<div class="no-data">Nenhum resultado disponível</div>'}
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Fechar</button>
+          <button class="btn btn-primary" onclick="app.exportReport()">Exportar Relatório</button>
+          ${erros > 0 ? `<button class="btn btn-warning" onclick="app.showErrorRecovery()">Tentar Novamente</button>` : ''}
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Adicionar estilos se não existirem
+    this.addReportModalStyles();
+  }
+  
+  getStatusClass(status) {
+    if (status === 'Incluído com Sucesso' || status === 'Sucesso') return 'success';
+    if (status === 'Já Incluído' || status === 'Já Cadastrado') return 'info';
+    if (status === 'Erro') return 'error';
+    return 'default';
+  }
+  
+  getStatusIcon(status) {
+    if (status === 'Incluído com Sucesso' || status === 'Sucesso') return '✅';
+    if (status === 'Já Incluído' || status === 'Já Cadastrado') return 'ℹ️';
+    if (status === 'Erro') return '❌';
+    return '⚪';
+  }
+  
+  getStatusText(status) {
+    if (status === 'Incluído com Sucesso' || status === 'Sucesso') return 'Cadastrado com Sucesso';
+    if (status === 'Já Incluído' || status === 'Já Cadastrado') return 'Já Cadastrado';
+    if (status === 'Erro') return 'Erro';
+    return status;
+  }
+  
+  addReportModalStyles() {
+    if (document.getElementById('report-modal-styles')) return;
+    
+    const styles = document.createElement('style');
+    styles.id = 'report-modal-styles';
+    styles.textContent = `
+      .report-modal {
+        max-width: 800px;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      
+      .report-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      
+      .summary-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        border-left: 4px solid #ddd;
+      }
+      
+      .summary-card.success { border-left-color: #28a745; }
+      .summary-card.info { border-left-color: #17a2b8; }
+      .summary-card.error { border-left-color: #dc3545; }
+      .summary-card.total { border-left-color: #6c757d; }
+      
+      .summary-number {
+        font-size: 2em;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      
+      .summary-card.success .summary-number { color: #28a745; }
+      .summary-card.info .summary-number { color: #17a2b8; }
+      .summary-card.error .summary-number { color: #dc3545; }
+      .summary-card.total .summary-number { color: #6c757d; }
+      
+      .summary-label {
+        font-size: 0.9em;
+        color: #666;
+      }
+      
+      .progress-section {
+        margin: 20px 0;
+      }
+      
+      .progress-bar-container {
+        background: #e9ecef;
+        border-radius: 10px;
+        height: 20px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+      
+      .progress-bar {
+        background: linear-gradient(90deg, #28a745, #20c997);
+        height: 100%;
+        transition: width 0.3s ease;
+      }
+      
+      .progress-text {
+        text-align: center;
+        font-weight: bold;
+        color: #495057;
+      }
+      
+      .report-details h3 {
+        margin: 20px 0 15px 0;
+        color: #495057;
+      }
+      
+      .oj-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+      }
+      
+      .oj-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 15px;
+        border-bottom: 1px solid #dee2e6;
+        background: #fff;
+      }
+      
+      .oj-item:last-child {
+        border-bottom: none;
+      }
+      
+      .oj-item:hover {
+        background: #f8f9fa;
+      }
+      
+      .oj-name {
+        flex: 1;
+        font-weight: 500;
+      }
+      
+      .oj-status {
+        margin-left: 15px;
+      }
+      
+      .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-weight: 500;
+      }
+      
+      .status-badge.success {
+        background: #d4edda;
+        color: #155724;
+      }
+      
+      .status-badge.info {
+        background: #d1ecf1;
+        color: #0c5460;
+      }
+      
+      .status-badge.error {
+        background: #f8d7da;
+        color: #721c24;
+      }
+      
+      .oj-details {
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 5px;
+      }
+      
+      .no-data {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+        font-style: italic;
+      }
+      
+      .modal-footer {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+      
+      .btn-warning {
+        background: #ffc107;
+        color: #212529;
+        border: 1px solid #ffc107;
+      }
+      
+      .btn-warning:hover {
+        background: #e0a800;
+        border-color: #d39e00;
+      }
+    `;
+    
+    document.head.appendChild(styles);
+  }
+  
+  exportReport() {
+    // Implementar exportação do relatório
+    this.showNotification('Funcionalidade de exportação será implementada em breve', 'info');
+  }
+  
+  showErrorRecovery() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>🔄 Recuperação de Erros</h2>
+          <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <p>Deseja tentar processar novamente os OJs que falharam?</p>
+          <div class="alert alert-warning">
+            <strong>Atenção:</strong> Esta ação irá reiniciar a automação apenas para os OJs que apresentaram erro.
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-primary" onclick="app.restartAutomationForErrors(); this.closest('.modal-overlay').remove();">Tentar Novamente</button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+  }
+  
+  restartAutomationForErrors() {
+    this.showNotification('Reiniciando automação para OJs com erro...', 'info');
+    // Implementar lógica de restart para erros
+    // Por enquanto, apenas mostrar mensagem
+    setTimeout(() => {
+      this.showNotification('Funcionalidade de recuperação será implementada em breve', 'warning');
+    }, 1000);
+  }
+  
+  showAutomationError(errorMessage, context = {}) {
+    this.hideLoading();
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content error-modal">
+        <div class="modal-header error">
+          <h2>❌ Erro na Automação</h2>
+          <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <div class="error-message">
+            <h3>Descrição do Erro:</h3>
+            <p>${errorMessage}</p>
+          </div>
+          
+          ${context.servidor ? `
+            <div class="error-context">
+              <h4>Contexto:</h4>
+              <ul>
+                <li><strong>Servidor:</strong> ${context.servidor}</li>
+                ${context.oj ? `<li><strong>Órgão Julgador:</strong> ${context.oj}</li>` : ''}
+                ${context.step ? `<li><strong>Etapa:</strong> ${context.step}</li>` : ''}
+              </ul>
+            </div>
+          ` : ''}
+          
+          <div class="error-actions">
+            <h4>O que você pode fazer:</h4>
+            <ul>
+              <li>Verificar a conexão com a internet</li>
+              <li>Verificar se o servidor está acessível</li>
+              <li>Tentar novamente a automação</li>
+              <li>Verificar os logs para mais detalhes</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Fechar</button>
+          <button class="btn btn-primary" onclick="app.restartAutomation(); this.closest('.modal-overlay').remove();">Tentar Novamente</button>
+          <button class="btn btn-info" onclick="app.showLogs()">Ver Logs</button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    this.addErrorModalStyles();
+  }
+  
+  addErrorModalStyles() {
+    if (document.getElementById('error-modal-styles')) return;
+    
+    const styles = document.createElement('style');
+    styles.id = 'error-modal-styles';
+    styles.textContent = `
+      .error-modal {
+        max-width: 600px;
+      }
+      
+      .modal-header.error {
+        background: #f8d7da;
+        color: #721c24;
+        border-bottom: 1px solid #f5c6cb;
+      }
+      
+      .error-message {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 20px;
+      }
+      
+      .error-message h3 {
+        margin-top: 0;
+        color: #721c24;
+      }
+      
+      .error-message p {
+        margin-bottom: 0;
+        color: #721c24;
+      }
+      
+      .error-context {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 20px;
+      }
+      
+      .error-context h4 {
+        margin-top: 0;
+        color: #856404;
+      }
+      
+      .error-context ul {
+        margin-bottom: 0;
+        color: #856404;
+      }
+      
+      .error-actions {
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+        border-radius: 4px;
+        padding: 15px;
+      }
+      
+      .error-actions h4 {
+        margin-top: 0;
+        color: #0c5460;
+      }
+      
+      .error-actions ul {
+        margin-bottom: 0;
+        color: #0c5460;
+      }
+      
+      .btn-info {
+        background: #17a2b8;
+        color: white;
+        border: 1px solid #17a2b8;
+      }
+      
+      .btn-info:hover {
+        background: #138496;
+        border-color: #117a8b;
+      }
+    `;
+    
+    document.head.appendChild(styles);
+  }
+  
+  restartAutomation() {
+    this.showNotification('Reiniciando automação...', 'info');
+    // Implementar lógica de restart completo
+    setTimeout(() => {
+      this.showNotification('Funcionalidade de reinício será implementada em breve', 'warning');
+    }, 1000);
+  }
+  
+  showLogs() {
+    this.showNotification('Abrindo logs do sistema...', 'info');
+    // Implementar visualização de logs
+    setTimeout(() => {
+      this.showNotification('Funcionalidade de logs será implementada em breve', 'warning');
+    }, 1000);
   }
 }
 
