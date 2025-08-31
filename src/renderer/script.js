@@ -791,7 +791,13 @@ class PeritoApp {
           // Verificar se tem a estrutura esperada
           const firstItem = result.data[0];
           if (firstItem.nome && firstItem.cpf && firstItem.ojs) {
-            this.servidores = result.data;
+            // Processar dados e adicionar perfil padrão se não existir
+            const servidoresProcessados = result.data.map(servidor => ({
+              ...servidor,
+              perfil: servidor.perfil || 'Assessor' // Perfil padrão se não especificado
+            }));
+            
+            this.servidores = servidoresProcessados;
             this.selectedServidores = []; // Limpar seleções
             this.renderServidoresTable();
             await this.saveServidores();
