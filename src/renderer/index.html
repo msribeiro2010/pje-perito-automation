@@ -74,6 +74,51 @@
             </div>
         </div>
 
+        <!-- Dashboard de Processamento Paralelo -->
+        <div id="parallel-dashboard" class="parallel-dashboard hidden">
+            <div class="parallel-dashboard-content">
+                <div class="parallel-header">
+                    <h3>🚀 Processamento Paralelo Ativo</h3>
+                    <div class="parallel-summary">
+                        <span id="parallel-instances-count">0</span> instâncias processando
+                        <span id="parallel-total-progress">0/0</span> servidores
+                    </div>
+                </div>
+                
+                <div class="parallel-overall-progress">
+                    <div class="overall-progress-label">Progresso Geral</div>
+                    <div class="overall-progress-bar">
+                        <div id="overall-progress-fill" class="overall-progress-fill"></div>
+                    </div>
+                    <div id="overall-progress-text" class="overall-progress-text">0%</div>
+                </div>
+                
+                <div id="parallel-instances" class="parallel-instances">
+                    <!-- Instâncias serão adicionadas dinamicamente -->
+                </div>
+                
+                <div class="parallel-stats">
+                    <div class="stat-item">
+                        <div class="stat-label">Tempo Decorrido</div>
+                        <div id="parallel-elapsed-time" class="stat-value">00:00:00</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Tempo Estimado</div>
+                        <div id="parallel-estimated-time" class="stat-value">--:--:--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Velocidade</div>
+                        <div id="parallel-speed" class="stat-value">-- serv/min</div>
+                    </div>
+                </div>
+                
+                <div class="parallel-controls">
+                    <button id="parallel-pause-btn" class="btn btn-warning">⏸️ Pausar Todas</button>
+                    <button id="parallel-stop-btn" class="btn btn-danger">⏹️ Parar Processamento</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Aba Peritos -->
         <div id="peritos" class="tab-content active">
             <div class="section-header">
@@ -151,9 +196,7 @@
                     <button id="add-servidor" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Adicionar Servidor
                     </button>
-                    <button id="open-servidor-v2-modal" class="btn btn-success">
-                        <i class="fas fa-user-cog"></i> Configurar Servidor V2
-                    </button>
+
                     <button id="import-servidores-bulk" class="btn btn-secondary">
                         <i class="fas fa-download"></i> Importar em Lote
                     </button>
@@ -259,15 +302,63 @@
                 </div>
 
                 <div class="automation-buttons">
-                    <button id="start-servidor-automation" class="btn btn-success" disabled>
-                        <i class="fas fa-play"></i> Iniciar Automação de Servidores
-                    </button>
-                    <button id="pause-resume-servidor-automation" class="btn btn-warning" disabled>
-                        <i class="fas fa-pause"></i> Pausar
-                    </button>
-                    <button id="stop-servidor-automation" class="btn btn-danger" disabled>
-                        <i class="fas fa-stop"></i> Parar Automação
-                    </button>
+                    <div class="automation-mode-selector">
+                        <h4>Modo de Processamento:</h4>
+                        <div class="mode-options">
+                            <label class="mode-option">
+                                <input type="radio" name="automation-mode" value="sequential" checked>
+                                <span class="mode-label">
+                                    <i class="fas fa-arrow-right"></i>
+                                    <strong>Sequencial</strong>
+                                    <small>Um servidor por vez (padrão)</small>
+                                </span>
+                            </label>
+                            <label class="mode-option">
+                                <input type="radio" name="automation-mode" value="parallel">
+                                <span class="mode-label">
+                                    <i class="fas fa-layer-group"></i>
+                                    <strong>Paralelo</strong>
+                                    <small>Múltiplos servidores simultaneamente</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="parallel-config" class="parallel-config" style="display: none;">
+                        <div class="config-row">
+                            <label for="max-instances">Instâncias Paralelas:</label>
+                            <select id="max-instances" class="form-control">
+                                <option value="2" selected>2 instâncias (Recomendado)</option>
+                                <option value="3">3 instâncias</option>
+                                <option value="4">4 instâncias</option>
+                                <option value="5">5 instâncias</option>
+                                <option value="6">6 instâncias</option>
+                                <option value="8">8 instâncias</option>
+                                <option value="10">10 instâncias</option>
+                                <option value="12">12 instâncias</option>
+                                <option value="15">15 instâncias</option>
+                                <option value="20">20 instâncias</option>
+                                <option value="25">25 instâncias</option>
+                                <option value="30">30 instâncias (Máximo)</option>
+                            </select>
+                            <small class="config-help">
+                                <i class="fas fa-info-circle"></i>
+                                Mais instâncias = maior velocidade, mas maior uso de recursos
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="button-row">
+                        <button id="start-servidor-automation" class="btn btn-success" disabled>
+                            <i class="fas fa-play"></i> Iniciar Automação
+                        </button>
+                        <button id="pause-resume-servidor-automation" class="btn btn-warning" disabled>
+                            <i class="fas fa-pause"></i> Pausar
+                        </button>
+                        <button id="stop-servidor-automation" class="btn btn-danger" disabled>
+                            <i class="fas fa-stop"></i> Parar Automação
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -653,137 +744,7 @@
         </div>
     </div>
 
-    <!-- Modal para configuração da Automação V2 -->
-    <div id="servidor-v2-modal" class="modal">
-        <div class="modal-content modern-modal" style="max-width: 900px;">
-            <div class="modal-header modern-header">
-                <div class="header-content">
-                    <div class="header-icon">
-                        <i class="fas fa-user-cog"></i>
-                    </div>
-                    <div class="header-text">
-                        <h3>Configuração da Automação - Servidores</h3>
-                        <p class="header-subtitle">Configure os dados do servidor e perfis de acesso</p>
-                    </div>
-                </div>
-                <span class="close modern-close">&times;</span>
-            </div>
-            <div class="modal-body modern-body">
-                <form id="servidor-v2-form">
-                    <!-- Seção de Dados do Servidor -->
-                    <div class="form-section">
-                        <div class="section-header">
-                            <i class="fas fa-user"></i>
-                            <h4>Dados do Servidor</h4>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="v2-cpf">
-                                <i class="fas fa-id-card"></i>
-                                CPF do Servidor:
-                            </label>
-                            <div class="autocomplete-container">
-                                <input type="text" id="v2-cpf" placeholder="000.000.000-00" required autocomplete="off">
-                                <div class="autocomplete-suggestions" id="v2-cpf-suggestions"></div>
-                            </div>
-                            <small class="help-text">CPF do servidor que receberá os vínculos nos órgãos julgadores</small>
-                        </div>
-                    </div>
-                    
-                    <!-- Seção de Perfil e Permissões -->
-                    <div class="form-section">
-                        <div class="section-header">
-                            <i class="fas fa-shield-alt"></i>
-                            <h4>Perfil e Permissões</h4>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="v2-perfil">
-                                <i class="fas fa-user-tag"></i>
-                                Perfil de Acesso:
-                            </label>
-                            <select id="v2-perfil" required class="modern-select">
-                                <option value="">Selecione o perfil...</option>
-                                <option value="Administrador" data-description="Acesso total ao sistema, pode gerenciar usuários e configurações">👑 Administrador</option>
-                                <option value="Assessor" selected data-description="Auxilia magistrados, acesso a processos e documentos">📋 Assessor</option>
-                                <option value="Diretor de Central de Atendimento" data-description="Gerencia atendimento ao público e distribuição">🏢 Diretor de Central de Atendimento</option>
-                                <option value="Diretor de Secretaria" data-description="Supervisiona atividades administrativas da secretaria">📊 Diretor de Secretaria</option>
-                                <option value="Estagiário Conhecimento" data-description="Estudante em formação, acesso limitado para aprendizado">🎓 Estagiário Conhecimento</option>
-                                <option value="Estagiário de Central de Atendimento" data-description="Estudante que auxilia no atendimento ao público">📞 Estagiário de Central de Atendimento</option>
-                                <option value="Secretário de Audiência" data-description="Responsável por audiências e atos processuais">⚖️ Secretário de Audiência</option>
-                                <option value="Servidor" data-description="Servidor público com acesso padrão ao sistema">👤 Servidor</option>
-                                <option value="Perito Judicial" data-description="Especialista técnico nomeado pelo juiz">🔬 Perito Judicial</option>
-                            </select>
-                            <div id="perfil-description" class="perfil-info">
-                                <div class="perfil-card">
-                                    <div class="perfil-icon">📋</div>
-                                    <div class="perfil-details">
-                                        <h5>Assessor</h5>
-                                        <p>Auxilia magistrados, acesso a processos e documentos</p>
-                                        <div class="perfil-permissions">
-                                            <span class="permission-tag">📄 Processos</span>
-                                            <span class="permission-tag">📝 Documentos</span>
-                                            <span class="permission-tag">👨‍⚖️ Apoio Magistrado</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="v2-orgaos">Órgãos Julgadores (um por linha):</label>
-                        <textarea id="v2-orgaos" rows="6" placeholder="Digite os órgãos julgadores, um por linha:&#10;&#10;Exemplo:&#10;1ª Vara do Trabalho de Campinas&#10;2ª Vara do Trabalho de Campinas&#10;Vara do Trabalho de Jundiaí"></textarea>
-                        <div style="margin-top: 5px;">
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="app.loadExampleOJsV2()">
-                                <i class="fas fa-lightbulb"></i> Carregar Exemplos
-                            </button>
-                            <small style="margin-left: 10px;">Digite cada órgão julgador em uma linha separada</small>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <h4>Configurações Avançadas</h4>
-                        <div class="advanced-config">
-                            <label>
-                                <input type="checkbox" id="v2-production" checked>
-                                Modo Produção (headless)
-                            </label>
-                            <label>
-                                <input type="checkbox" id="v2-detailed-report" checked>
-                                Relatório Detalhado
-                            </label>
-                            <label>
-                                <input type="checkbox" id="v2-use-cache" checked>
-                                Usar Cache de OJs
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="v2-timeout">Timeout (segundos):</label>
-                        <input type="number" id="v2-timeout" value="30" min="10" max="120">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="v2-max-login-attempts">Máximo de Tentativas de Login:</label>
-                        <input type="number" id="v2-max-login-attempts" value="3" min="1" max="10">
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" id="save-v2-config" class="btn btn-primary">
-                    <i class="fas fa-save"></i> Salvar Configuração
-                </button>
-                <button type="button" id="test-v2-config" class="btn btn-secondary">
-                    <i class="fas fa-check"></i> Testar Configuração
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('servidor-v2-modal').style.display='none'">
-                    Cancelar
-                </button>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Footer -->
     <footer class="footer">

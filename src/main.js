@@ -512,6 +512,35 @@ ipcMain.handle('start-servidor-automation-v2', async (_, config) => {
   }
 });
 
+// Handler para iniciar automação paralela de servidores V2
+ipcMain.handle('start-parallel-automation-v2', async (_, config) => {
+  try {
+    if (automationInProgress) {
+      throw new Error('Automação já está em execução');
+    }
+
+    automationInProgress = true;
+    
+    if (!servidorAutomationV2) {
+      servidorAutomationV2 = new ServidorAutomationV2();
+      servidorAutomationV2.setMainWindow(mainWindow);
+    }
+    
+    // Extrair parâmetros necessários do config
+    const servidores = config.servidores || [];
+    const maxInstances = config.numInstances || config.maxInstances || 2;
+    
+    const result = await servidorAutomationV2.startParallelAutomation(servidores, config, maxInstances);
+    return { success: true, ...result };
+    
+  } catch (error) {
+    console.error('Erro na automação paralela de servidores V2:', error);
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  } finally {
+    automationInProgress = false;
+  }
+});
+
 // Handler para parar automação de servidores V2
 ipcMain.handle('stop-servidor-automation-v2', async () => {
   try {

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Automação de Servidores V2
   startServidorAutomationV2: (config) => ipcRenderer.invoke('start-servidor-automation-v2', config),
+  startParallelAutomationV2: (config) => ipcRenderer.invoke('start-parallel-automation-v2', config),
   stopServidorAutomationV2: () => ipcRenderer.invoke('stop-servidor-automation-v2'),
   getServidorAutomationV2Status: () => ipcRenderer.invoke('get-servidor-automation-v2-status'),
   getServidorAutomationV2Report: () => ipcRenderer.invoke('get-servidor-automation-v2-report'),

@@ -1162,6 +1162,31 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
             }
         }
         
+        // Estratégia 2: Buscar com normalização de travessões
+        if (!opcaoSelecionada && Date.now() - startTime < TIMEOUT_TOTAL) {
+            try {
+                console.log('🎯 Estratégia 2: Busca com normalização...');
+                const alvoNormalizado = normalizarTexto(alvoOJ);
+                console.log(`Buscando versão normalizada: "${alvoNormalizado}"`);
+                
+                const opcoes = await page.locator('mat-option').all();
+                for (const opcao of opcoes) {
+                    const textoOpcao = await opcao.textContent();
+                    const textoNormalizado = normalizarTexto(textoOpcao || '');
+                    
+                    if (textoNormalizado.includes(alvoNormalizado) || alvoNormalizado.includes(textoNormalizado)) {
+                        console.log(`✓ Opção encontrada com normalização: "${textoOpcao}"`);
+                        await opcao.click({ force: true });
+                        opcaoSelecionada = true;
+                        estrategias.push('normalizada');
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.log('❌ Busca com normalização falhou:', error.message);
+            }
+        }
+        
         // REMOVIDO: Busca específica para Araras - MUITO PERIGOSA
         // Mesmo sendo específica, pode pegar OJs errados que contenham apenas "Araras"
         
@@ -1228,7 +1253,11 @@ async function selecionarOrgaoJulgador(page, painelOJ, alvoOJ) {
             const valorSelecionado = await matSelectEspecifico.textContent();
             console.log(`Valor selecionado no mat-select: "${valorSelecionado}"`);
             
-            if (valorSelecionado && valorSelecionado.toLowerCase().includes(alvoOJ.toLowerCase())) {
+            const valorNormalizado = normalizarTexto(valorSelecionado || '');
+            const alvoNormalizado = normalizarTexto(alvoOJ);
+            console.log(`Comparando normalizado: "${valorNormalizado}" contém "${alvoNormalizado}"`);
+            
+            if (valorSelecionado && valorNormalizado.includes(alvoNormalizado)) {
                 console.log('✓ Validação de seleção bem-sucedida');
             } else {
                 console.log('Aviso: Validação de seleção pode ter falhou, mas continuando...');
@@ -2122,6 +2151,11 @@ async function vincularOJ(page, nomeOJ, papel = 'Secretário de Audiência', vis
     
     // Procurar pelas opções do mat-select
     try {
+      // Verificar se a página ainda está válida
+      if (page.isClosed()) {
+        throw new Error('A página foi fechada antes de procurar opções do mat-select');
+      }
+
       // Algumas implementações utilizam painéis overlay, aguardar painel visível
       const painelSelectors = ['.cdk-overlay-pane mat-option', 'div[role="listbox"] mat-option', 'mat-option'];
       let opcoes = [];
@@ -2130,6 +2164,12 @@ async function vincularOJ(page, nomeOJ, papel = 'Secretário de Audiência', vis
       for (const ps of painelSelectors) {
         try {
           console.log(`DEBUG: Tentando seletor: ${ps}`);
+          
+          // Verificar se a página ainda está válida antes de cada tentativa
+          if (page.isClosed()) {
+            throw new Error('A página foi fechada durante a busca de opções');
+          }
+          
           await page.waitForSelector(ps, { timeout: 800 });
           console.log(`DEBUG: Seletor ${ps} encontrado, capturando opções...`);
           opcoes = await page.$$eval(ps, options => 
@@ -2139,6 +2179,11 @@ async function vincularOJ(page, nomeOJ, papel = 'Secretário de Audiência', vis
           if (opcoes.length > 0) break;
         } catch (error) {
           console.log(`DEBUG: Seletor ${ps} falhou: ${error.message}`);
+          
+          // Se a página foi fechada, parar imediatamente
+          if (error.message && error.message.includes('Target page, context or browser has been closed')) {
+            throw new Error('A página foi fechada durante a busca de opções do mat-select');
+          }
         }
       }
       console.log('DEBUG: Opções mat-select disponíveis:', opcoes);
@@ -2195,11 +2240,22 @@ async function vincularOJ(page, nomeOJ, papel = 'Secretário de Audiência', vis
 
       const escolhido = melhorOpcao;
       console.log(`Selecionando opção: ${escolhido.text}`);
+      
+      // Verificar se a página ainda está válida antes do clique final
+      if (page.isClosed()) {
+        throw new Error('A página foi fechada antes de clicar na opção do mat-select');
+      }
+      
       await page.click(`mat-option:has-text("${escolhido.text}")`);
       await page.waitForTimeout(50);
       selecaoFeita = true;
     } catch (error) {
       console.log('Erro ao processar mat-select:', error.message);
+      
+      // Se a página foi fechada, propagar o erro
+      if (error.message && error.message.includes('Target page, context or browser has been closed')) {
+        throw new Error('A página foi fechada durante a seleção do mat-select');
+      }
     }
   } else if (
     (seletorUsado && (seletorUsado.includes('ng-select') || seletorUsado.includes('select2') || seletorUsado.includes('role="combobox"') || seletorUsado.includes('[role="combobox"]')))
@@ -2288,6 +2344,22 @@ async function vincularOJ(page, nomeOJ, papel = 'Secretário de Audiência', vis
     
     // Processar select tradicional
     try {
+      // Verificar se a página ainda está válida antes de processar
+      if (page.isClosed()) {
+        throw new Error('A página foi fechada antes de processar select tradicional');
+      }
+
+      // Verificar se o elemento ainda existe e é um select válido
+      const isValidSelect = await page.evaluate((selector) => {
+        const element = document.querySelector(selector);
+        return element && element.tagName.toLowerCase() === 'select';
+      }, selectEncontrado);
+
+      if (!isValidSelect) {
+        console.log('DEBUG: Elemento não é um select tradicional válido');
+        throw new Error('Elemento não é um select tradicional válido');
+      }
+
       // Listar opções disponíveis
       const opcoes = await page.$$eval(`${selectEncontrado} option`, options => 
         options.map(option => ({ value: option.value, text: (option.textContent || '').trim() }))
@@ -2311,11 +2383,21 @@ async function vincularOJ(page, nomeOJ, papel = 'Secretário de Audiência', vis
         throw new Error(`Erro interno: opção "${melhorOpcao}" não encontrada na lista original`);
       }
 
+      // Verificar novamente se a página está válida antes de selectOption
+      if (page.isClosed()) {
+        throw new Error('A página foi fechada antes de executar selectOption');
+      }
+
       await page.selectOption(selectEncontrado, opcaoEscolhida.value);
       console.log(`Órgão julgador selecionado: ${opcaoEscolhida.text}`);
       selecaoFeita = true;
     } catch (error) {
       console.log('Erro ao selecionar opção em select tradicional:', error.message);
+      
+      // Se a página foi fechada, propagar o erro
+      if (error.message && error.message.includes('Target page, context or browser has been closed')) {
+        throw new Error('A página foi fechada durante a seleção do select tradicional');
+      }
     }
   }
   

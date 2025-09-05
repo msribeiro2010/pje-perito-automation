@@ -49,8 +49,8 @@ class PerformanceMonitor {
     this.thresholds = {
       navigation: 5000, // 5s
       click: 2000, // 2s
-      elementSearch: 3000, // 3s
-      pjeOperation: 10000, // 10s
+      elementSearch: 10000, // 10s - Aumentado para dar mais tempo para encontrar elementos
+      pjeOperation: 15000, // 15s - Aumentado para operações PJe complexas
       memoryWarning: 500 * 1024 * 1024, // 500MB
       cpuWarning: 80 // 80%
     };

@@ -162,12 +162,26 @@ class SmartRetryManager {
     const errorName = error.constructor.name;
     const errorMessage = error.message.toLowerCase();
     
+    // Verificar erros que NÃO devem ser retryable (página/contexto/navegador fechado)
+    const nonRetryablePatterns = [
+      'target page, context or browser has been closed',
+      'page has been closed',
+      'context has been closed',
+      'browser has been closed',
+      'execution context was destroyed',
+      'session closed'
+    ];
+    
+    if (nonRetryablePatterns.some(pattern => errorMessage.includes(pattern))) {
+      return false;
+    }
+    
     // Verificar tipos de erro específicos
     if (config.retryableErrors.includes(errorName)) {
       return true;
     }
     
-    // Verificar padrões de mensagem
+    // Verificar padrões de mensagem retryable
     const retryablePatterns = [
       'timeout',
       'network',

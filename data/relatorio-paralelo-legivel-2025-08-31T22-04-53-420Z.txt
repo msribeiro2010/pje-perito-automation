@@ -1,0 +1,32 @@
+
+=== RELATÓRIO DE PROCESSAMENTO PARALELO ===
+
+Data/Hora: 31/08/2025, 19:04:53
+Tipo: Paralelo
+
+--- CONFIGURAÇÃO ---
+Instâncias Paralelas: 1
+Servidores Totais: undefined
+Servidores Processados: undefined
+
+--- PERFORMANCE ---
+Tempo Total: NaNs
+Tempo Médio por Servidor: NaNs
+Speedup: N/Ax
+Eficiência: NaN%
+Redução de Tempo: N/A%
+
+--- RESULTADOS ---
+Sucessos: undefined
+Erros: undefined
+Taxa de Sucesso: NaN%
+
+--- COMPARAÇÃO ---
+Tempo Estimado Sequencial: NaNs
+Ganho de Tempo: 0.0%
+Velocidade: 1.00x mais rápido
+
+--- ESTATÍSTICAS DETALHADAS ---
+Não disponível
+
+=== FIM DO RELATÓRIO ===

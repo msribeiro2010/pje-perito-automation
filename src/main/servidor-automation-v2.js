@@ -10,6 +10,7 @@ const DOMCacheManager = require('./dom-cache-manager.js');
 const SmartRetryManager = require('./smart-retry-manager.js');
 const NavigationOptimizer = require('./navigation-optimizer.js');
 const PerformanceMonitor = require('./performance-monitor.js');
+const PJEResilienceManager = require('./pje-resilience-manager.js');
 
 /**
  * Automação moderna para vinculação de OJs a servidores
@@ -33,6 +34,7 @@ class ServidorAutomationV2 {
     this.retryManager = new SmartRetryManager(this.timeoutManager);
     this.navigationOptimizer = new NavigationOptimizer(this.timeoutManager, this.retryManager);
     this.performanceMonitor = new PerformanceMonitor();
+    this.resilienceManager = new PJEResilienceManager();
     this.domCache = null;
     this.parallelProcessor = null;
   }
@@ -71,6 +73,7 @@ class ServidorAutomationV2 {
   normalizeOrgaoName(orgao) {
     return orgao
       .replace(/\s+/g, ' ')  // Normalizar espaços múltiplos
+      .replace(/[–—−]/g, '-')  // Normalizar travessões (–, —, −) para hífen (-)
       .replace(/doTrabalho/g, 'do Trabalho')  // Corrigir "doTrabalho" → "do Trabalho"
       .replace(/daTrabalho/g, 'da Trabalho')  // Corrigir "daTrabalho" → "da Trabalho"  
       .replace(/deTrabalho/g, 'de Trabalho')  // Corrigir "deTrabalho" → "de Trabalho"
@@ -142,6 +145,211 @@ class ServidorAutomationV2 {
       await this.cleanup();
       this.isRunning = false;
     }
+  }
+
+  /**
+   * Inicia automação com processamento paralelo
+   * @param {Object} config - Configuração da automação
+   * @param {number} maxInstances - Número máximo de instâncias paralelas (padrão: 2)
+   */
+  async startParallelAutomation(servidores, config, maxInstances = 2) {
+    if (this.isRunning) {
+      throw new Error('Automação já está em execução');
+    }
+
+    // Validar configuração para processamento paralelo
+    if (!servidores || servidores.length === 0) {
+      throw new Error('Processamento paralelo requer uma lista de servidores');
+    }
+
+    if (maxInstances < 1 || maxInstances > 30) {
+      throw new Error('Número de instâncias deve estar entre 1 e 30');
+    }
+
+    this.isRunning = true;
+    this.config = config;
+    this.currentProgress = 0;
+    this.results = [];
+    
+    // Iniciar monitoramento de performance
+    this.performanceMonitor.startMonitoring();
+
+    this.sendStatus('info', `🚀 Iniciando processamento paralelo`, 0, 
+      `${servidores.length} servidores com ${maxInstances} instâncias`);
+
+    try {
+      // Import dinamicamente para evitar dependência circular
+      const ParallelServerManager = require('./parallel-server-manager.js');
+      const parallelManager = new ParallelServerManager(maxInstances);
+      parallelManager.mainWindow = this.mainWindow;
+      
+      // Inicializar instâncias paralelas
+      await parallelManager.initialize();
+      
+      this.sendStatus('info', `✅ ${maxInstances} instâncias inicializadas`, 10, 
+        'Iniciando processamento dos servidores');
+      
+      // Configurar para manter navegador aberto por padrão
+      const parallelConfig = {
+        orgaos: config.orgaos || [],
+        keepBrowserOpen: config.keepBrowserOpen !== false // Default: true
+      };
+      
+      // Processar servidores em paralelo
+      const results = await parallelManager.processServersInParallel(servidores, parallelConfig);
+      
+      // Consolidar resultados
+      this.results = results.resultados || [];
+      
+      // Gerar relatório específico para processamento paralelo
+      await this.generateParallelReport(results, maxInstances);
+      
+      this.sendStatus('success', 
+        `🎉 Processamento paralelo concluído!`, 
+        100, 
+        `${results.servidoresProcessados}/${results.totalServidores} servidores processados em ${(results.tempoTotal / 1000).toFixed(1)}s`);
+      
+      if (parallelConfig.keepBrowserOpen) {
+        console.log('🔄 Navegador mantido aberto para visualização dos resultados');
+        console.log('💡 Para fechar completamente, use: automation.forceCleanup()');
+        // Armazenar referência do manager para cleanup posterior
+        this.parallelManager = parallelManager;
+      } else {
+        // Limpar instâncias paralelas apenas se não configurado para manter aberto
+        await parallelManager.cleanup();
+      }
+      
+      return results;
+      
+    } catch (error) {
+      console.error('❌ Erro no processamento paralelo:', error);
+      this.sendStatus('error', `Erro no processamento paralelo: ${error.message}`, this.currentProgress);
+      throw error;
+    } finally {
+      this.isRunning = false;
+      // Cleanup será feito apenas se keepBrowserOpen for false
+    }
+  }
+
+  /**
+   * Força o fechamento completo de todas as instâncias
+   */
+  async forceCleanup() {
+    if (this.parallelManager) {
+      console.log('🔄 Forçando fechamento de todas as instâncias...');
+      await this.parallelManager.cleanup(true);
+      this.parallelManager = null;
+      console.log('✅ Todas as instâncias foram fechadas');
+    } else {
+      console.log('ℹ️ Nenhuma instância paralela ativa para fechar');
+    }
+  }
+  
+  /**
+   * Gera relatório específico para processamento paralelo
+   */
+  async generateParallelReport(results, maxInstances) {
+    try {
+      const outputDir = path.join(__dirname, '..', '..', 'data');
+      
+      // Garantir que o diretório existe
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      
+      const report = {
+        timestamp: new Date().toISOString(),
+        tipoProcessamento: 'Paralelo',
+        configuracao: {
+          instanciasUtilizadas: maxInstances,
+          servidoresTotais: results.totalServidores,
+          servidoresProcessados: results.servidoresProcessados
+        },
+        performance: {
+          tempoTotalSegundos: results.tempoTotal / 1000,
+          tempoMedioServidorSegundos: results.tempoMedioServidor / 1000,
+          eficienciaParalela: results.eficienciaParalela,
+          estatisticas: results.estatisticas
+        },
+        resultados: {
+          sucessos: results.sucessos,
+          erros: results.erros,
+          detalhesServidores: results.resultados,
+          errosDetalhados: results.errosDetalhados
+        },
+        comparacao: {
+          estimativaSequencial: (results.tempoTotal * maxInstances) / 1000,
+          ganhoTempo: results.eficienciaParalela?.timeReduction || 0,
+          speedup: results.eficienciaParalela?.speedup || 1
+        }
+      };
+      
+      const reportPath = path.join(outputDir, `relatorio-paralelo-${timestamp}.json`);
+      fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+      
+      console.log(`📊 Relatório paralelo salvo: ${reportPath}`);
+      
+      // Também gerar versão legível
+      const readableReportPath = path.join(outputDir, `relatorio-paralelo-legivel-${timestamp}.txt`);
+      const readableContent = this.generateReadableParallelReport(report);
+      fs.writeFileSync(readableReportPath, readableContent);
+      
+      console.log(`📄 Relatório legível salvo: ${readableReportPath}`);
+      
+    } catch (error) {
+      console.error('Erro ao gerar relatório paralelo:', error);
+    }
+  }
+
+  /**
+   * Gera versão legível do relatório paralelo
+   */
+  generateReadableParallelReport(report) {
+    return `
+=== RELATÓRIO DE PROCESSAMENTO PARALELO ===
+
+Data/Hora: ${new Date(report.timestamp).toLocaleString('pt-BR')}
+Tipo: ${report.tipoProcessamento}
+
+--- CONFIGURAÇÃO ---
+Instâncias Paralelas: ${report.configuracao.instanciasUtilizadas}
+Servidores Totais: ${report.configuracao.servidoresTotais}
+Servidores Processados: ${report.configuracao.servidoresProcessados}
+
+--- PERFORMANCE ---
+Tempo Total: ${report.performance.tempoTotalSegundos.toFixed(1)}s
+Tempo Médio por Servidor: ${report.performance.tempoMedioServidorSegundos.toFixed(1)}s
+Speedup: ${report.performance.eficienciaParalela?.speedup?.toFixed(2) || 'N/A'}x
+Eficiência: ${(report.performance.eficienciaParalela?.efficiency * 100)?.toFixed(1) || 'N/A'}%
+Redução de Tempo: ${report.performance.eficienciaParalela?.timeReduction?.toFixed(1) || 'N/A'}%
+
+--- RESULTADOS ---
+Sucessos: ${report.resultados.sucessos}
+Erros: ${report.resultados.erros}
+Taxa de Sucesso: ${((report.resultados.sucessos / report.configuracao.servidoresProcessados) * 100).toFixed(1)}%
+
+--- COMPARAÇÃO ---
+Tempo Estimado Sequencial: ${report.comparacao.estimativaSequencial.toFixed(1)}s
+Ganho de Tempo: ${report.comparacao.ganhoTempo.toFixed(1)}%
+Velocidade: ${report.comparacao.speedup.toFixed(2)}x mais rápido
+
+--- ESTATÍSTICAS DETALHADAS ---
+${report.performance.estatisticas ? `
+Tempo de Processamento:
+  Mínimo: ${(report.performance.estatisticas.tempoProcessamento?.minimo / 1000).toFixed(1)}s
+  Máximo: ${(report.performance.estatisticas.tempoProcessamento?.maximo / 1000).toFixed(1)}s
+  Média: ${(report.performance.estatisticas.tempoProcessamento?.media / 1000).toFixed(1)}s
+
+Sucessos por Servidor:
+  Mínimo: ${report.performance.estatisticas.sucessosPorServidor?.minimo || 0}
+  Máximo: ${report.performance.estatisticas.sucessosPorServidor?.maximo || 0}
+  Média: ${report.performance.estatisticas.sucessosPorServidor?.media?.toFixed(1) || 0}
+  Total: ${report.performance.estatisticas.sucessosPorServidor?.total || 0}` : 'Não disponível'}
+
+=== FIM DO RELATÓRIO ===
+`;
   }
 
   async processMultipleServidores(config) {
@@ -364,29 +572,42 @@ class ServidorAutomationV2 {
       timeout: 30000
     };
 
-    // Em desenvolvimento, tentar conectar a Chrome existente
-    if (!this.isProduction) {
-      try {
-        this.browser = await chromium.connectOverCDP('http://localhost:9222');
-        const contexts = this.browser.contexts();
-        if (contexts.length > 0 && contexts[0].pages().length > 0) {
-          this.page = contexts[0].pages()[0];
-        } else {
+    // Usar o PJEResilienceManager para inicializar o navegador
+    const browserResult = await this.resilienceManager.wrapBrowserOperation(async () => {
+      // Em desenvolvimento, tentar conectar a Chrome existente
+      if (!this.isProduction) {
+        try {
+          this.browser = await chromium.connectOverCDP('http://localhost:9222');
+          const contexts = this.browser.contexts();
+          if (contexts.length > 0 && contexts[0].pages().length > 0) {
+            this.page = contexts[0].pages()[0];
+          } else {
+            const context = await this.browser.newContext();
+            this.page = await context.newPage();
+          }
+          this.sendStatus('info', 'Conectado ao Chrome existente', 10, 'Modo desenvolvimento');
+          return { browser: this.browser, page: this.page };
+        } catch (error) {
+          console.log('Não foi possível conectar ao Chrome existente, iniciando novo navegador');
+          this.browser = await chromium.launch(browserOptions);
           const context = await this.browser.newContext();
           this.page = await context.newPage();
+          return { browser: this.browser, page: this.page };
         }
-        this.sendStatus('info', 'Conectado ao Chrome existente', 10, 'Modo desenvolvimento');
-      } catch (error) {
-        console.log('Não foi possível conectar ao Chrome existente, iniciando novo navegador');
+      } else {
         this.browser = await chromium.launch(browserOptions);
         const context = await this.browser.newContext();
         this.page = await context.newPage();
+        return { browser: this.browser, page: this.page };
       }
-    } else {
-      this.browser = await chromium.launch(browserOptions);
-      const context = await this.browser.newContext();
-      this.page = await context.newPage();
+    });
+
+    if (!browserResult) {
+      throw new Error('Falha ao inicializar navegador após múltiplas tentativas');
     }
+
+    this.browser = browserResult.browser;
+    this.page = browserResult.page;
 
     // Configurar User-Agent e cabeçalhos
     await this.page.setExtraHTTPHeaders({
@@ -423,14 +644,17 @@ class ServidorAutomationV2 {
   async performLogin() {
     this.sendStatus('info', 'Realizando login...', 20, 'Autenticando no PJe');
         
-    // Usar função login() existente que já está otimizada
-    try {
+    // Usar PJEResilienceManager para login com resiliência
+    const loginResult = await this.resilienceManager.executeWithResilience(async () => {
       await login(this.page);
-      this.sendStatus('success', 'Login realizado com sucesso', 30, 'Autenticado');
-    } catch (error) {
-      console.log('⚠️ Erro no login:', error.message);
-      throw new Error(`Falha no login: ${error.message}`);
+      return true;
+    }, 'Login');
+
+    if (!loginResult) {
+      throw new Error('Falha no login após múltiplas tentativas');
     }
+
+    this.sendStatus('success', 'Login realizado com sucesso', 30, 'Autenticado');
   }
 
   async navigateDirectlyToPerson(cpf) {
@@ -627,27 +851,28 @@ class ServidorAutomationV2 {
   async navigateToServerTab() {
     this.sendStatus('info', 'Navegando para aba Servidor...', 45, 'Acessando perfil');
     
-    let editSuccessful = false;
-    
-    try {
-      // Clicar no ícone de edição
-      await this.clickEditIcon();
-      editSuccessful = true;
-      console.log('✅ Ícone de edição clicado com sucesso');
-      
-      // Aguardar navegação
-      await this.contextualDelay('networkWait', { priority: 'normal' });
-      
-      // Clicar na aba Servidor
-      await this.clickServerTab();
-      
-    } catch (editError) {
-      console.error('❌ Falha ao clicar no ícone de edição:', editError.message);
-      
-      // ESTRATÉGIA DE FALLBACK: Tentar navegar diretamente para a página de edição
-      console.log('🔄 TENTANDO FALLBACK: Navegação direta para edição');
+    // Usar PJEResilienceManager para navegação resiliente
+    const navigationResult = await this.resilienceManager.executeWithResilience(async () => {
+      let editSuccessful = false;
       
       try {
+        // Clicar no ícone de edição
+        await this.clickEditIcon();
+        editSuccessful = true;
+        console.log('✅ Ícone de edição clicado com sucesso');
+        
+        // Aguardar navegação
+        await this.contextualDelay('networkWait', { priority: 'normal' });
+        
+        // Clicar na aba Servidor
+        await this.clickServerTab();
+        
+      } catch (editError) {
+        console.error('❌ Falha ao clicar no ícone de edição:', editError.message);
+        
+        // ESTRATÉGIA DE FALLBACK: Tentar navegar diretamente para a página de edição
+        console.log('🔄 TENTANDO FALLBACK: Navegação direta para edição');
+        
         const currentUrl = this.page.url();
         console.log(`📍 URL atual: ${currentUrl}`);
         
@@ -700,17 +925,19 @@ class ServidorAutomationV2 {
           }
         }
         
-      } catch (fallbackError) {
-        console.error('❌ Estratégias de fallback falharam:', fallbackError.message);
-        throw new Error(`Não foi possível acessar a página de edição: ${editError.message} | Fallback: ${fallbackError.message}`);
+        if (!editSuccessful) {
+          throw new Error(`Não foi possível acessar a página de edição: ${editError.message}`);
+        }
       }
+      
+      return editSuccessful;
+    }, 'Navegação para aba Servidor');
+    
+    if (!navigationResult) {
+      throw new Error('Falha ao navegar para aba Servidor após múltiplas tentativas');
     }
     
-    if (editSuccessful) {
-      this.sendStatus('success', 'Aba Servidor acessada', 50, 'Pronto para processar OJs');
-    } else {
-      throw new Error('Falha completa ao acessar a aba Servidor');
-    }
+    this.sendStatus('success', 'Aba Servidor acessada', 50, 'Pronto para processar OJs');
   }
 
   async clickEditIcon() {
@@ -1277,6 +1504,11 @@ class ServidorAutomationV2 {
   async processOrgaosJulgadores() {
     this.sendStatus('info', 'Iniciando processamento paralelo dos OJs...', 55, 'Otimizando performance');
     
+    // Validar configuração antes de processar
+    if (!this.config || !this.config.orgaos || !Array.isArray(this.config.orgaos)) {
+      throw new Error('Configuração de órgãos julgadores inválida ou não definida');
+    }
+    
     try {
       // Inicializar processador paralelo
       if (!this.parallelProcessor) {
@@ -1330,6 +1562,11 @@ class ServidorAutomationV2 {
    */
   async processOrgaosJulgadoresSequential() {
     this.sendStatus('info', 'Usando processamento sequencial (fallback)...', 55, 'Verificando OJs cadastrados');
+    
+    // Validar configuração antes de processar
+    if (!this.config || !this.config.orgaos || !Array.isArray(this.config.orgaos)) {
+      throw new Error('Configuração de órgãos julgadores inválida ou não definida');
+    }
         
     // Verificar OJs já cadastrados em lote (otimização com cache)
     await this.loadExistingOJs();
@@ -1386,7 +1623,7 @@ class ServidorAutomationV2 {
         
     // Adicionar OJs já existentes ao relatório
     for (const orgaoExistente of this.ojCache) {
-      if (this.config.orgaos.includes(orgaoExistente)) {
+      if (this.config && this.config.orgaos && this.config.orgaos.includes(orgaoExistente)) {
         this.results.push({
           orgao: orgaoExistente,
           status: 'Já Incluído',
@@ -1712,14 +1949,23 @@ class ServidorAutomationV2 {
       
       console.log(`📋 ${numOpcoes} opções disponíveis`);
       
+      // Normalizar o orgão de busca
+      const orgaoNormalizado = this.normalizeOrgaoName(orgao);
+      console.log(`🔍 Orgão normalizado: ${orgaoNormalizado}`);
+      
       let opcaoEncontrada = false;
       for (let i = 0; i < numOpcoes; i++) {
         const textoOpcao = await opcoes.nth(i).textContent();
-        if (textoOpcao && textoOpcao.includes(orgao)) {
-          await opcoes.nth(i).click();
-          console.log(`✅ OJ selecionado: ${textoOpcao.trim()}`);
-          opcaoEncontrada = true;
-          break;
+        if (textoOpcao) {
+          const textoOpcaoNormalizado = this.normalizeOrgaoName(textoOpcao);
+          console.log(`🔍 Comparando: "${orgaoNormalizado}" com "${textoOpcaoNormalizado}"`);
+          
+          if (textoOpcaoNormalizado.includes(orgaoNormalizado)) {
+            await opcoes.nth(i).click();
+            console.log(`✅ OJ selecionado: ${textoOpcao.trim()}`);
+            opcaoEncontrada = true;
+            break;
+          }
         }
       }
       
@@ -2363,6 +2609,11 @@ class ServidorAutomationV2 {
     console.log(`🎯 [DEBUG] INICIANDO processOrgaosJulgadoresWithServerTracking para ${servidor.nome}`);
     console.log(`🎯 [DEBUG] CPF: ${servidor.cpf}, Perfil: ${servidor.perfil}, OJs: ${servidor.orgaos?.length || 0}`);
     
+    // Validar configuração antes de processar
+    if (!this.config || !this.config.orgaos || !Array.isArray(this.config.orgaos)) {
+      throw new Error('Configuração de órgãos julgadores inválida ou não definida');
+    }
+    
     // Definir o servidor atual para uso em outras funções
     this.currentServidor = servidor;
     
@@ -2474,7 +2725,7 @@ class ServidorAutomationV2 {
         
     // Adicionar OJs já existentes ao relatório do servidor
     for (const orgaoExistente of this.ojCache) {
-      if (this.config.orgaos.includes(orgaoExistente)) {
+      if (this.config && this.config.orgaos && this.config.orgaos.includes(orgaoExistente)) {
         serverResult.jaIncluidos++;
         serverResult.detalhes.push({
           orgao: orgaoExistente,
@@ -2958,7 +3209,7 @@ class ServidorAutomationV2 {
       config: {
         cpf: this.config.cpf,
         perfil: this.config.perfil,
-        totalOrgaos: this.config.orgaos.length
+        totalOrgaos: this.config && this.config.orgaos ? this.config.orgaos.length : 0
       },
       results: resultadosOtimizados, // Usar resultados otimizados
       summary: {

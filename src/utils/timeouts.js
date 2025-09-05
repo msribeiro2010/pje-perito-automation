@@ -34,7 +34,7 @@ class TimeoutManager {
       clicar: 400,               // Reduzido de 800 - muito mais rápido
       digitar: 200,              // Reduzido de 400
       aguardarResposta: 1500,    // Reduzido de 2500
-      aguardarElemento: 1200,    // Reduzido de 2000
+      aguardarElemento: 8000,    // Aumentado para 8000ms para operações complexas
       validarAcao: 800,          // Reduzido de 1500
       estabilizar: 300,          // Reduzido de 500
       hover: 200,                // Novo: para hover
@@ -43,19 +43,19 @@ class TimeoutManager {
     
     // Operações com dropdowns e seletores - OTIMIZADO
     dropdown: {
-      abrir: 800,                // Reduzido de 1500
-      carregarOpcoes: 1500,      // Reduzido de 2500
-      selecionar: 600,           // Reduzido de 1200
-      fechar: 400,               // Reduzido de 800
-      buscarOpcao: 1000,         // Reduzido de 2000
+      abrir: 1500,               // Aumentado para 1500ms
+      carregarOpcoes: 3000,      // Aumentado para 3000ms
+      selecionar: 1200,          // Aumentado para 1200ms
+      fechar: 800,               // Aumentado para 800ms
+      buscarOpcao: 2000,         // Mantido em 2000ms
       filtrar: 500               // Novo: para filtros
     },
     
     // Operações específicas do PJE - OTIMIZADO
     pje: {
       abrirAcordeao: 1000,       // Reduzido de 1800
-      buscarOJ: 2000,            // Reduzido de 3500 - muito mais rápido
-      vincularOJ: 3000,          // Reduzido de 5000
+      buscarOJ: 8000,            // Aumentado para 8000ms para dar mais tempo ao botão Adicionar
+      vincularOJ: 15000,         // Aumentado para 15000ms para operações complexas
       verificarVinculo: 1500,    // Reduzido de 2500
       confirmarAcao: 1200,       // Reduzido de 2000
       aguardarProcessamento: 2500, // Reduzido de 4000

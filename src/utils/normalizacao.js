@@ -132,7 +132,8 @@ class NormalizadorTexto {
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '') // Remove acentos
-      .replace(/[^a-z0-9\s]/g, ' ') // Remove caracteres especiais, mantém espaços
+      .replace(/[–—−]/g, '-') // Normaliza travessões (–, —, −) para hífen (-)
+      .replace(/[^a-z0-9\s-]/g, ' ') // Remove caracteres especiais, mantém espaços e hífens
       .replace(/\s+/g, ' ') // Normaliza espaços múltiplos
       .trim();
     

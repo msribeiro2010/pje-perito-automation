@@ -135,6 +135,9 @@ class PeritoApp {
       this.bulkDeleteServidores();
     });
 
+    // Event listeners para processamento paralelo
+    this.setupParallelProcessingListeners();
+
     // Controle de pausa/retomada removido
 
     // Modal events
@@ -1085,6 +1088,18 @@ class PeritoApp {
       return;
     }
 
+    // Verificar modo de automação selecionado
+    const selectedMode = document.querySelector('input[name="automation-mode"]:checked');
+    const isParallelMode = selectedMode && selectedMode.value === 'parallel';
+    
+    if (isParallelMode) {
+      return this.startParallelAutomation();
+    } else {
+      return this.startSequentialAutomation();
+    }
+  }
+
+  async startSequentialAutomation() {
     this.isAutomationRunning = true;
     const startButton = document.getElementById('start-servidor-automation');
     const stopButton = document.getElementById('stop-servidor-automation');
@@ -1102,9 +1117,9 @@ class PeritoApp {
     // Iniciar timer
     this.startAutomationTimer();
         
-    this.showLoading('Iniciando automação de servidores...', 'Preparando sistema e abrindo navegador');
+    this.showLoading('Iniciando automação sequencial...', 'Preparando sistema e abrindo navegador');
     this.clearStatusLog();
-    this.addStatusMessage('info', 'Iniciando automação de servidores...');
+    this.addStatusMessage('info', 'Iniciando automação sequencial de servidores...');
         
     try {
       // Preparar lista de servidores para processar em uma única sessão
@@ -1118,7 +1133,7 @@ class PeritoApp {
         };
       });
       
-      this.addStatusMessage('info', `Processando ${servidoresParaProcessar.length} servidores em uma única sessão`);
+      this.addStatusMessage('info', `Processando ${servidoresParaProcessar.length} servidores sequencialmente`);
       
       const config = {
         servidores: servidoresParaProcessar,
@@ -1144,6 +1159,88 @@ class PeritoApp {
       }
     } catch (error) {
       this.addStatusMessage('error', 'Erro ao executar automação de servidores: ' + error.message);
+    } finally {
+      this.stopAutomationTimer();
+      this.hideLoading();
+      startButton.classList.remove('loading');
+      this.isAutomationRunning = false;
+      startButton.disabled = false;
+      stopButton.disabled = false;
+    }
+  }
+
+  async startParallelAutomation() {
+    const parallelInstancesSelect = document.getElementById('max-instances');
+    const numInstances = parseInt(parallelInstancesSelect.value) || 2;
+    
+    this.isAutomationRunning = true;
+    const startButton = document.getElementById('start-servidor-automation');
+    const stopButton = document.getElementById('stop-servidor-automation');
+    startButton.disabled = true;
+    startButton.classList.add('loading');
+    stopButton.disabled = false;
+    
+    // Calcular total de passos para progress
+    const selectedServidoresList = this.selectedServidores.map(index => this.servidores[index]);
+    this.totalSteps = selectedServidoresList.reduce((total, servidor) => {
+      return total + 3 + (servidor.ojs ? servidor.ojs.length : 0);
+    }, 0);
+    this.currentProgress = 0;
+    
+    // Iniciar timer
+    this.startAutomationTimer();
+    
+    this.showLoading('Iniciando automação paralela...', `Preparando ${numInstances} instâncias do navegador`);
+    this.clearStatusLog();
+    this.addStatusMessage('info', `Iniciando automação paralela com ${numInstances} instâncias...`);
+    
+    try {
+      // Preparar lista de servidores para processamento paralelo
+      const servidoresParaProcessar = this.selectedServidores.map(index => {
+        const servidor = this.servidores[index];
+        return {
+          nome: servidor.nome,
+          cpf: servidor.cpf,
+          perfil: servidor.perfil,
+          orgaos: servidor.ojs || []
+        };
+      });
+      
+      this.addStatusMessage('info', `Processando ${servidoresParaProcessar.length} servidores em ${numInstances} instâncias paralelas`);
+      
+      const config = {
+        servidores: servidoresParaProcessar,
+        numInstances: numInstances,
+        production: true,
+        detailedReport: true,
+        useCache: true,
+        timeout: 30,
+        maxLoginAttempts: 3
+      };
+      
+      const result = await window.electronAPI.startParallelAutomationV2(config);
+      
+      if (!result || !result.success) {
+        this.addStatusMessage('error', `Erro na automação paralela: ${result && result.error ? result.error : 'Erro desconhecido'}`);
+      } else {
+        this.addStatusMessage('success', `Automação paralela de ${servidoresParaProcessar.length} servidores concluída com sucesso`);
+        
+        // Mostrar estatísticas de performance
+        if (result.performance) {
+          const efficiency = result.performance.efficiency || 0;
+          const timeReduction = result.performance.timeReduction || 0;
+          this.addStatusMessage('info', `Eficiência: ${efficiency.toFixed(1)}% | Redução de tempo: ${timeReduction.toFixed(1)}%`);
+        }
+        
+        // Mostrar resultados individuais se disponíveis
+        if (result.relatorio && result.relatorio.servidores) {
+          result.relatorio.servidores.forEach(relatorioServidor => {
+            this.addStatusMessage('info', `${relatorioServidor.nome}: ${relatorioServidor.sucessos || 0} sucessos, ${relatorioServidor.erros || 0} erros`);
+          });
+        }
+      }
+    } catch (error) {
+      this.addStatusMessage('error', 'Erro ao executar automação paralela: ' + error.message);
     } finally {
       this.stopAutomationTimer();
       this.hideLoading();
@@ -1841,46 +1938,32 @@ class PeritoApp {
     // Placeholder for V2 automation listeners
   }
 
+  setupParallelProcessingListeners() {
+    // Event listener para mudança do modo de automação
+    const modeRadios = document.querySelectorAll('input[name="automation-mode"]');
+    const parallelConfig = document.getElementById('parallel-config');
+    
+    modeRadios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.value === 'parallel') {
+          parallelConfig.style.display = 'block';
+        } else {
+          parallelConfig.style.display = 'none';
+        }
+      });
+    });
+
+    // Inicializar estado baseado na seleção atual
+    const selectedMode = document.querySelector('input[name="automation-mode"]:checked');
+    if (selectedMode && selectedMode.value === 'parallel') {
+      parallelConfig.style.display = 'block';
+    } else {
+      parallelConfig.style.display = 'none';
+    }
+  }
+
   setupServidorV2Listeners() {
-    // Event listener para mudança do perfil
-    const perfilSelect = document.getElementById('v2-perfil');
-    const perfilInfo = document.getElementById('perfil-description');
-    
-    if (perfilSelect && perfilInfo) {
-      perfilSelect.addEventListener('change', (e) => {
-        this.updatePerfilInfo(e.target.value, e.target.selectedOptions[0]);
-      });
-      
-      // Inicializar com o valor padrão (Assessor)
-      if (perfilSelect.value) {
-        this.updatePerfilInfo(perfilSelect.value, perfilSelect.selectedOptions[0]);
-      }
-    }
-    
-    // Event listener para abrir o modal servidor-v2
-    const openV2ModalBtn = document.getElementById('open-servidor-v2-modal');
-    if (openV2ModalBtn) {
-      openV2ModalBtn.addEventListener('click', () => {
-        this.openServidorV2Modal();
-      });
-    }
-    
-    // Event listener para fechar o modal servidor-v2
-    const closeV2ModalBtn = document.querySelector('#servidor-v2-modal .close');
-    if (closeV2ModalBtn) {
-      closeV2ModalBtn.addEventListener('click', () => {
-        this.closeServidorV2Modal();
-      });
-    }
-    
-    // Event listener para submit do formulário servidor-v2
-    const v2Form = document.getElementById('servidor-v2-form');
-    if (v2Form) {
-      v2Form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.saveServidorV2();
-      });
-    }
+    // Método removido - funcionalidade V2 descontinuada
   }
   
   updatePerfilInfo(perfilValue, selectedOption) {
@@ -2448,6 +2531,148 @@ class PeritoApp {
     setTimeout(() => {
       this.showNotification('Funcionalidade de logs será implementada em breve', 'warning');
     }, 1000);
+  }
+
+  // Métodos para gerenciar o dashboard de processamento paralelo
+  showParallelDashboard() {
+    const dashboard = document.getElementById('parallel-dashboard');
+    if (dashboard) {
+      dashboard.classList.remove('hidden');
+      this.setupParallelDashboardListeners();
+    }
+  }
+
+  hideParallelDashboard() {
+    const dashboard = document.getElementById('parallel-dashboard');
+    if (dashboard) {
+      dashboard.classList.add('hidden');
+    }
+  }
+
+  setupParallelDashboardListeners() {
+    const pauseBtn = document.getElementById('parallel-pause-btn');
+    const stopBtn = document.getElementById('parallel-stop-btn');
+
+    if (pauseBtn) {
+      pauseBtn.onclick = () => this.pauseAllParallelInstances();
+    }
+
+    if (stopBtn) {
+      stopBtn.onclick = () => this.stopAllParallelInstances();
+    }
+  }
+
+  updateParallelDashboard(data) {
+    // Atualizar contadores
+    const instancesCount = document.getElementById('parallel-instances-count');
+    const totalProgress = document.getElementById('parallel-total-progress');
+    const overallProgressFill = document.getElementById('overall-progress-fill');
+    const overallProgressText = document.getElementById('overall-progress-text');
+    const elapsedTime = document.getElementById('parallel-elapsed-time');
+    const estimatedTime = document.getElementById('parallel-estimated-time');
+    const speed = document.getElementById('parallel-speed');
+
+    if (data.instances && instancesCount) {
+      instancesCount.textContent = data.instances.length;
+    }
+
+    if (data.totalServers && data.completedServers && totalProgress) {
+      totalProgress.textContent = `${data.completedServers}/${data.totalServers}`;
+    }
+
+    // Atualizar progresso geral
+    if (data.overallProgress !== undefined) {
+      const percentage = Math.round(data.overallProgress);
+      if (overallProgressFill) {
+        overallProgressFill.style.width = `${percentage}%`;
+      }
+      if (overallProgressText) {
+        overallProgressText.textContent = `${percentage}%`;
+      }
+    }
+
+    // Atualizar estatísticas
+    if (data.elapsedTime && elapsedTime) {
+      elapsedTime.textContent = this.formatTime(data.elapsedTime);
+    }
+
+    if (data.estimatedTime && estimatedTime) {
+      estimatedTime.textContent = this.formatTime(data.estimatedTime);
+    }
+
+    if (data.speed && speed) {
+      speed.textContent = `${data.speed.toFixed(1)} serv/min`;
+    }
+
+    // Atualizar instâncias
+    this.updateParallelInstances(data.instances || []);
+  }
+
+  updateParallelInstances(instances) {
+    const container = document.getElementById('parallel-instances');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    instances.forEach((instance, index) => {
+      const instanceElement = this.createInstanceElement(instance, index);
+      container.appendChild(instanceElement);
+    });
+  }
+
+  createInstanceElement(instance, index) {
+    const div = document.createElement('div');
+    div.className = 'instance-item';
+    div.innerHTML = `
+      <div class="instance-header">
+        <div class="instance-title">Instância ${index + 1}</div>
+        <div class="instance-status ${instance.status}">${this.getInstanceStatusText(instance.status)}</div>
+      </div>
+      <div class="instance-progress">
+        <div class="instance-progress-bar">
+          <div class="instance-progress-fill" style="width: ${instance.progress || 0}%"></div>
+        </div>
+        <div class="instance-progress-text">${Math.round(instance.progress || 0)}%</div>
+      </div>
+      <div class="instance-details">
+        <div>Servidor: ${instance.currentServer || 'Aguardando...'}</div>
+        <div>Processados: ${instance.completed || 0}/${instance.total || 0}</div>
+        <div>Tempo: ${this.formatTime(instance.elapsedTime || 0)}</div>
+      </div>
+    `;
+    return div;
+  }
+
+  getInstanceStatusText(status) {
+    const statusMap = {
+      'running': 'Executando',
+      'paused': 'Pausado',
+      'error': 'Erro',
+      'completed': 'Concluído',
+      'waiting': 'Aguardando'
+    };
+    return statusMap[status] || status;
+  }
+
+  formatTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  pauseAllParallelInstances() {
+    // Implementar lógica para pausar todas as instâncias
+    this.showNotification('Pausando todas as instâncias...', 'info');
+    // Aqui seria chamada a função do backend para pausar
+  }
+
+  stopAllParallelInstances() {
+    if (confirm('Tem certeza que deseja parar todo o processamento paralelo?')) {
+      this.hideParallelDashboard();
+      this.stopServidorAutomation();
+      this.showNotification('Processamento paralelo interrompido', 'warning');
+    }
   }
 }
 
