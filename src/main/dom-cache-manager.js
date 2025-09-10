@@ -137,22 +137,22 @@ class DOMCacheManager {
    */
   async executeSearchStrategy(strategy, selector, timeout) {
     switch (strategy) {
-      case 'waitForSelector':
-        await this.page.waitForSelector(selector, { timeout });
-        return await this.page.$(selector);
+    case 'waitForSelector':
+      await this.page.waitForSelector(selector, { timeout });
+      return await this.page.$(selector);
         
-      case 'querySelector':
-        return await this.page.$(selector);
+    case 'querySelector':
+      return await this.page.$(selector);
         
-      case 'xpath':
-        if (selector.startsWith('//')) {
-          const elements = await this.page.$x(selector);
-          return elements[0] || null;
-        }
-        return null;
+    case 'xpath':
+      if (selector.startsWith('//')) {
+        const elements = await this.page.$x(selector);
+        return elements[0] || null;
+      }
+      return null;
         
-      default:
-        return null;
+    default:
+      return null;
     }
   }
 

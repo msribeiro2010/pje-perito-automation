@@ -166,17 +166,17 @@ class ContextualDelayManager {
 
     // Ajuste baseado na prioridade
     switch (options.priority) {
-      case 'critical':
-        delay *= 0.5;
-        break;
-      case 'high':
-        delay *= 0.7;
-        break;
-      case 'low':
-        delay *= 1.3;
-        break;
-      default: // normal
-        break;
+    case 'critical':
+      delay *= 0.5;
+      break;
+    case 'high':
+      delay *= 0.7;
+      break;
+    case 'low':
+      delay *= 1.3;
+      break;
+    default: // normal
+      break;
     }
 
     return Math.round(delay);

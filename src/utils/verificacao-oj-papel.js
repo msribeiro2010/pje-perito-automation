@@ -83,7 +83,7 @@ class VerificacaoOJPapel {
         } else {
           // OJ encontrado mas papel não detectado - pode vincular por segurança
           resultado.podeVincular = true;
-          resultado.motivo = `OJ encontrado mas papel não detectado - pode vincular`;
+          resultado.motivo = 'OJ encontrado mas papel não detectado - pode vincular';
           this.estatisticas.ojsParaVincular++;
         }
       } else {
@@ -232,7 +232,7 @@ class VerificacaoOJPapel {
       }
       
       if (!papelEncontrado) {
-        this.logger.warn(`⚠️ Papel não encontrado para o OJ`);
+        this.logger.warn('⚠️ Papel não encontrado para o OJ');
         return {
           papelEncontrado: false,
           papelAtual: null,
@@ -249,7 +249,7 @@ class VerificacaoOJPapel {
       return {
         papelEncontrado: true,
         papelAtual: papelEncontrado,
-        papelCorreto: papelCorreto
+        papelCorreto
       };
       
     } catch (error) {
@@ -389,7 +389,7 @@ class VerificacaoOJPapel {
 
     resultado.estatisticas.tempoTotalMs = Date.now() - inicioTempo;
 
-    this.logger.info(`✅ Verificação em lote concluída:`);
+    this.logger.info('✅ Verificação em lote concluída:');
     this.logger.info(`   - Total: ${resultado.estatisticas.total}`);
     this.logger.info(`   - Já vinculados (papel correto): ${resultado.estatisticas.jaVinculadosCorretos}`);
     this.logger.info(`   - Com papel diferente: ${resultado.estatisticas.comPapelDiferente}`);
@@ -481,7 +481,7 @@ class VerificacaoOJPapel {
           if (texto && this._textoContemOJ(texto, nomeOJ)) {
             return {
               encontrado: true,
-              elemento: elemento,
+              elemento,
               texto: texto.trim()
             };
           }
@@ -512,7 +512,7 @@ class VerificacaoOJPapel {
           if (texto && this._textoContemOJ(texto, nomeOJ)) {
             return {
               encontrado: true,
-              elemento: elemento,
+              elemento,
               texto: texto.trim()
             };
           }
@@ -570,7 +570,7 @@ class VerificacaoOJPapel {
               return {
                 papelEncontrado: true,
                 papelAtual: papelExtraido,
-                papelCorreto: papelCorreto
+                papelCorreto
               };
             }
           }
@@ -611,7 +611,7 @@ class VerificacaoOJPapel {
               return {
                 papelEncontrado: true,
                 papelAtual: papelExtraido,
-                papelCorreto: papelCorreto
+                papelCorreto
               };
             }
           }
@@ -653,7 +653,7 @@ class VerificacaoOJPapel {
           return {
             papelEncontrado: true,
             papelAtual: papelExtraido,
-            papelCorreto: papelCorreto
+            papelCorreto
           };
         }
       }
@@ -677,7 +677,7 @@ class VerificacaoOJPapel {
               return {
                 papelEncontrado: true,
                 papelAtual: papelExtraido,
-                papelCorreto: papelCorreto
+                papelCorreto
               };
             }
           }
@@ -709,7 +709,7 @@ class VerificacaoOJPapel {
                 return {
                   papelEncontrado: true,
                   papelAtual: texto.trim(),
-                  papelCorreto: papelCorreto
+                  papelCorreto
                 };
               }
             }
@@ -871,7 +871,7 @@ class VerificacaoOJPapel {
     
     // Comparação exata
     if (p1 === p2) {
-      console.log(`✅ [MATCH EXATO] Papéis idênticos após normalização`);
+      console.log('✅ [MATCH EXATO] Papéis idênticos após normalização');
       return true;
     }
     
@@ -880,7 +880,7 @@ class VerificacaoOJPapel {
     console.log(`📊 [SIMILARIDADE] ${(similaridade * 100).toFixed(1)}%`);
     
     if (similaridade >= 0.85) {
-      console.log(`✅ [MATCH SIMILARIDADE] Papéis similares (≥85%)`);
+      console.log('✅ [MATCH SIMILARIDADE] Papéis similares (≥85%)');
       return true;
     }
     
@@ -908,7 +908,7 @@ class VerificacaoOJPapel {
       }
     }
     
-    console.log(`❌ [NO MATCH] Papéis são diferentes`);
+    console.log('❌ [NO MATCH] Papéis são diferentes');
     return false;
   }
 

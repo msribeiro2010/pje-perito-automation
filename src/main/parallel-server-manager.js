@@ -41,7 +41,7 @@ class ParallelServerManager {
    */
   async initialize() {
     if (this.isInitialized) {
-      console.log(`⚠️ ParallelServerManager já foi inicializado`);
+      console.log('⚠️ ParallelServerManager já foi inicializado');
       return true;
     }
     
@@ -90,7 +90,7 @@ class ParallelServerManager {
       console.log(`🎉 ${this.instances.length}/${this.maxInstances} instâncias prontas para processamento`);
       
       if (this.initializationErrors.length > 0) {
-        console.log(`⚠️ Avisos durante inicialização:`);
+        console.log('⚠️ Avisos durante inicialização:');
         this.initializationErrors.forEach((error, index) => {
           console.log(`   ${index + 1}. ${error}`);
         });
@@ -325,7 +325,7 @@ class ParallelServerManager {
       console.log(`[ParallelServerManager] Aguardando conclusão de ${promises.length} instâncias...`);
       await Promise.all(promises);
       
-      console.log(`[ParallelServerManager] Processamento concluído. Consolidando resultados...`);
+      console.log('[ParallelServerManager] Processamento concluído. Consolidando resultados...');
       const results = this.consolidateResults();
       
       // Verificar se houve erros críticos
@@ -381,7 +381,7 @@ class ParallelServerManager {
         partialResults = this.consolidateResults();
         console.log(`[ParallelServerManager] Resultados parciais consolidados: ${this.completedServers} servidores processados`);
       } catch (consolidateError) {
-        console.error(`[ParallelServerManager] Erro ao consolidar resultados parciais:`, consolidateError);
+        console.error('[ParallelServerManager] Erro ao consolidar resultados parciais:', consolidateError);
       }
       
       this.sendStatusUpdate({
@@ -423,12 +423,12 @@ class ParallelServerManager {
     
     // Validações de entrada
     if (!instance) {
-      console.error(`[ParallelServerManager] Instância inválida fornecida`);
+      console.error('[ParallelServerManager] Instância inválida fornecida');
       return;
     }
     
     if (!instance.id) {
-      console.warn(`[ParallelServerManager] Instância sem ID definido`);
+      console.warn('[ParallelServerManager] Instância sem ID definido');
     }
     
     // Inicializar contadores se não existirem
@@ -443,13 +443,13 @@ class ParallelServerManager {
       while (this.serverQueue.length > 0 && this.isRunning) {
         const server = this.serverQueue.shift();
         if (!server) {
-          console.log(`[ParallelServerManager] Servidor vazio encontrado na fila, continuando...`);
+          console.log('[ParallelServerManager] Servidor vazio encontrado na fila, continuando...');
           break;
         }
         
         // Validar dados do servidor
         if (!server.nome && !server.cpf) {
-          console.warn(`[ParallelServerManager] Servidor sem nome ou CPF:`, server);
+          console.warn('[ParallelServerManager] Servidor sem nome ou CPF:', server);
           const errorResult = {
             servidor: server,
             instancia: instance.id,
@@ -522,50 +522,50 @@ class ParallelServerManager {
           console.error(`[ParallelServerManager] ❌ Erro na instância ${instance.id} processando ${serverIdentifier}:`, error);
           
           const errorResult = {
-             servidor: server,
-             instancia: instance.id,
-             erro: error.message || 'Erro desconhecido',
-             errorType: error.name || 'UnknownError',
-             timestamp: new Date().toISOString(),
-             processingTime: Date.now() - instance.startTime,
-             stack: error.stack,
-             tipo: 'processing_error'
-           };
+            servidor: server,
+            instancia: instance.id,
+            erro: error.message || 'Erro desconhecido',
+            errorType: error.name || 'UnknownError',
+            timestamp: new Date().toISOString(),
+            processingTime: Date.now() - instance.startTime,
+            stack: error.stack,
+            tipo: 'processing_error'
+          };
            
-           instance.errors.push(errorResult);
-           instance.totalProcessed++;
-           if (typeof instance.totalErrors !== 'number') instance.totalErrors = 0;
-           instance.totalErrors++;
-           this.completedServers++;
+          instance.errors.push(errorResult);
+          instance.totalProcessed++;
+          if (typeof instance.totalErrors !== 'number') instance.totalErrors = 0;
+          instance.totalErrors++;
+          this.completedServers++;
            
-           this.sendStatusUpdate({
-             type: 'instance-error',
-             instanceId: instance.id,
-             server: serverIdentifier,
-             error: error.message,
-             completed: this.completedServers,
-             total: this.totalServers
-           });
-         } finally {
-           instance.busy = false;
-           instance.currentServer = null;
-           instance.endTime = Date.now();
-         }
-       }
-     } catch (instanceError) {
-       console.error(`[ParallelServerManager] Erro crítico na instância ${instance.id}:`, instanceError);
-       if (!instance.errors) instance.errors = [];
-       instance.errors.push({
-         tipo: 'instance_critical_error',
-         erro: instanceError.message || 'Erro crítico na instância',
-         timestamp: new Date().toISOString(),
-         stack: instanceError.stack
-       });
-     } finally {
-       console.log(`[ParallelServerManager] Instância ${instance.id} finalizou processamento. Servidores processados: ${serversProcessedByInstance}`);
-       instance.busy = false;
-       instance.currentServer = null;
-     }
+          this.sendStatusUpdate({
+            type: 'instance-error',
+            instanceId: instance.id,
+            server: serverIdentifier,
+            error: error.message,
+            completed: this.completedServers,
+            total: this.totalServers
+          });
+        } finally {
+          instance.busy = false;
+          instance.currentServer = null;
+          instance.endTime = Date.now();
+        }
+      }
+    } catch (instanceError) {
+      console.error(`[ParallelServerManager] Erro crítico na instância ${instance.id}:`, instanceError);
+      if (!instance.errors) instance.errors = [];
+      instance.errors.push({
+        tipo: 'instance_critical_error',
+        erro: instanceError.message || 'Erro crítico na instância',
+        timestamp: new Date().toISOString(),
+        stack: instanceError.stack
+      });
+    } finally {
+      console.log(`[ParallelServerManager] Instância ${instance.id} finalizou processamento. Servidores processados: ${serversProcessedByInstance}`);
+      instance.busy = false;
+      instance.currentServer = null;
+    }
   }
 
   /**

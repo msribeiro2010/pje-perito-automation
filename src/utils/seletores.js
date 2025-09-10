@@ -833,86 +833,86 @@ class SeletorManager {
 
 // Seletores específicos para São José dos Campos - ATUALIZADO COM FIX BOTÃO ADICIONAR
 const SAO_JOSE_CAMPOS_ESPECIFICOS = {
-    // Seletores para busca de perito
-    buscaPerito: {
-        inputBusca: 'input[name="nomePerito"], input[id*="perito"], input[class*="perito"]',
-        botaoBuscar: 'button[type="submit"], input[type="submit"], button:contains("Buscar")',
-        resultados: '.resultado-busca, .lista-peritos, [class*="resultado"]',
-        itemPerito: '.item-perito, .perito-item, tr[class*="perito"]'
-    },
+  // Seletores para busca de perito
+  buscaPerito: {
+    inputBusca: 'input[name="nomePerito"], input[id*="perito"], input[class*="perito"]',
+    botaoBuscar: 'button[type="submit"], input[type="submit"], button:contains("Buscar")',
+    resultados: '.resultado-busca, .lista-peritos, [class*="resultado"]',
+    itemPerito: '.item-perito, .perito-item, tr[class*="perito"]'
+  },
     
-    // Seletores para vinculação - MELHORADOS
-    vinculacao: {
-        // Botão "Adicionar Órgão Julgador" - Seletores específicos para São José dos Campos
-        botaoAdicionarOrgao: [
-            'mat-expansion-panel[aria-expanded="true"] button:has-text("Adicionar")',
-            'mat-expansion-panel-content button:has-text("Adicionar Órgão Julgador")',
-            '#cdk-accordion-child-8 button:has-text("Adicionar")',
-            'button[mat-button]:has-text("Adicionar")',
-            '.mat-expansion-panel-content .mat-button:has-text("Adicionar")',
-            'mat-expansion-panel-content button:has-text("Adicionar")',
-            'div[class*="mat-expansion-panel-content"] button[class*="mat-button"]',
-            'button[mat-raised-button]:has-text("Adicionar")',
-            'button[mat-flat-button]:has-text("Adicionar")',
-            '[id*="cdk-accordion"] button:has-text("Adicionar")',
-            'mat-accordion mat-expansion-panel button:has-text("Adicionar")'
-        ],
+  // Seletores para vinculação - MELHORADOS
+  vinculacao: {
+    // Botão "Adicionar Órgão Julgador" - Seletores específicos para São José dos Campos
+    botaoAdicionarOrgao: [
+      'mat-expansion-panel[aria-expanded="true"] button:has-text("Adicionar")',
+      'mat-expansion-panel-content button:has-text("Adicionar Órgão Julgador")',
+      '#cdk-accordion-child-8 button:has-text("Adicionar")',
+      'button[mat-button]:has-text("Adicionar")',
+      '.mat-expansion-panel-content .mat-button:has-text("Adicionar")',
+      'mat-expansion-panel-content button:has-text("Adicionar")',
+      'div[class*="mat-expansion-panel-content"] button[class*="mat-button"]',
+      'button[mat-raised-button]:has-text("Adicionar")',
+      'button[mat-flat-button]:has-text("Adicionar")',
+      '[id*="cdk-accordion"] button:has-text("Adicionar")',
+      'mat-accordion mat-expansion-panel button:has-text("Adicionar")'
+    ],
         
-        // Painel de Órgãos Julgadores
-        painelOrgaosJulgadores: [
-            'mat-expansion-panel-header:has-text("Órgãos Julgadores")',
-            'mat-expansion-panel:has(mat-expansion-panel-header:has-text("Órgãos Julgadores"))'
-        ],
+    // Painel de Órgãos Julgadores
+    painelOrgaosJulgadores: [
+      'mat-expansion-panel-header:has-text("Órgãos Julgadores")',
+      'mat-expansion-panel:has(mat-expansion-panel-header:has-text("Órgãos Julgadores"))'
+    ],
         
-        // Outros seletores de vinculação
-        botaoVincular: 'button:contains("Vincular"), input[value*="Vincular"], a:contains("Vincular")',
-        botaoConfirmar: 'button:contains("Confirmar"), input[value*="Confirmar"], button[id*="confirmar"]',
-        modalConfirmacao: '.modal, .dialog, [class*="confirmacao"]',
-        mensagemSucesso: '.sucesso, .success, [class*="sucesso"]'
-    },
+    // Outros seletores de vinculação
+    botaoVincular: 'button:contains("Vincular"), input[value*="Vincular"], a:contains("Vincular")',
+    botaoConfirmar: 'button:contains("Confirmar"), input[value*="Confirmar"], button[id*="confirmar"]',
+    modalConfirmacao: '.modal, .dialog, [class*="confirmacao"]',
+    mensagemSucesso: '.sucesso, .success, [class*="sucesso"]'
+  },
     
-    // Seletores para navegação
-    navegacao: {
-        menuPeritos: 'a:contains("Perito"), [href*="perito"], .menu-perito',
-        submenuVincular: 'a:contains("Vincular"), [href*="vincular"]',
-        breadcrumb: '.breadcrumb, .caminho, [class*="breadcrumb"]'
-    },
+  // Seletores para navegação
+  navegacao: {
+    menuPeritos: 'a:contains("Perito"), [href*="perito"], .menu-perito',
+    submenuVincular: 'a:contains("Vincular"), [href*="vincular"]',
+    breadcrumb: '.breadcrumb, .caminho, [class*="breadcrumb"]'
+  },
     
-    // Timeouts específicos (em ms) - AUMENTADOS
-    timeouts: {
-        buscaPerito: 15000,
-        vinculacao: 20000,
-        confirmacao: 10000,
-        navegacao: 8000,
-        botaoAdicionar: 10000,  // Novo timeout específico
-        expansaoPainel: 5000     // Novo timeout para expansão
-    },
+  // Timeouts específicos (em ms) - AUMENTADOS
+  timeouts: {
+    buscaPerito: 15000,
+    vinculacao: 20000,
+    confirmacao: 10000,
+    navegacao: 8000,
+    botaoAdicionar: 10000,  // Novo timeout específico
+    expansaoPainel: 5000     // Novo timeout para expansão
+  },
     
-    // Configurações específicas - MELHORADAS
-    configuracao: {
-        tentativasMaximas: 5,
-        intervaloTentativas: 3000,
-        aguardarCarregamento: 5000,
-        processamentoSequencial: true,
+  // Configurações específicas - MELHORADAS
+  configuracao: {
+    tentativasMaximas: 5,
+    intervaloTentativas: 3000,
+    aguardarCarregamento: 5000,
+    processamentoSequencial: true,
         
-        // Novas estratégias específicas
-        estrategiasFallback: [
-            'garantir_painel_expandido',
-            'limpar_overlays_angular',
-            'busca_javascript_avancada',
-            'tentativas_multiplas'
-        ],
+    // Novas estratégias específicas
+    estrategiasFallback: [
+      'garantir_painel_expandido',
+      'limpar_overlays_angular',
+      'busca_javascript_avancada',
+      'tentativas_multiplas'
+    ],
         
-        // Configuração específica para botão Adicionar
-        botaoAdicionar: {
-            tentativasMaximas: 3,
-            timeoutPorTentativa: 3000,
-            aguardarEntreTenatativas: 2000,
-            verificarVisibilidade: true,
-            expandirPainelAntes: true,
-            limparOverlaysAntes: true
-        }
+    // Configuração específica para botão Adicionar
+    botaoAdicionar: {
+      tentativasMaximas: 3,
+      timeoutPorTentativa: 3000,
+      aguardarEntreTenatativas: 2000,
+      verificarVisibilidade: true,
+      expandirPainelAntes: true,
+      limparOverlaysAntes: true
     }
+  }
 };
 
 

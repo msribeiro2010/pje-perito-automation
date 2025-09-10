@@ -34,12 +34,12 @@ class SmartOJCache {
       
       if (ojsJaVinculados.length > 0) {
         this.logger.info(`📋 Primeiros 5 OJs vinculados: ${ojsJaVinculados.slice(0, 5).join(', ')}`);
-        this.logger.info(`📋 TODOS os OJs vinculados encontrados:`);
+        this.logger.info('📋 TODOS os OJs vinculados encontrados:');
         ojsJaVinculados.forEach((oj, index) => {
           this.logger.info(`   ${index + 1}. "${oj}"`);
         });
       } else {
-        this.logger.warn(`⚠️ NENHUM OJ vinculado encontrado na página! Isso pode indicar um problema.`);
+        this.logger.warn('⚠️ NENHUM OJ vinculado encontrado na página! Isso pode indicar um problema.');
       }
 
       // 2. Normalizar todos os OJs vinculados para comparação rápida
@@ -76,7 +76,7 @@ class SmartOJCache {
         
         if (verificacao.jaVinculado) {
           resultado.ojsJaVinculados.push({
-            oj: oj,
+            oj,
             textoEncontrado: verificacao.textoEncontrado,
             tipoCorrespondencia: verificacao.tipoCorrespondencia
           });
@@ -137,7 +137,7 @@ class SmartOJCache {
       const ojsVinculados = [];
       const ojsNormalizados = new Set(); // Para evitar duplicatas
 
-      this.logger.info(`🔍 [DEBUG] Iniciando busca por OJs vinculados na página...`);
+      this.logger.info('🔍 [DEBUG] Iniciando busca por OJs vinculados na página...');
 
       // Seletores específicos para a interface do PJE
       const seletoresOJs = [
@@ -382,7 +382,7 @@ class SmartOJCache {
       
       const ojTrimmed = oj.trim();
       if (ojTrimmed.length === 0) {
-        this.logger.warn(`⚠️ OJ vazio fornecido para verificação`);
+        this.logger.warn('⚠️ OJ vazio fornecido para verificação');
         return false;
       }
       

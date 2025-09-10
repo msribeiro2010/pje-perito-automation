@@ -3071,6 +3071,43 @@ tr:hover {
     box-shadow: 0 0 0 1px var(--primary-color);
 }
 
+/* Estilo especial para modo paralelo selecionado */
+.mode-option:has(input[type="radio"][value="parallel"]:checked) {
+    background: linear-gradient(135deg, #4A90E2 0%, #357ABD 25%, #2C5282 50%, #1A365D 75%, #2A4A6B 100%);
+    border-color: #357ABD;
+    box-shadow: 0 0 0 2px #4A90E2, 0 8px 25px rgba(74, 144, 226, 0.3);
+    transform: translateY(-2px);
+}
+
+.mode-option:has(input[type="radio"][value="parallel"]:checked) .mode-label {
+    color: white !important;
+}
+
+.mode-option:has(input[type="radio"][value="parallel"]:checked) .mode-label i {
+    color: #87CEEB !important;
+    animation: pulse-blue 2s ease-in-out infinite;
+}
+
+.mode-option:has(input[type="radio"][value="parallel"]:checked) .mode-label strong {
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.mode-option:has(input[type="radio"][value="parallel"]:checked) .mode-label small {
+    color: #E6F3FF !important;
+    opacity: 0.9;
+}
+
+@keyframes pulse-blue {
+    0%, 100% {
+        opacity: 1;
+        text-shadow: 0 0 5px rgba(135, 206, 235, 0.5);
+    }
+    50% {
+        opacity: 0.8;
+        text-shadow: 0 0 10px rgba(135, 206, 235, 0.8), 0 0 15px rgba(135, 206, 235, 0.6);
+    }
+}
+
 .mode-label {
     display: flex;
     flex-direction: column;

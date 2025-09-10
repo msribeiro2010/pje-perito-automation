@@ -101,12 +101,12 @@ class ServidorAutomationV2 {
           progress,
           subtitle,
           orgaoJulgador: orgao,
-          servidor: servidor,
+          servidor,
           cpf: this.config?.cpf || null,
           perfil: this.config?.perfil || null,
           automationType: 'servidor-v2',
-          ojProcessed: ojProcessed,
-          totalOjs: totalOjs
+          ojProcessed,
+          totalOjs
         });
       }
     } catch (error) {
@@ -195,7 +195,7 @@ class ServidorAutomationV2 {
     // Iniciar monitoramento de performance
     this.performanceMonitor.startMonitoring();
 
-    this.sendStatus('info', `🚀 Iniciando processamento paralelo`, 0, 
+    this.sendStatus('info', '🚀 Iniciando processamento paralelo', 0, 
       `${servidores.length} servidores com ${maxInstances} instâncias`);
 
     try {
@@ -226,7 +226,7 @@ class ServidorAutomationV2 {
       await this.generateParallelReport(results, maxInstances);
       
       this.sendStatus('success', 
-        `🎉 Processamento paralelo concluído!`, 
+        '🎉 Processamento paralelo concluído!', 
         100, 
         `${results.servidoresProcessados}/${results.totalServidores} servidores processados em ${(results.tempoTotal / 1000).toFixed(1)}s`);
       
@@ -421,7 +421,7 @@ Sucessos por Servidor:
       };
       
       this.sendStatus('info', `🎯 [${i + 1}/${servidores.length}] ${servidor.nome}`, 
-            progressBase, `CPF: ${servidor.cpf} | Perfil: ${servidor.perfil} | ${servidor.orgaos?.length || 0} OJs | Erros consecutivos: ${this.consecutiveErrors}`, null, servidor.nome);
+        progressBase, `CPF: ${servidor.cpf} | Perfil: ${servidor.perfil} | ${servidor.orgaos?.length || 0} OJs | Erros consecutivos: ${this.consecutiveErrors}`, null, servidor.nome);
       
       const startTime = Date.now();
       let servidorProcessado = false;
@@ -1522,16 +1522,16 @@ Sucessos por Servidor:
     }
         
     await this.retryManager.retryClick(
-        async (selector) => {
-          const element = await this.page.$(selector);
-          if (element) {
-            await element.click();
-          } else {
-            throw new Error('Element not found');
-          }
-        },
-        servidorTab
-      );
+      async (selector) => {
+        const element = await this.page.$(selector);
+        if (element) {
+          await element.click();
+        } else {
+          throw new Error('Element not found');
+        }
+      },
+      servidorTab
+    );
     await this.delay(2000);
   }
 
@@ -1547,11 +1547,13 @@ Sucessos por Servidor:
       // Inicializar processador paralelo
       if (!this.parallelProcessor) {
         this.parallelProcessor = new ParallelOJProcessor(
-          this.page, 
+          this.browser, 
           this.timeoutManager, 
           this.config,
           this.domCache
         );
+        // Configurar a página original para navegação
+        this.parallelProcessor.setOriginalPage(this.page);
       }
       
       // Usar processamento paralelo otimizado
@@ -1575,7 +1577,7 @@ Sucessos por Servidor:
         `${sucessos} sucessos, ${erros} erros, ${jaIncluidos} já incluídos`
       );
       
-      console.log(`🚀 Processamento paralelo concluído:`);
+      console.log('🚀 Processamento paralelo concluído:');
       console.log(`   ✅ Sucessos: ${sucessos}`);
       console.log(`   ❌ Erros: ${erros}`);
       console.log(`   📋 Já incluídos: ${jaIncluidos}`);
@@ -1780,7 +1782,7 @@ Sucessos por Servidor:
         }
       );
       
-      console.log(`📊 [SEQUENTIAL] Resultado da verificação em lote:`);
+      console.log('📊 [SEQUENTIAL] Resultado da verificação em lote:');
       console.log(`   - Total verificados: ${resultadoVerificacao.estatisticas.totalVerificados}`);
       console.log(`   - Já vinculados: ${resultadoVerificacao.estatisticas.jaVinculados}`);
       console.log(`   - Para vincular: ${resultadoVerificacao.estatisticas.paraVincular}`);
@@ -1824,7 +1826,7 @@ Sucessos por Servidor:
       this.mainWindow.webContents.executeJavaScript(`
         if (typeof updateProcessingServer === 'function') {
           updateProcessingServer('${this.currentServidor.cpf}', {
-            currentOJ: '${orgao.replace(/'/g, "\\'").replace(/"/g, '\\"')}'
+            currentOJ: '${orgao.replace(/'/g, '\\\'').replace(/"/g, '\\"')}'
           });
         }
       `).catch(err => {
@@ -1837,7 +1839,7 @@ Sucessos por Servidor:
     
     if (isUniversalBypass) {
       console.log(`🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO para OJ: ${orgao} (${this.currentServidor.nome})`);
-      console.log(`🔥 [BYPASS-UNIVERSAL] PULANDO TODAS as verificações prévias`);
+      console.log('🔥 [BYPASS-UNIVERSAL] PULANDO TODAS as verificações prévias');
       // PULAR toda a lógica de verificação e ir direto para vinculação
     } else {
       console.log(`🚀 INICIANDO processamento otimizado para: ${orgao}`);
@@ -1848,7 +1850,7 @@ Sucessos por Servidor:
       
       try {
         // ETAPA 1: Verificar APENAS se OJ já está vinculado (sem considerar papel)
-        console.log(`📋 [ETAPA 1] Verificação simples de OJ vinculado...`);
+        console.log('📋 [ETAPA 1] Verificação simples de OJ vinculado...');
         const { verificarOJJaVinculado } = require('../verificarOJVinculado');
         const verificacaoSimples = await verificarOJJaVinculado(this.page, orgao);
         
@@ -1856,72 +1858,72 @@ Sucessos por Servidor:
         
         if (verificacaoSimples.jaVinculado) {
           console.log(`🔄 [ESTRATÉGIA] OJ já vinculado - ATUALIZAR papel para "${papelDesejado}"`);
-          console.log(`✅ [DECISÃO] Processamento LIBERADO - Aplicar papel configurado`);
+          console.log('✅ [DECISÃO] Processamento LIBERADO - Aplicar papel configurado');
           // Continua processamento para atualizar papel
         } else {
           console.log(`➕ [ESTRATÉGIA] OJ não vinculado - CRIAR nova vinculação com papel "${papelDesejado}"`);
-          console.log(`✅ [DECISÃO] Processamento LIBERADO - Criar nova vinculação`);
+          console.log('✅ [DECISÃO] Processamento LIBERADO - Criar nova vinculação');
           // Continua processamento para criar vinculação
         }
         
       } catch (verificacaoError) {
         console.log(`⚠️ [ERRO] Verificação simples de OJ falhou: ${verificacaoError.message}`);
-        console.log(`🔄 [FALLBACK] Continuando processamento por segurança...`);
+        console.log('🔄 [FALLBACK] Continuando processamento por segurança...');
         // Continua processamento mesmo com erro
       }
     }
     
     // DETECÇÃO AUTOMÁTICA DE VARAS PROBLEMÁTICAS - DESABILITADA PARA BYPASS UNIVERSAL
     if (!isUniversalBypass) {
-      console.log(`🔍 [DETECTOR] Analisando vara para problemas conhecidos...`);
+      console.log('🔍 [DETECTOR] Analisando vara para problemas conhecidos...');
       const deteccaoProblema = this.detectorVaras.detectarVaraProblematica(orgao);
       
       if (deteccaoProblema.problematica) {
-      console.log(`⚠️ [DETECTOR] Vara problemática detectada: ${deteccaoProblema.categoria}`);
-      console.log(`🔧 [DETECTOR] Aplicando tratamento: ${deteccaoProblema.tratamento}`);
+        console.log(`⚠️ [DETECTOR] Vara problemática detectada: ${deteccaoProblema.categoria}`);
+        console.log(`🔧 [DETECTOR] Aplicando tratamento: ${deteccaoProblema.tratamento}`);
       
-      try {
-        const resultadoTratamento = await this.detectorVaras.aplicarTratamento(
-          deteccaoProblema, 
-          this.page, 
-          orgao, 
-          this.config.perfil || 'Assessor'
-        );
+        try {
+          const resultadoTratamento = await this.detectorVaras.aplicarTratamento(
+            deteccaoProblema, 
+            this.page, 
+            orgao, 
+            this.config.perfil || 'Assessor'
+          );
         
-        if (resultadoTratamento.aplicado) {
-          console.log(`✅ [DETECTOR] Tratamento automático aplicado com sucesso`);
+          if (resultadoTratamento.aplicado) {
+            console.log('✅ [DETECTOR] Tratamento automático aplicado com sucesso');
           
-          this.results.push({
-            orgao,
-            status: 'sucesso',
-            metodo: 'detector_automatico',
-            tratamento: deteccaoProblema.tratamento,
-            categoria: deteccaoProblema.categoria,
-            confianca: deteccaoProblema.confianca,
-            tempo: Date.now() - processStartTime
-          });
+            this.results.push({
+              orgao,
+              status: 'sucesso',
+              metodo: 'detector_automatico',
+              tratamento: deteccaoProblema.tratamento,
+              categoria: deteccaoProblema.categoria,
+              confianca: deteccaoProblema.confianca,
+              tempo: Date.now() - processStartTime
+            });
           
-          this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', orgao, true);
-          return { success: true, method: 'detector_automatico', details: resultadoTratamento };
-        } else {
-          console.log(`⚠️ [DETECTOR] Tratamento automático falhou: ${resultadoTratamento.motivo || 'motivo desconhecido'}`);
-          console.log(`🔄 [DETECTOR] Continuando com fluxo padrão...`);
-        }
-      } catch (detectorError) {
-        console.log(`❌ [DETECTOR] Erro no tratamento automático: ${detectorError.message}`);
-        console.log(`🔄 [DETECTOR] Continuando com fluxo padrão...`);
+            this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', orgao, true);
+            return { success: true, method: 'detector_automatico', details: resultadoTratamento };
+          } else {
+            console.log(`⚠️ [DETECTOR] Tratamento automático falhou: ${resultadoTratamento.motivo || 'motivo desconhecido'}`);
+            console.log('🔄 [DETECTOR] Continuando com fluxo padrão...');
+          }
+        } catch (detectorError) {
+          console.log(`❌ [DETECTOR] Erro no tratamento automático: ${detectorError.message}`);
+          console.log('🔄 [DETECTOR] Continuando com fluxo padrão...');
         }
       } else {
-        console.log(`✅ [DETECTOR] Vara não apresenta problemas conhecidos`);
+        console.log('✅ [DETECTOR] Vara não apresenta problemas conhecidos');
       }
     } else {
-      console.log(`🔥 [BYPASS-UNIVERSAL] PULANDO detector de varas problemáticas completamente`);
+      console.log('🔥 [BYPASS-UNIVERSAL] PULANDO detector de varas problemáticas completamente');
     }
     
     // Verificação específica para varas de Limeira - DESABILITADA PARA BYPASS UNIVERSAL
     if (!isUniversalBypass && isVaraLimeira(orgao)) {
       console.log(`🏛️ [LIMEIRA] Vara de Limeira detectada: ${orgao}`);
-      console.log(`🔧 [LIMEIRA] Aplicando tratamento específico...`);
+      console.log('🔧 [LIMEIRA] Aplicando tratamento específico...');
       
       try {
         const resultadoLimeira = await aplicarTratamentoLimeira(this.page, orgao, this.config.perfil || 'Assessor');
@@ -1938,11 +1940,11 @@ Sucessos por Servidor:
           this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', orgao, true);
           return;
         } else {
-          console.log(`⚠️ [LIMEIRA] Tratamento específico falhou, continuando com fluxo padrão...`);
+          console.log('⚠️ [LIMEIRA] Tratamento específico falhou, continuando com fluxo padrão...');
         }
       } catch (limeiraError) {
         console.log(`❌ [LIMEIRA] Erro no tratamento específico: ${limeiraError.message}`);
-        console.log(`🔄 [LIMEIRA] Continuando com fluxo padrão...`);
+        console.log('🔄 [LIMEIRA] Continuando com fluxo padrão...');
       }
     }
     
@@ -2111,16 +2113,16 @@ Sucessos por Servidor:
       
       // Clicar UMA vez apenas
       await this.retryManager.retryClick(
-          async (selector) => {
-            const element = await this.page.$(selector);
-            if (element) {
-              await element.click();
-            } else {
-              throw new Error('Element not found');
-            }
-          },
-          seletorEspecifico
-        );
+        async (selector) => {
+          const element = await this.page.$(selector);
+          if (element) {
+            await element.click();
+          } else {
+            throw new Error('Element not found');
+          }
+        },
+        seletorEspecifico
+      );
       console.log('✅ CLIQUE ÚNICO realizado no botão Adicionar');
       
       // 3. TERCEIRO: Aguardar modal abrir de forma assertiva
@@ -2173,16 +2175,16 @@ Sucessos por Servidor:
       }
       
       await this.retryManager.retryClick(
-          async (selector) => {
-            const element = await this.page.$(selector);
-            if (element) {
-              await element.click();
-            } else {
-              throw new Error('Element not found');
-            }
-          },
-          matSelectElement
-        );
+        async (selector) => {
+          const element = await this.page.$(selector);
+          if (element) {
+            await element.click();
+          } else {
+            throw new Error('Element not found');
+          }
+        },
+        matSelectElement
+      );
       console.log('✅ Mat-select de OJ clicado');
       
       // 2. AGUARDAR: Opções aparecerem
@@ -2239,7 +2241,7 @@ Sucessos por Servidor:
       
       // 1. PAPEL: Selecionar perfil configurado
       console.log(`🎯 Verificando campo Papel - Configurado: ${this.config.perfil || 'Não especificado'}`);
-      console.log(`🔍 [DEBUG] Config completo:`, JSON.stringify(this.config, null, 2));
+      console.log('🔍 [DEBUG] Config completo:', JSON.stringify(this.config, null, 2));
       
       // Aguardar mais tempo para garantir que o modal esteja carregado
       await this.page.waitForTimeout(1500);
@@ -2412,15 +2414,15 @@ Sucessos por Servidor:
           perfilSelecionado = await this.selecionarPerfilComSimilaridade(opcoesPapel, this.config.perfil);
           
           if (perfilSelecionado) {
-            console.log(`✅ [SUCESSO] Perfil configurado selecionado com sucesso!`);
+            console.log('✅ [SUCESSO] Perfil configurado selecionado com sucesso!');
           } else {
-            console.log(`⚠️ [FALLBACK] Perfil configurado não encontrado, usando estratégias alternativas...`);
+            console.log('⚠️ [FALLBACK] Perfil configurado não encontrado, usando estratégias alternativas...');
             
             // Estratégia 2: Busca por palavras-chave específicas do perfil configurado
             perfilSelecionado = await this.selecionarPerfilPorPalavrasChave(opcoesPapel, this.config.perfil);
           }
         } else {
-          console.log(`⚠️ [AVISO] Nenhum perfil foi configurado - usando perfil padrão...`);
+          console.log('⚠️ [AVISO] Nenhum perfil foi configurado - usando perfil padrão...');
         }
         
         // FALLBACKS apenas se perfil configurado falhou
@@ -2569,7 +2571,7 @@ Sucessos por Servidor:
       
     } catch (error) {
       console.log(`⚠️ Erro no salvamento assertivo: ${error.message}`);
-      console.log(`🔍 [DEBUG] Stack trace:`, error.stack);
+      console.log('🔍 [DEBUG] Stack trace:', error.stack);
       
       // Fallback: tentar outros botões
       const fallbackSelectors = [
@@ -2749,40 +2751,40 @@ Sucessos por Servidor:
     // Usar a função melhorada com estratégia de trigger
     const { vincularOJMelhorado } = require('../vincularOJ.js');
 
-// Configuração específica para São José dos Campos - SAO_JOSE_CAMPOS_SEQUENCIAL
-const SAO_JOSE_CAMPOS_CONFIG = {
-    varasEspeciais: [
+    // Configuração específica para São José dos Campos - SAO_JOSE_CAMPOS_SEQUENCIAL
+    const SAO_JOSE_CAMPOS_CONFIG = {
+      varasEspeciais: [
         '2ª Vara do Trabalho de São José dos Campos',
         '3ª Vara do Trabalho de São José dos Campos',
         '4ª Vara do Trabalho de São José dos Campos',
         '5ª Vara do Trabalho de São José dos Campos'
-    ],
+      ],
     
-    processamentoSequencial: true,
-    timeoutExtendido: 30000,
-    tentativasMaximas: 3,
-    intervaloTentativas: 5000,
+      processamentoSequencial: true,
+      timeoutExtendido: 30000,
+      tentativasMaximas: 3,
+      intervaloTentativas: 5000,
     
-    // Função para verificar se é vara especial
-    isVaraEspecial(nomeOrgao) {
+      // Função para verificar se é vara especial
+      isVaraEspecial(nomeOrgao) {
         return this.varasEspeciais.includes(nomeOrgao);
-    },
+      },
     
-    // Configurações específicas para processamento
-    getConfiguracao(nomeOrgao) {
+      // Configurações específicas para processamento
+      getConfiguracao(nomeOrgao) {
         if (this.isVaraEspecial(nomeOrgao)) {
-            return {
-                sequencial: true,
-                timeout: this.timeoutExtendido,
-                tentativas: this.tentativasMaximas,
-                intervalo: this.intervaloTentativas,
-                aguardarCarregamento: 8000,
-                verificarElementos: true
-            };
+          return {
+            sequencial: true,
+            timeout: this.timeoutExtendido,
+            tentativas: this.tentativasMaximas,
+            intervalo: this.intervaloTentativas,
+            aguardarCarregamento: 8000,
+            verificarElementos: true
+          };
         }
         return null;
-    }
-};
+      }
+    };
 
     console.log(`🔄 Chamando vincularOJMelhorado para: ${orgao} com perfil: ${this.config.perfil || 'Não especificado'}`);
     await vincularOJMelhorado(
@@ -2821,7 +2823,7 @@ const SAO_JOSE_CAMPOS_CONFIG = {
       this.mainWindow.webContents.executeJavaScript(`
         if (typeof addProcessingServer === 'function') {
           addProcessingServer({
-            name: '${servidor.nome.replace(/'/g, "\\'")}',
+            name: '${servidor.nome.replace(/'/g, '\\\'')}',
             cpf: '${servidor.cpf}',
             perfil: '${servidor.perfil || this.config.perfil || ''}',
             totalOJs: ${servidor.orgaos?.length || 0}
@@ -2862,7 +2864,7 @@ const SAO_JOSE_CAMPOS_CONFIG = {
         this.sendStatus('success', 
           `🎯 Localizações: ${resultadoLocalizacoes.existentes} existentes + ${resultadoLocalizacoes.processadas} processadas = ${resultadoLocalizacoes.total} total`, 
           null, 
-          `Verificação automática concluída`, 
+          'Verificação automática concluída', 
           null, 
           servidor.nome
         );
@@ -2919,7 +2921,7 @@ const SAO_JOSE_CAMPOS_CONFIG = {
     this.ojCache.clear();
     this.smartOJCache.limparCache(); // IMPORTANTE: Limpar também o SmartOJCache
     console.log('✅ [DEBUG] Caches limpos - começando fresh para este servidor');
-    console.log(`🎯 [DEBUG] BYPASS-UNIVERSAL: Garantindo que não há contaminação de cache entre servidores`);
+    console.log('🎯 [DEBUG] BYPASS-UNIVERSAL: Garantindo que não há contaminação de cache entre servidores');
     
     // MODO BYPASS UNIVERSAL: Aplicar a TODOS os servidores para garantir processamento completo
     // PULAR TODA verificação prévia para TODOS os servidores
@@ -2927,8 +2929,8 @@ const SAO_JOSE_CAMPOS_CONFIG = {
     
     if (isUniversalBypass) {
       console.log(`🔥 [BYPASS-UNIVERSAL] REMOVENDO TODAS AS VERIFICAÇÕES para ${servidor.nome}`);
-      console.log(`🔥 [BYPASS-UNIVERSAL] Pulando SmartCache, ServidorSkipDetector e TODAS verificações`);
-      console.log(`🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO de todas as OJs configuradas`);
+      console.log('🔥 [BYPASS-UNIVERSAL] Pulando SmartCache, ServidorSkipDetector e TODAS verificações');
+      console.log('🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO de todas as OJs configuradas');
       // PULAR COMPLETAMENTE loadExistingOJs, verificacoes, etc.
     } else {
       // Comportamento normal para outros servidores
@@ -2971,7 +2973,7 @@ const SAO_JOSE_CAMPOS_CONFIG = {
     let ojsToProcess;
     if (isUniversalBypass) {
       ojsToProcess = this.config.orgaos; // Usar OJs ORIGINAIS, não normalizadas
-      console.log(`🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO - ignorando TUDO`);
+      console.log('🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO - ignorando TUDO');
       console.log(`🔥 [BYPASS-UNIVERSAL] OJs originais: ${JSON.stringify(ojsToProcess)}`);
       console.log(`🔥 [BYPASS-UNIVERSAL] Total: ${ojsToProcess.length} OJs serão processadas OBRIGATORIAMENTE`);
     } else {
@@ -2985,9 +2987,9 @@ const SAO_JOSE_CAMPOS_CONFIG = {
     
     if (isUniversalBypass) {
       console.log(`🔥 [BYPASS-UNIVERSAL] GARANTINDO processamento de ${ojsToProcess.length} OJs`);
-      this.sendStatus('info', `🔥 ${servidor.nome}: ${ojsToProcess.length} OJs serão processadas (sem verificações)`, null, `Processamento direto`, null, servidor.nome, ojsProcessadasTotal, totalOjs);
+      this.sendStatus('info', `🔥 ${servidor.nome}: ${ojsToProcess.length} OJs serão processadas (sem verificações)`, null, 'Processamento direto', null, servidor.nome, ojsProcessadasTotal, totalOjs);
     } else {
-      this.sendStatus('info', `⚡ ${ojsToProcess.length} OJs para processar | ${this.ojCache.size} detectados como já cadastrados`, null, `Processando servidor`, null, servidor.nome, ojsProcessadasTotal, totalOjs);
+      this.sendStatus('info', `⚡ ${ojsToProcess.length} OJs para processar | ${this.ojCache.size} detectados como já cadastrados`, null, 'Processando servidor', null, servidor.nome, ojsProcessadasTotal, totalOjs);
     }
     
     if (ojsToProcess.length === 0 && !isUniversalBypass) {
@@ -3096,7 +3098,7 @@ const SAO_JOSE_CAMPOS_CONFIG = {
       this.mainWindow.webContents.executeJavaScript(`
         if (typeof addProcessedServer === 'function') {
           addProcessedServer({
-            name: '${servidor.nome.replace(/'/g, "\\'").replace(/"/g, '\\"')}',
+            name: '${servidor.nome.replace(/'/g, '\\\'').replace(/"/g, '\\"')}',
             cpf: '${servidor.cpf}',
             perfil: '${servidor.perfil || this.config.perfil || ''}',
             ojsCount: ${totalOjs || 0},
@@ -3761,10 +3763,10 @@ const SAO_JOSE_CAMPOS_CONFIG = {
       if (melhorMatch && melhorIndice >= 0) {
         console.log(`✅ [MATCH] Melhor match encontrado: "${melhorMatch}" (${(melhorSimilaridade * 100).toFixed(1)}%)`);
         await opcoesPapel.nth(melhorIndice).click({ timeout: 3000 });
-        console.log(`✅ [SELECIONADO] Perfil selecionado com sucesso!`);
+        console.log('✅ [SELECIONADO] Perfil selecionado com sucesso!');
         return true;
       } else {
-        console.log(`❌ [SEM MATCH] Nenhuma opção atingiu similaridade mínima de 70%`);
+        console.log('❌ [SEM MATCH] Nenhuma opção atingiu similaridade mínima de 70%');
         return false;
       }
       
@@ -3821,10 +3823,10 @@ const SAO_JOSE_CAMPOS_CONFIG = {
       if (melhorOpcao && melhorIndice >= 0 && maiorNumeroMatches >= 1) {
         console.log(`✅ [MATCH] Melhor match por palavras-chave: "${melhorOpcao}" (${maiorNumeroMatches} matches)`);
         await opcoesPapel.nth(melhorIndice).click({ timeout: 3000 });
-        console.log(`✅ [SELECIONADO] Perfil selecionado por palavras-chave!`);
+        console.log('✅ [SELECIONADO] Perfil selecionado por palavras-chave!');
         return true;
       } else {
-        console.log(`❌ [SEM MATCH] Nenhuma opção teve palavras-chave suficientes`);
+        console.log('❌ [SEM MATCH] Nenhuma opção teve palavras-chave suficientes');
         return false;
       }
       

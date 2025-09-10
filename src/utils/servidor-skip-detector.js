@@ -38,7 +38,7 @@ class ServidorSkipDetector {
     }
     
     if (!ojsNormalizados || !Array.isArray(ojsNormalizados) || ojsNormalizados.length === 0) {
-      console.log(`⚠️ [SKIP-DETECTOR] Lista de OJs inválida ou vazia`);
+      console.log('⚠️ [SKIP-DETECTOR] Lista de OJs inválida ou vazia');
       return {
         deveSerPulado: false,
         motivo: 'Nenhum OJ válido para analisar - servidor será processado',
@@ -52,7 +52,7 @@ class ServidorSkipDetector {
     
     // Verificar se o smartOJCache é válido
     if (!smartOJCache || typeof smartOJCache !== 'object') {
-      console.log(`⚠️ [SKIP-DETECTOR] SmartOJCache inválido - servidor será processado`);
+      console.log('⚠️ [SKIP-DETECTOR] SmartOJCache inválido - servidor será processado');
       return {
         deveSerPulado: false,
         motivo: 'Cache não disponível - servidor será processado',
@@ -66,7 +66,7 @@ class ServidorSkipDetector {
     
     // Verificar se o cache está válido
     if (!smartOJCache.cacheValido) {
-      console.log(`⚠️ [SKIP-DETECTOR] Cache não está válido - servidor será processado para atualizar dados`);
+      console.log('⚠️ [SKIP-DETECTOR] Cache não está válido - servidor será processado para atualizar dados');
       return {
         deveSerPulado: false,
         motivo: 'Cache inválido - necessário processar para atualizar',
@@ -90,7 +90,7 @@ class ServidorSkipDetector {
           console.log(`⚠️ [SKIP-DETECTOR] OJ ${index + 1}/${ojsNormalizados.length} inválido: ${oj}`);
           ojsComErro++;
           detalhesOJs.push({
-            oj: oj,
+            oj,
             vinculado: false,
             erro: 'OJ inválido'
           });
@@ -100,7 +100,7 @@ class ServidorSkipDetector {
         const jaVinculado = smartOJCache.isOJVinculado(oj);
         
         detalhesOJs.push({
-          oj: oj,
+          oj,
           vinculado: jaVinculado,
           erro: null
         });
@@ -115,7 +115,7 @@ class ServidorSkipDetector {
         console.error(`❌ [SKIP-DETECTOR] Erro verificando OJ ${index + 1}: ${error.message}`);
         ojsComErro++;
         detalhesOJs.push({
-          oj: oj,
+          oj,
           vinculado: false,
           erro: error.message
         });

@@ -286,7 +286,7 @@ class VerificacaoDuplaOJ {
 
     resultado.estatisticas.tempoTotalMs = Date.now() - inicioTempo;
 
-    this.logger.info(`✅ Verificação dupla em lote concluída:`);
+    this.logger.info('✅ Verificação dupla em lote concluída:');
     this.logger.info(`   - Total: ${resultado.estatisticas.total}`);
     this.logger.info(`   - Já vinculados: ${resultado.estatisticas.jaVinculados}`);
     this.logger.info(`   - Para vincular: ${resultado.estatisticas.paraVincular}`);

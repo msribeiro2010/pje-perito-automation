@@ -138,14 +138,14 @@ class DetectorVarasProblematicas {
     // Verificar histórico de problemas
     const problemaHistorico = this.verificarHistorico(nomeVara);
     if (problemaHistorico.problematica) {
-      console.log(`📊 [DETECTOR] Problema detectado no histórico`);
+      console.log('📊 [DETECTOR] Problema detectado no histórico');
       return problemaHistorico;
     }
     
     // Verificar padrões de nome que podem indicar problemas
     const problemasPadrao = this.detectarPadroesSuspeitos(nomeVara);
     if (problemasPadrao.length > 0) {
-      console.log(`🔍 [DETECTOR] Padrões suspeitos detectados`);
+      console.log('🔍 [DETECTOR] Padrões suspeitos detectados');
       return {
         problematica: true,
         categoria: 'padrao_suspeito',
@@ -157,7 +157,7 @@ class DetectorVarasProblematicas {
       };
     }
     
-    console.log(`✅ [DETECTOR] Vara aparenta estar normal`);
+    console.log('✅ [DETECTOR] Vara aparenta estar normal');
     return {
       problematica: false,
       categoria: 'normal',
@@ -182,20 +182,20 @@ class DetectorVarasProblematicas {
     
     try {
       switch (deteccao.tratamento) {
-        case 'LIMEIRA_ESPECIFICO':
-          const { aplicarTratamentoLimeira } = require('../vincularOJ.js');
-          return await aplicarTratamentoLimeira(page, nomeVara, perfil);
+      case 'LIMEIRA_ESPECIFICO':
+        const { aplicarTratamentoLimeira } = require('../vincularOJ.js');
+        return await aplicarTratamentoLimeira(page, nomeVara, perfil);
           
-        case 'SAO_JOSE_CAMPOS_CONFIG':
-          return await this.aplicarTratamentoSaoJose(page, nomeVara, perfil);
+      case 'SAO_JOSE_CAMPOS_CONFIG':
+        return await this.aplicarTratamentoSaoJose(page, nomeVara, perfil);
           
-        case 'MONITORAR':
-        case 'MONITORAR_ESPECIAL':
-          return await this.aplicarMonitoramentoEspecial(page, nomeVara, perfil, deteccao);
+      case 'MONITORAR':
+      case 'MONITORAR_ESPECIAL':
+        return await this.aplicarMonitoramentoEspecial(page, nomeVara, perfil, deteccao);
           
-        default:
-          console.log(`⚠️ [TRATAMENTO] Tratamento não implementado: ${deteccao.tratamento}`);
-          return { aplicado: false, motivo: 'tratamento_nao_implementado' };
+      default:
+        console.log(`⚠️ [TRATAMENTO] Tratamento não implementado: ${deteccao.tratamento}`);
+        return { aplicado: false, motivo: 'tratamento_nao_implementado' };
       }
     } catch (error) {
       console.log(`❌ [TRATAMENTO] Erro ao aplicar tratamento: ${error.message}`);
@@ -207,7 +207,7 @@ class DetectorVarasProblematicas {
    * Aplica tratamento para São José dos Campos
    */
   async aplicarTratamentoSaoJose(page, nomeVara, perfil) {
-    console.log(`🏛️ [SAO_JOSE] Aplicando configuração específica...`);
+    console.log('🏛️ [SAO_JOSE] Aplicando configuração específica...');
     
     // Implementar lógica específica para São José dos Campos
     // baseada na configuração SAO_JOSE_CAMPOS_CONFIG
@@ -223,7 +223,7 @@ class DetectorVarasProblematicas {
    * Aplica monitoramento especial para varas suspeitas
    */
   async aplicarMonitoramentoEspecial(page, nomeVara, perfil, deteccao) {
-    console.log(`👁️ [MONITOR] Aplicando monitoramento especial...`);
+    console.log('👁️ [MONITOR] Aplicando monitoramento especial...');
     
     // Registrar no histórico para análise futura
     this.registrarNoHistorico(nomeVara, {

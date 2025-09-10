@@ -209,7 +209,7 @@ class NavigationOptimizer {
       ]);
     } catch (error) {
       // Não é crítico se elementos específicos não forem encontrados
-      console.log(`⚠️ Alguns elementos críticos não encontrados, mas continuando...`);
+      console.log('⚠️ Alguns elementos críticos não encontrados, mas continuando...');
     }
   }
   

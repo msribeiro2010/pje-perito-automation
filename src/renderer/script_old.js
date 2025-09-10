@@ -1000,11 +1000,11 @@ class PeritoApp {
           <div class="report-status">
             <div class="status-message ${porcentagemSucesso >= 80 ? 'success' : porcentagemSucesso >= 50 ? 'warning' : 'error'}">
               ${porcentagemSucesso >= 80 ? 
-                '🎉 Excelente! A maioria dos OJs foi processada com sucesso.' :
-                porcentagemSucesso >= 50 ? 
-                '⚠️ Atenção! Alguns OJs não puderam ser processados.' :
-                '❌ Vários problemas encontrados. Verifique os detalhes abaixo.'
-              }
+    '🎉 Excelente! A maioria dos OJs foi processada com sucesso.' :
+    porcentagemSucesso >= 50 ? 
+      '⚠️ Atenção! Alguns OJs não puderam ser processados.' :
+      '❌ Vários problemas encontrados. Verifique os detalhes abaixo.'
+}
             </div>
           </div>
           
@@ -1913,20 +1913,20 @@ class PeritoApp {
     let history, key;
     
     switch (type) {
-      case 'cpf':
-        history = this.cpfHistory;
-        key = 'cpf';
-        break;
-      case 'oj':
-        history = this.ojHistory;
-        key = 'name';
-        break;
-      case 'profile':
-        history = this.profileHistory;
-        key = 'profile';
-        break;
-      default:
-        return;
+    case 'cpf':
+      history = this.cpfHistory;
+      key = 'cpf';
+      break;
+    case 'oj':
+      history = this.ojHistory;
+      key = 'name';
+      break;
+    case 'profile':
+      history = this.profileHistory;
+      key = 'profile';
+      break;
+    default:
+      return;
     }
     
     // Verificar se já existe
@@ -1960,8 +1960,8 @@ class PeritoApp {
     if (!cpf || cpf.length < 11) return;
     
     const cpfData = {
-      cpf: cpf,
-      type: type, // 'perito' ou 'servidor'
+      cpf,
+      type, // 'perito' ou 'servidor'
       lastUsed: new Date().toISOString()
     };
     
@@ -2085,7 +2085,7 @@ class PeritoApp {
         
         // Atualizar histórico de uso
         this.addToHistory('cpf', {
-          cpf: cpf,
+          cpf,
           type: item.dataset.type
         });
         
@@ -2145,8 +2145,8 @@ class PeritoApp {
     // Salvar CPF no histórico quando usado
     if (cpf && cpf.length >= 11) {
       this.addToHistory('cpf', {
-        cpf: cpf,
-        type: type // 'perito' ou 'servidor'
+        cpf,
+        type // 'perito' ou 'servidor'
       });
     }
   }

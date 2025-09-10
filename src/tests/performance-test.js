@@ -130,7 +130,7 @@ class PerformanceTest {
     console.log(`   ⏱️  Tempo total: ${tempoTotal}ms`);
     console.log(`   ✅ OJs já vinculados: ${resultado.estatisticas.jaVinculados}`);
     console.log(`   🔗 OJs para vincular: ${resultado.estatisticas.paraVincular}`);
-    console.log(`   🎯 Correspondências encontradas:`);
+    console.log('   🎯 Correspondências encontradas:');
     
     resultado.ojsJaVinculados.forEach(item => {
       console.log(`      - "${item.oj}" → "${item.textoEncontrado}" (${item.tipoCorrespondencia})`);
@@ -154,10 +154,10 @@ class PerformanceTest {
     const ojs = this.gerarOJsParaTeste();
     const ojsVinculados = this.simularOJsJaVinculados();
     
-    console.log(`\n📋 DADOS DO TESTE:`);
+    console.log('\n📋 DADOS DO TESTE:');
     console.log(`   - Total de OJs para testar: ${ojs.length}`);
     console.log(`   - OJs já vinculados no sistema: ${ojsVinculados.size}`);
-    console.log(`   - OJs de teste:`);
+    console.log('   - OJs de teste:');
     ojs.forEach((oj, index) => {
       console.log(`     ${index + 1}. ${oj}`);
     });

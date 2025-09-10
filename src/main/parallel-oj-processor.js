@@ -7,63 +7,79 @@ const ContextualDelayManager = require('./contextual-delay-manager');
 const SmartRetryManager = require('./smart-retry-manager');
 const TimeoutManager = require('../utils/timeouts.js');
 const { SmartOJCache } = require('../utils/smart-oj-cache.js');
+const { vincularOJ, isVaraLimeira, aplicarTratamentoLimeira } = require('../vincularOJ.js');
 
 class ParallelOJProcessor {
-  constructor(page, timeoutManager, config, domCache = null) {
-    this.page = page;
+  constructor(browser, timeoutManager, config, domCache = null) {
+    this.browser = browser;
     this.timeoutManager = timeoutManager;
     this.config = config;
     this.delayManager = new ContextualDelayManager(timeoutManager);
     this.retryManager = new SmartRetryManager(timeoutManager);
     this.domCache = domCache;
     this.ojCache = new Set();
-    this.smartOJCache = new SmartOJCache(); // Usar SmartOJCache para verificação inteligente
+    this.smartOJCache = new SmartOJCache();
     this.results = [];
     this.maxConcurrency = 3; // Máximo de OJs processados simultaneamente
     this.batchSize = 5; // Tamanho do lote para processamento
+    this.activeTabs = new Map(); // Mapa de abas ativas
+    this.originalPage = null; // Página principal para navegação
   }
 
   /**
-   * Processa OJs em paralelo com controle de concorrência
+   * Define a página original para navegação
+   */
+  setOriginalPage(page) {
+    this.originalPage = page;
+  }
+
+  /**
+   * Processa OJs em paralelo com múltiplas janelas
    */
   async processOJsInParallel(orgaos) {
-    console.log(`🚀 Iniciando processamento paralelo de ${orgaos.length} OJs`);
+    console.log(`🚀 Iniciando processamento paralelo com múltiplas janelas de ${orgaos.length} OJs`);
     
-    // Normalizar e filtrar OJs
-    const ojsNormalizados = orgaos.map(orgao => ({
-      original: orgao,
-      normalized: this.normalizeOrgaoName(orgao)
-    }));
-    
-    // Verificar OJs já cadastrados em paralelo
-    await this.loadExistingOJsParallel();
-    
-    // Filtrar OJs que precisam ser processados
-    const ojsToProcess = ojsNormalizados.filter(oj => !this.ojCache.has(oj.normalized));
-    
-    console.log(`📊 ${ojsToProcess.length} OJs para processar, ${this.ojCache.size} já cadastrados`);
-    
-    if (ojsToProcess.length === 0) {
-      console.log('✅ Todos os OJs já estão cadastrados');
-      return this.results;
-    }
-    
-    // Processar em lotes com concorrência controlada
-    const batches = this.createBatches(ojsToProcess, this.batchSize);
-    
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-      console.log(`🔄 Processando lote ${i + 1}/${batches.length} (${batch.length} OJs)`);
+    try {
+      // Normalizar e filtrar OJs
+      const ojsNormalizados = orgaos.map(orgao => ({
+        original: orgao,
+        normalized: this.normalizeOrgaoName(orgao)
+      }));
       
-      await this.processBatchWithConcurrency(batch);
+      // Verificar OJs já cadastrados
+      await this.loadExistingOJsParallel();
       
-      // Pausa entre lotes para não sobrecarregar o sistema
-      if (i < batches.length - 1) {
-        await this.delayManager.smartDelay('betweenOJs', { priority: 'high' });
+      // Filtrar OJs que precisam ser processados
+      const ojsToProcess = ojsNormalizados.filter(oj => !this.ojCache.has(oj.normalized));
+      
+      console.log(`📊 ${ojsToProcess.length} OJs para processar, ${this.ojCache.size} já cadastrados`);
+      
+      if (ojsToProcess.length === 0) {
+        console.log('✅ Todos os OJs já estão cadastrados');
+        return this.results;
       }
+      
+      // Processar em lotes com múltiplas janelas
+      const batches = this.createBatches(ojsToProcess, this.batchSize);
+      
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        console.log(`🔄 Processando lote ${i + 1}/${batches.length} (${batch.length} OJs) com múltiplas janelas`);
+        
+        await this.processBatchWithMultipleTabs(batch);
+        
+        // Pausa entre lotes para não sobrecarregar o sistema
+        if (i < batches.length - 1) {
+          await this.delayManager.smartDelay('betweenOJs', { priority: 'high' });
+        }
+      }
+      
+      return this.results;
+      
+    } finally {
+      // Fechar todas as abas extras
+      await this.closeAllExtraTabs();
     }
-    
-    return this.results;
   }
 
   /**
@@ -74,18 +90,18 @@ class ParallelOJProcessor {
     
     try {
       // Usar SmartOJCache para carregar OJs vinculados da página
-      const ojsVinculados = await this.smartOJCache.carregarOJsVinculadosDaPagina(this.page);
+      const ojsVinculados = await this.smartOJCache.carregarOJsVinculadosDaPagina(this.originalPage);
       
       console.log(`🎯 [PARALLEL] SmartOJCache encontrou ${ojsVinculados.length} OJs já vinculados`);
       
       if (ojsVinculados.length > 0) {
         console.log(`📋 [PARALLEL] Primeiros 5 OJs vinculados: ${ojsVinculados.slice(0, 5).join(', ')}`);
-        console.log(`📋 [PARALLEL] TODOS os OJs vinculados encontrados:`);
+        console.log('📋 [PARALLEL] TODOS os OJs vinculados encontrados:');
         ojsVinculados.forEach((oj, index) => {
           console.log(`   ${index + 1}. "${oj}"`);
         });
       } else {
-        console.log(`⚠️ [PARALLEL] NENHUM OJ vinculado encontrado na página!`);
+        console.log('⚠️ [PARALLEL] NENHUM OJ vinculado encontrado na página!');
       }
       
       // Normalizar e adicionar ao cache local
@@ -97,7 +113,7 @@ class ParallelOJProcessor {
       console.log(`🎯 [PARALLEL] Cache local atualizado: ${this.ojCache.size} OJs já cadastrados`);
       
     } catch (error) {
-      console.error(`❌ [PARALLEL] Erro ao carregar OJs existentes:`, error.message);
+      console.error('❌ [PARALLEL] Erro ao carregar OJs existentes:', error.message);
       // Fallback para estratégias antigas se SmartOJCache falhar
       await this.loadExistingOJsParallelFallback();
     }
@@ -138,23 +154,27 @@ class ParallelOJProcessor {
   }
 
   /**
-   * Processa um lote de OJs com controle de concorrência
+   * Processa um lote de OJs com múltiplas abas do navegador
    */
-  async processBatchWithConcurrency(batch) {
+  async processBatchWithMultipleTabs(batch) {
     const semaphore = new Semaphore(this.maxConcurrency);
     const batchTimeout = 300000; // 5 minutos por lote
     
-    console.log(`🔄 Processando lote com ${batch.length} OJs (timeout: ${batchTimeout/1000}s)`);
+    console.log(`🔄 Processando lote com ${batch.length} OJs usando múltiplas abas (timeout: ${batchTimeout/1000}s)`);
     
     const promises = batch.map(async (oj, index) => {
       console.log(`🔄 [LOTE] Aguardando semáforo para OJ ${index + 1}/${batch.length}: ${oj.original}`);
       await semaphore.acquire();
       console.log(`🚀 [LOTE] Iniciando processamento do OJ ${index + 1}/${batch.length}: ${oj.original}`);
       
+      let newPage = null;
       try {
+        // Criar nova aba para este OJ
+        newPage = await this.createNewTab();
+        
         // Timeout individual por OJ
         const result = await Promise.race([
-          this.processOJWithRetry(oj),
+          this.processOJWithRetryInNewTab(oj, newPage),
           new Promise((_, reject) => 
             setTimeout(() => {
               console.log(`⏰ [LOTE] Timeout de 60s atingido para OJ: ${oj.original}`);
@@ -165,6 +185,7 @@ class ParallelOJProcessor {
         
         console.log(`✅ [LOTE] OJ ${index + 1}/${batch.length} concluído: ${oj.original}`);
         return result;
+        
       } catch (error) {
         console.log(`❌ [LOTE] Erro no OJ ${index + 1}/${batch.length} (${oj.original}): ${error.message}`);
         return {
@@ -174,6 +195,16 @@ class ParallelOJProcessor {
           timestamp: new Date().toISOString()
         };
       } finally {
+        // Fechar a aba específica
+        if (newPage && !newPage.isClosed()) {
+          try {
+            await newPage.close();
+            console.log(`🗂️ Aba fechada para OJ: ${oj.original}`);
+          } catch (closeError) {
+            console.log(`⚠️ Erro ao fechar aba: ${closeError.message}`);
+          }
+        }
+        
         console.log(`🔓 [LOTE] Liberando semáforo para OJ: ${oj.original}`);
         semaphore.release();
       }
@@ -223,36 +254,84 @@ class ParallelOJProcessor {
   }
 
   /**
-   * Processa um OJ individual com retry inteligente
+   * Cria uma nova aba do navegador para processamento paralelo
    */
-  async processOJWithRetry(oj, maxRetries = 2) {
+  async createNewTab() {
+    if (!this.browser) {
+      throw new Error('Navegador não disponível para criar nova aba');
+    }
+    
+    const newPage = await this.browser.newPage();
+    
+    // Configurar a nova página similar ao original
+    await newPage.setViewportSize({ width: 1366, height: 768 });
+    
+    // Navegar para a página de edição se temos a URL original
+    if (this.originalPage && !this.originalPage.isClosed()) {
+      const currentUrl = this.originalPage.url();
+      if (currentUrl.includes('/pje/')) {
+        await newPage.goto(currentUrl, { waitUntil: 'networkidle' });
+      }
+    }
+    
+    this.activeTabs.set(newPage, Date.now());
+    console.log(`🆕 Nova aba criada. Total de abas ativas: ${this.activeTabs.size}`);
+    
+    return newPage;
+  }
+
+  /**
+   * Fecha todas as abas extras criadas para processamento paralelo
+   */
+  async closeAllExtraTabs() {
+    console.log(`🗂️ Fechando ${this.activeTabs.size} abas extras...`);
+    
+    for (const [page, createdAt] of this.activeTabs.entries()) {
+      try {
+        if (!page.isClosed()) {
+          await page.close();
+          console.log(`✅ Aba fechada (criada há ${Date.now() - createdAt}ms)`);
+        }
+      } catch (error) {
+        console.log(`⚠️ Erro ao fechar aba: ${error.message}`);
+      }
+    }
+    
+    this.activeTabs.clear();
+    console.log('✅ Todas as abas extras foram fechadas');
+  }
+
+  /**
+   * Processa um OJ individual com retry inteligente usando nova aba
+   */
+  async processOJWithRetryInNewTab(oj, page, maxRetries = 2) {
     let lastError;
     const startTime = Date.now();
     
-    console.log(`🎯 [RETRY] Iniciando processamento com retry para OJ: ${oj.original}`);
+    console.log(`🎯 [RETRY-TAB] Iniciando processamento com retry para OJ: ${oj.original}`);
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const attemptStartTime = Date.now();
       try {
-        console.log(`🔄 [RETRY] Tentativa ${attempt}/${maxRetries} para OJ ${oj.original}`);
+        console.log(`🔄 [RETRY-TAB] Tentativa ${attempt}/${maxRetries} para OJ ${oj.original}`);
         
         // Verificar se já passou muito tempo
         const totalElapsed = Date.now() - startTime;
         if (totalElapsed > 45000) { // 45s limite por OJ
-          console.log(`⏰ [RETRY] Timeout geral para OJ ${oj.original} após ${totalElapsed/1000}s`);
+          console.log(`⏰ [RETRY-TAB] Timeout geral para OJ ${oj.original} após ${totalElapsed/1000}s`);
           throw new Error(`Timeout geral após ${totalElapsed/1000}s`);
         }
         
-        console.log(`🚀 [RETRY] Chamando processOJOptimized para ${oj.original}...`);
-        const result = await this.processOJOptimized(oj);
+        console.log(`🚀 [RETRY-TAB] Chamando processOJInTab para ${oj.original}...`);
+        const result = await this.processOJInTab(oj, page);
         
         const attemptDuration = Date.now() - attemptStartTime;
         const totalDuration = Date.now() - startTime;
         
         if (attempt > 1) {
-          console.log(`✅ [RETRY] OJ ${oj.original} processado com sucesso na tentativa ${attempt} (tentativa: ${attemptDuration}ms, total: ${totalDuration}ms)`);
+          console.log(`✅ [RETRY-TAB] OJ ${oj.original} processado com sucesso na tentativa ${attempt} (tentativa: ${attemptDuration}ms, total: ${totalDuration}ms)`);
         } else {
-          console.log(`✅ [RETRY] OJ ${oj.original} processado com sucesso na primeira tentativa (${attemptDuration}ms)`);
+          console.log(`✅ [RETRY-TAB] OJ ${oj.original} processado com sucesso na primeira tentativa (${attemptDuration}ms)`);
         }
         
         return result;
@@ -262,35 +341,101 @@ class ParallelOJProcessor {
         const attemptDuration = Date.now() - attemptStartTime;
         const totalElapsed = Date.now() - startTime;
         
-        console.log(`⚠️ [RETRY] Tentativa ${attempt}/${maxRetries} falhou para OJ ${oj.original} após ${attemptDuration}ms: ${error.message}`);
-        console.log(`📊 [RETRY] Tempo total decorrido: ${totalElapsed/1000}s`);
+        console.log(`⚠️ [RETRY-TAB] Tentativa ${attempt}/${maxRetries} falhou para OJ ${oj.original} após ${attemptDuration}ms: ${error.message}`);
+        console.log(`📊 [RETRY-TAB] Tempo total decorrido: ${totalElapsed/1000}s`);
         
         // Se é erro crítico, não tentar novamente
         if (error.message.includes('closed') || 
             error.message.includes('Navigation') ||
             error.message.includes('Timeout geral') ||
             totalElapsed > 40000) {
-          console.log(`🚫 [RETRY] Erro crítico detectado para ${oj.original}, parando tentativas`);
+          console.log(`🚫 [RETRY-TAB] Erro crítico detectado para ${oj.original}, parando tentativas`);
           break;
         }
         
         if (attempt < maxRetries) {
           // Backoff exponencial reduzido
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 3000); // Max 3s
-          console.log(`⏳ [RETRY] Aguardando ${delay}ms antes da próxima tentativa para ${oj.original}...`);
+          console.log(`⏳ [RETRY-TAB] Aguardando ${delay}ms antes da próxima tentativa para ${oj.original}...`);
           await this.delay(delay);
           
-          // Tentar recuperação rápida
-          console.log(`🔄 [RETRY] Executando recuperação rápida para ${oj.original}...`);
-          await this.quickRecovery();
-          console.log(`✅ [RETRY] Recuperação rápida concluída para ${oj.original}`);
+          // Tentar recuperação rápida na aba
+          console.log(`🔄 [RETRY-TAB] Executando recuperação rápida para ${oj.original}...`);
+          await this.quickRecoveryInTab(page);
+          console.log(`✅ [RETRY-TAB] Recuperação rápida concluída para ${oj.original}`);
         }
       }
     }
     
     const duration = Date.now() - startTime;
-    console.log(`❌ [RETRY] OJ ${oj.original} falhou definitivamente após ${duration}ms e ${maxRetries} tentativas`);
+    console.log(`❌ [RETRY-TAB] OJ ${oj.original} falhou definitivamente após ${duration}ms e ${maxRetries} tentativas`);
     throw lastError;
+  }
+
+  /**
+   * Processa um OJ individual em uma aba específica (equivale ao sequencial)
+   */
+  async processOJInTab(oj, page) {
+    const startTime = Date.now();
+    
+    try {
+      // Verificar se página ainda está ativa
+      if (page && page.isClosed()) {
+        throw new Error('Página fechada antes do processamento');
+      }
+      
+      console.log(`⚡ Processando OJ ${oj.original} em aba específica...`);
+      
+      // Verificar se é vara de Limeira e aplicar tratamento específico
+      if (isVaraLimeira(oj.original)) {
+        console.log(`🔧 Aplicando tratamento específico para vara de Limeira: ${oj.original}`);
+        const resultadoLimeira = await aplicarTratamentoLimeira(page, oj.original, this.config.nome);
+        
+        if (resultadoLimeira.sucesso) {
+          console.log(`✅ Tratamento Limeira bem-sucedido para ${oj.original}`);
+          return {
+            orgao: oj.original,
+            status: 'Vinculado com Sucesso (Limeira)',
+            erro: null,
+            perfil: this.config.perfil,
+            cpf: this.config.cpf,
+            timestamp: new Date().toISOString(),
+            duration: Date.now() - startTime,
+            metodo: 'limeira_especifico'
+          };
+        } else {
+          console.log(`⚠️ Tratamento Limeira falhou, usando método padrão para ${oj.original}`);
+        }
+      }
+      
+      // Usar o método padrão do vincularOJ.js (igual ao sequencial)
+      await vincularOJ(page, oj.original, this.config.perfil || 'Servidor', 'Público');
+      
+      const duration = Date.now() - startTime;
+      
+      // Registrar performance para timeouts adaptativos
+      TimeoutManager.registrarPerformance('vincularOJ', startTime, true);
+      
+      console.log(`📊 OJ ${oj.original} processado em ${duration}ms`);
+      
+      return {
+        orgao: oj.original,
+        status: 'Vinculado com Sucesso',
+        erro: null,
+        perfil: this.config.perfil || 'Servidor',
+        cpf: this.config.cpf,
+        timestamp: new Date().toISOString(),
+        duration
+      };
+      
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      TimeoutManager.registrarPerformance('vincularOJ', startTime, false);
+      
+      console.log(`❌ Erro no processamento do OJ ${oj.original} após ${duration}ms: ${error.message}`);
+      
+      throw error;
+    }
   }
 
   /**
@@ -455,16 +600,16 @@ class ParallelOJProcessor {
       
       // Clicar UMA vez apenas usando retry manager
       await this.retryManager.retryClick(
-          async (selector) => {
-            const element = await this.page.$(selector);
-            if (element) {
-              await element.click();
-            } else {
-              throw new Error('Element not found');
-            }
-          },
-          seletorEspecifico
-        );
+        async (selector) => {
+          const element = await this.page.$(selector);
+          if (element) {
+            await element.click();
+          } else {
+            throw new Error('Element not found');
+          }
+        },
+        seletorEspecifico
+      );
       console.log('✅ CLIQUE ÚNICO realizado no botão Adicionar');
       
       // 3. TERCEIRO: Aguardar modal abrir de forma assertiva
@@ -919,7 +1064,7 @@ class ParallelOJProcessor {
         
         // Estratégia 4: BLOQUEAR se não encontrar SERVIDOR
         if (!perfilSelecionado) {
-          console.log(`🚨 ERRO CRÍTICO: Papel 'Servidor' não encontrado! Listando opções disponíveis:`);
+          console.log('🚨 ERRO CRÍTICO: Papel \'Servidor\' não encontrado! Listando opções disponíveis:');
           for (let i = 0; i < totalOpcoes; i++) {
             const opcao = opcoesPapel.nth(i);
             const texto = await opcao.textContent();
@@ -984,7 +1129,7 @@ class ParallelOJProcessor {
           // Continua para próximo seletor
         }
       }
-      console.log(`⚠️ Não foi possível detectar visibilidade atual`);
+      console.log('⚠️ Não foi possível detectar visibilidade atual');
       return 'DESCONHECIDO';
     } catch (error) {
       console.log(`❌ Erro ao verificar visibilidade atual: ${error.message}`);
@@ -1045,7 +1190,7 @@ class ParallelOJProcessor {
           continue;
         }
         
-        console.log(`DEBUG: Elemento encontrado, tentando clicar...`);
+        console.log('DEBUG: Elemento encontrado, tentando clicar...');
         
         // Verificar se é um mat-select
         if (seletor.includes('mat-select')) {
@@ -1053,12 +1198,12 @@ class ParallelOJProcessor {
           try {
             // Estratégia 1: Clique direto
             await this.page.click(seletor, { force: true });
-            console.log(`DEBUG: Clique direto realizado`);
+            console.log('DEBUG: Clique direto realizado');
           } catch (e1) {
             try {
               // Estratégia 2: Clique no trigger
               await this.page.click(`${seletor} .mat-select-trigger`, { force: true });
-              console.log(`DEBUG: Clique no trigger realizado`);
+              console.log('DEBUG: Clique no trigger realizado');
             } catch (e2) {
               console.log(`DEBUG: Falha ao clicar no mat-select: ${e2.message}`);
               continue;
@@ -1077,7 +1222,7 @@ class ParallelOJProcessor {
         console.log(`DEBUG: ${opcoes.length} opções encontradas`);
         
         if (opcoes.length === 0) {
-          console.log(`DEBUG: Nenhuma opção encontrada, tentando próximo seletor`);
+          console.log('DEBUG: Nenhuma opção encontrada, tentando próximo seletor');
           continue;
         }
         
@@ -1383,13 +1528,13 @@ class ParallelOJProcessor {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
   
-  async quickRecovery() {
+  async quickRecoveryInTab(page) {
     try {
-      if (this.page && !this.page.isClosed()) {
-        console.log('🔄 Iniciando recuperação rápida...');
+      if (page && !page.isClosed()) {
+        console.log('🔄 Iniciando recuperação rápida na aba...');
         
         // Fechar qualquer modal aberto
-        await this.page.evaluate(() => {
+        await page.evaluate(() => {
           const modals = document.querySelectorAll('mat-dialog-container, .cdk-overlay-container, .modal-backdrop');
           modals.forEach(modal => {
             const closeBtn = modal.querySelector('[mat-dialog-close], .mat-dialog-close, .close, .btn-close');
@@ -1404,26 +1549,33 @@ class ParallelOJProcessor {
         });
         
         // Pressionar ESC para fechar modais
-        await this.page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
         
         // Aguardar um pouco para a página se estabilizar
         await this.delay(200);
         
         // Verificar se ainda há elementos de loading com timeout reduzido
-        await this.page.waitForFunction(
+        await page.waitForFunction(
           () => {
             const loadingElements = document.querySelectorAll('.loading, .spinner, [class*="loading"]');
             return loadingElements.length === 0;
           },
           { timeout: 1500 }
         ).catch(() => {
-          console.log('⚠️ Elementos de loading ainda presentes após recovery');
+          console.log('⚠️ Elementos de loading ainda presentes após recovery na aba');
         });
         
-        console.log('✅ Recuperação rápida concluída');
+        console.log('✅ Recuperação rápida na aba concluída');
       }
     } catch (error) {
-      console.log(`⚠️ Erro durante quick recovery: ${error.message}`);
+      console.log(`⚠️ Erro durante quick recovery na aba: ${error.message}`);
+    }
+  }
+
+  // Manter compatibilidade com quick recovery original
+  async quickRecovery() {
+    if (this.originalPage) {
+      return await this.quickRecoveryInTab(this.originalPage);
     }
   }
   
@@ -1527,8 +1679,8 @@ class ParallelOJProcessor {
             displayed: isDisplayed,
             visibilityHidden: isVisibilityHidden,
             pointerEvents: computedStyle.pointerEvents,
-            tabIndex: tabIndex,
-            isInteractive: isInteractive,
+            tabIndex,
+            isInteractive,
             id: matSelect.id,
             classes: matSelect.className
           });

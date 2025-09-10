@@ -1222,7 +1222,7 @@ class PeritoApp {
       
       const config = {
         servidores: servidoresParaProcessar,
-        numInstances: numInstances,
+        numInstances,
         production: true,
         detailedReport: true,
         useCache: true,
@@ -1698,8 +1698,8 @@ class PeritoApp {
     const colors = {
       success: '#27ae60',
       error: '#c07b73',
-            warning: '#d4a574',
-            info: '#8b7355'
+      warning: '#d4a574',
+      info: '#8b7355'
     };
         
     notification.style.cssText = `
@@ -2203,7 +2203,7 @@ class PeritoApp {
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Fechar</button>
           <button class="btn btn-primary" onclick="app.exportReport()">Exportar Relatório</button>
-          ${erros > 0 ? `<button class="btn btn-warning" onclick="app.showErrorRecovery()">Tentar Novamente</button>` : ''}
+          ${erros > 0 ? '<button class="btn btn-warning" onclick="app.showErrorRecovery()">Tentar Novamente</button>' : ''}
         </div>
       </div>
     `;
@@ -2925,28 +2925,28 @@ class OJSelector {
   
   handleKeyNavigation(e) {
     switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        this.highlightedIndex = Math.min(this.highlightedIndex + 1, this.filteredOptions.length - 1);
-        this.updateHighlight();
-        break;
+    case 'ArrowDown':
+      e.preventDefault();
+      this.highlightedIndex = Math.min(this.highlightedIndex + 1, this.filteredOptions.length - 1);
+      this.updateHighlight();
+      break;
         
-      case 'ArrowUp':
-        e.preventDefault();
-        this.highlightedIndex = Math.max(this.highlightedIndex - 1, -1);
-        this.updateHighlight();
-        break;
+    case 'ArrowUp':
+      e.preventDefault();
+      this.highlightedIndex = Math.max(this.highlightedIndex - 1, -1);
+      this.updateHighlight();
+      break;
         
-      case 'Enter':
-        e.preventDefault();
-        if (this.highlightedIndex >= 0 && this.filteredOptions[this.highlightedIndex]) {
-          this.selectOption(this.filteredOptions[this.highlightedIndex]);
-        }
-        break;
+    case 'Enter':
+      e.preventDefault();
+      if (this.highlightedIndex >= 0 && this.filteredOptions[this.highlightedIndex]) {
+        this.selectOption(this.filteredOptions[this.highlightedIndex]);
+      }
+      break;
         
-      case 'Escape':
-        this.close();
-        break;
+    case 'Escape':
+      this.close();
+      break;
     }
   }
   
@@ -3035,196 +3035,196 @@ let currentActiveTab = 'processing';
 
 // Função para mostrar o modal de servidores processados
 function showProcessedServersModal() {
-    console.log('showProcessedServersModal chamada');
-    const modal = document.getElementById('processed-servers-modal');
-    console.log('Modal encontrado:', modal);
-    if (!modal) {
-        console.error('Modal processed-servers-modal não encontrado!');
-        return;
-    }
-    console.log('Chamando updateAllServersDisplay...');
-    updateAllServersDisplay();
-    console.log('Exibindo modal...');
-    modal.style.display = 'block';
-    console.log('Modal exibido com sucesso');
+  console.log('showProcessedServersModal chamada');
+  const modal = document.getElementById('processed-servers-modal');
+  console.log('Modal encontrado:', modal);
+  if (!modal) {
+    console.error('Modal processed-servers-modal não encontrado!');
+    return;
+  }
+  console.log('Chamando updateAllServersDisplay...');
+  updateAllServersDisplay();
+  console.log('Exibindo modal...');
+  modal.style.display = 'block';
+  console.log('Modal exibido com sucesso');
 }
 
 // Função para fechar o modal de servidores processados
 function closeProcessedServersModal() {
-    const modal = document.getElementById('processed-servers-modal');
-    modal.style.display = 'none';
+  const modal = document.getElementById('processed-servers-modal');
+  modal.style.display = 'none';
 }
 
 // Função para alternar entre abas
 function switchServerTab(tabName) {
-    // Remover classe active de todas as abas
-    document.querySelectorAll('.tab-button').forEach(tab => {
-        tab.classList.remove('active');
-    });
+  // Remover classe active de todas as abas
+  document.querySelectorAll('.tab-button').forEach(tab => {
+    tab.classList.remove('active');
+  });
     
-    // Ocultar todos os painéis
-    document.querySelectorAll('.server-panel').forEach(panel => {
-        panel.classList.remove('active');
-    });
+  // Ocultar todos os painéis
+  document.querySelectorAll('.server-panel').forEach(panel => {
+    panel.classList.remove('active');
+  });
     
-    // Ativar aba e painel selecionados baseado no nome correto
-    if (tabName === 'processing') {
-        // Ativar aba "Em Processamento"
-        document.querySelector('.tab-button[onclick*="processing"]').classList.add('active');
-        document.getElementById('processing-servers-panel').classList.add('active');
-    } else if (tabName === 'completed') {
-        // Ativar aba "Processados com Sucesso"
-        document.querySelector('.tab-button[onclick*="completed"]').classList.add('active');
-        document.getElementById('completed-servers-panel').classList.add('active');
-    }
+  // Ativar aba e painel selecionados baseado no nome correto
+  if (tabName === 'processing') {
+    // Ativar aba "Em Processamento"
+    document.querySelector('.tab-button[onclick*="processing"]').classList.add('active');
+    document.getElementById('processing-servers-panel').classList.add('active');
+  } else if (tabName === 'completed') {
+    // Ativar aba "Processados com Sucesso"
+    document.querySelector('.tab-button[onclick*="completed"]').classList.add('active');
+    document.getElementById('completed-servers-panel').classList.add('active');
+  }
     
-    currentActiveTab = tabName;
+  currentActiveTab = tabName;
     
-    // Atualizar display do painel ativo
-    if (tabName === 'completed') {
-        updateProcessedServersDisplay();
-    } else {
-        updateProcessingServersDisplay();
-    }
+  // Atualizar display do painel ativo
+  if (tabName === 'completed') {
+    updateProcessedServersDisplay();
+  } else {
+    updateProcessingServersDisplay();
+  }
 }
 
 // Função para adicionar servidor processado
 function addProcessedServer(serverData) {
-    const processedServer = {
-        id: Date.now() + Math.random(),
-        name: serverData.name || 'Servidor não identificado',
-        cpf: serverData.cpf || '',
-        perfil: serverData.perfil || '',
-        ojsCount: serverData.ojsCount || 0,
-        processedAt: new Date(),
-        processingTime: serverData.processingTime || 0
-    };
+  const processedServer = {
+    id: Date.now() + Math.random(),
+    name: serverData.name || 'Servidor não identificado',
+    cpf: serverData.cpf || '',
+    perfil: serverData.perfil || '',
+    ojsCount: serverData.ojsCount || 0,
+    processedAt: new Date(),
+    processingTime: serverData.processingTime || 0
+  };
     
-    processedServers.push(processedServer);
+  processedServers.push(processedServer);
     
-    // Remover da lista de processamento se existir
-    processingServers = processingServers.filter(server => server.cpf !== serverData.cpf);
+  // Remover da lista de processamento se existir
+  processingServers = processingServers.filter(server => server.cpf !== serverData.cpf);
     
-    // Atualizar display se o modal estiver aberto
-    const modal = document.getElementById('processed-servers-modal');
-    if (modal && modal.style.display === 'block') {
-        updateAllServersDisplay();
-    }
+  // Atualizar display se o modal estiver aberto
+  const modal = document.getElementById('processed-servers-modal');
+  if (modal && modal.style.display === 'block') {
+    updateAllServersDisplay();
+  }
 }
 
 // Função para adicionar servidor em processamento
 function addProcessingServer(serverData) {
-    const processingServer = {
-        id: Date.now() + Math.random(),
-        name: serverData.name || 'Servidor não identificado',
-        cpf: serverData.cpf || '',
-        perfil: serverData.perfil || '',
-        startedAt: new Date(),
-        currentOJ: serverData.currentOJ || 'Iniciando...'
-    };
+  const processingServer = {
+    id: Date.now() + Math.random(),
+    name: serverData.name || 'Servidor não identificado',
+    cpf: serverData.cpf || '',
+    perfil: serverData.perfil || '',
+    startedAt: new Date(),
+    currentOJ: serverData.currentOJ || 'Iniciando...'
+  };
     
-    // Verificar se já não está na lista
-    const exists = processingServers.find(server => server.cpf === serverData.cpf);
-    if (!exists) {
-        processingServers.push(processingServer);
+  // Verificar se já não está na lista
+  const exists = processingServers.find(server => server.cpf === serverData.cpf);
+  if (!exists) {
+    processingServers.push(processingServer);
         
-        // Atualizar display se o modal estiver aberto
-        const modal = document.getElementById('processed-servers-modal');
-        if (modal && modal.style.display === 'block') {
-            updateAllServersDisplay();
-        }
+    // Atualizar display se o modal estiver aberto
+    const modal = document.getElementById('processed-servers-modal');
+    if (modal && modal.style.display === 'block') {
+      updateAllServersDisplay();
     }
+  }
 }
 
 // Função para atualizar servidor em processamento
 function updateProcessingServer(cpf, updateData) {
-    const server = processingServers.find(s => s.cpf === cpf);
-    if (server) {
-        Object.assign(server, updateData);
+  const server = processingServers.find(s => s.cpf === cpf);
+  if (server) {
+    Object.assign(server, updateData);
         
-        // Atualizar display se o modal estiver aberto e na aba de processamento
-        const modal = document.getElementById('processed-servers-modal');
-        if (modal && modal.style.display === 'block' && currentActiveTab === 'processing') {
-            updateProcessingServersDisplay();
-        }
+    // Atualizar display se o modal estiver aberto e na aba de processamento
+    const modal = document.getElementById('processed-servers-modal');
+    if (modal && modal.style.display === 'block' && currentActiveTab === 'processing') {
+      updateProcessingServersDisplay();
     }
+  }
 }
 
 // Função para atualizar todos os displays
 function updateAllServersDisplay() {
-    updateProcessedServersDisplay();
-    updateProcessingServersDisplay();
+  updateProcessedServersDisplay();
+  updateProcessingServersDisplay();
 }
 
 // Função para atualizar o display do painel de processados
 function updateProcessedServersDisplay() {
-    updateProcessedServersSummary();
-    renderProcessedServersList();
+  updateProcessedServersSummary();
+  renderProcessedServersList();
 }
 
 // Função para atualizar o display do painel de processamento
 function updateProcessingServersDisplay() {
-    updateProcessingServersSummary();
-    renderProcessingServersList();
+  updateProcessingServersSummary();
+  renderProcessingServersList();
 }
 
 // Função para atualizar o resumo estatístico dos processados
 function updateProcessedServersSummary() {
-    const totalProcessed = processedServers.length;
-    const totalOJs = processedServers.reduce((sum, server) => sum + server.ojsCount, 0);
-    const totalTime = calculateTotalProcessingTime();
+  const totalProcessed = processedServers.length;
+  const totalOJs = processedServers.reduce((sum, server) => sum + server.ojsCount, 0);
+  const totalTime = calculateTotalProcessingTime();
     
-    document.getElementById('total-processed-count').textContent = totalProcessed;
-    document.getElementById('total-ojs-processed').textContent = totalOJs;
-    document.getElementById('processing-time').textContent = formatProcessingTime(totalTime);
+  document.getElementById('total-processed-count').textContent = totalProcessed;
+  document.getElementById('total-ojs-processed').textContent = totalOJs;
+  document.getElementById('processing-time').textContent = formatProcessingTime(totalTime);
 }
 
 // Função para atualizar o resumo estatístico dos em processamento
 function updateProcessingServersSummary() {
-    const totalServers = processingServers.length;
-    const avgTime = processingServers.length > 0 ? 
-        processingServers.reduce((sum, server) => {
-            const elapsed = Math.floor((new Date() - server.startedAt) / 1000);
-            return sum + elapsed;
-        }, 0) / processingServers.length : 0;
+  const totalServers = processingServers.length;
+  const avgTime = processingServers.length > 0 ? 
+    processingServers.reduce((sum, server) => {
+      const elapsed = Math.floor((new Date() - server.startedAt) / 1000);
+      return sum + elapsed;
+    }, 0) / processingServers.length : 0;
     
-    document.getElementById('total-processing-count').textContent = totalServers;
-    document.getElementById('current-processing-time').textContent = formatProcessingTime(avgTime);
-    document.getElementById('processing-progress').textContent = totalServers > 0 ? '100%' : '0%';
+  document.getElementById('total-processing-count').textContent = totalServers;
+  document.getElementById('current-processing-time').textContent = formatProcessingTime(avgTime);
+  document.getElementById('processing-progress').textContent = totalServers > 0 ? '100%' : '0%';
 }
 
 // Função para calcular tempo total de processamento
 function calculateTotalProcessingTime() {
-    if (!processingStartTime || processedServers.length === 0) return 0;
+  if (!processingStartTime || processedServers.length === 0) return 0;
     
-    const lastProcessed = processedServers[processedServers.length - 1];
-    return Math.floor((lastProcessed.processedAt - processingStartTime) / 1000);
+  const lastProcessed = processedServers[processedServers.length - 1];
+  return Math.floor((lastProcessed.processedAt - processingStartTime) / 1000);
 }
 
 // Função para renderizar a lista de servidores
 function renderProcessedServersList() {
-    const container = document.getElementById('processed-servers-container');
-    const searchInput = document.getElementById('server-search');
-    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+  const container = document.getElementById('processed-servers-container');
+  const searchInput = document.getElementById('server-search');
+  const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
     
-    const filteredServers = processedServers.filter(server => 
-        server.name.toLowerCase().includes(searchTerm) ||
+  const filteredServers = processedServers.filter(server => 
+    server.name.toLowerCase().includes(searchTerm) ||
         server.cpf.includes(searchTerm) ||
         server.perfil.toLowerCase().includes(searchTerm)
-    );
+  );
     
-    if (filteredServers.length === 0) {
-        container.innerHTML = `
+  if (filteredServers.length === 0) {
+    container.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-inbox"></i>
                 <h4>Nenhum servidor processado</h4>
                 <p>Os servidores processados com sucesso aparecerão aqui.</p>
             </div>
         `;
-        return;
-    }
+    return;
+  }
     
-    container.innerHTML = filteredServers.map(server => `
+  container.innerHTML = filteredServers.map(server => `
         <div class="server-item">
             <div class="success-icon">
                 <i class="fas fa-check-circle"></i>
@@ -3249,30 +3249,30 @@ function renderProcessedServersList() {
 
 // Função para renderizar a lista de servidores em processamento
 function renderProcessingServersList() {
-    const container = document.getElementById('processing-servers-container');
-    const searchInput = document.getElementById('processing-server-search');
-    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+  const container = document.getElementById('processing-servers-container');
+  const searchInput = document.getElementById('processing-server-search');
+  const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
     
-    const filteredServers = processingServers.filter(server => 
-        server.name.toLowerCase().includes(searchTerm) ||
+  const filteredServers = processingServers.filter(server => 
+    server.name.toLowerCase().includes(searchTerm) ||
         server.cpf.includes(searchTerm) ||
         server.perfil.toLowerCase().includes(searchTerm)
-    );
+  );
     
-    if (filteredServers.length === 0) {
-        container.innerHTML = `
+  if (filteredServers.length === 0) {
+    container.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-clock"></i>
                 <h4>Nenhum servidor em processamento</h4>
                 <p>Os servidores que estão sendo processados aparecerão aqui.</p>
             </div>
         `;
-        return;
-    }
+    return;
+  }
     
-    container.innerHTML = filteredServers.map(server => {
-        const elapsed = Math.floor((new Date() - server.startedAt) / 1000);
-        return `
+  container.innerHTML = filteredServers.map(server => {
+    const elapsed = Math.floor((new Date() - server.startedAt) / 1000);
+    return `
             <div class="server-item">
                 <div class="processing-icon">
                     <i class="fas fa-spinner"></i>
@@ -3293,114 +3293,114 @@ function renderProcessingServersList() {
                 </div>
             </div>
         `;
-    }).join('');
+  }).join('');
 }
 
 // Função para exportar lista de servidores processados
 function exportProcessedServers() {
-    const data = {
-        timestamp: new Date().toISOString(),
-        summary: {
-            totalProcessed: processedServers.length,
-            totalOJs: processedServers.reduce((sum, server) => sum + server.ojsCount, 0),
-            totalProcessingTime: calculateTotalProcessingTime()
-        },
-        servers: processedServers.map(server => ({
-            name: server.name,
-            cpf: server.cpf,
-            perfil: server.perfil,
-            ojsCount: server.ojsCount,
-            processedAt: server.processedAt.toISOString(),
-            processingTime: server.processingTime
-        }))
-    };
+  const data = {
+    timestamp: new Date().toISOString(),
+    summary: {
+      totalProcessed: processedServers.length,
+      totalOJs: processedServers.reduce((sum, server) => sum + server.ojsCount, 0),
+      totalProcessingTime: calculateTotalProcessingTime()
+    },
+    servers: processedServers.map(server => ({
+      name: server.name,
+      cpf: server.cpf,
+      perfil: server.perfil,
+      ojsCount: server.ojsCount,
+      processedAt: server.processedAt.toISOString(),
+      processingTime: server.processingTime
+    }))
+  };
     
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `servidores-processados-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `servidores-processados-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // Função para iniciar o tracking de tempo de processamento
 function startProcessingTimer() {
-    processingStartTime = new Date();
-    processedServers = []; // Reset da lista
+  processingStartTime = new Date();
+  processedServers = []; // Reset da lista
 }
 
 // Função para formatar tempo em HH:MM:SS
 function formatProcessingTime(seconds) {
-    if (!seconds || seconds < 0) return '--:--:--';
+  if (!seconds || seconds < 0) return '--:--:--';
     
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
     
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
 // Adicionar event listeners para o modal
-document.addEventListener('DOMContentLoaded', function() {
-    // Botão para mostrar servidores processados
-    const showProcessedBtn = document.getElementById('show-processed-servers');
-    console.log('Botão Ver Processados encontrado:', showProcessedBtn);
-    if (showProcessedBtn) {
-        showProcessedBtn.addEventListener('click', function() {
-            console.log('Botão Ver Processados clicado!');
-            showProcessedServersModal();
-        });
-        console.log('Event listener adicionado ao botão Ver Processados');
-    } else {
-        console.error('Botão show-processed-servers não encontrado!');
-    }
+document.addEventListener('DOMContentLoaded', () => {
+  // Botão para mostrar servidores processados
+  const showProcessedBtn = document.getElementById('show-processed-servers');
+  console.log('Botão Ver Processados encontrado:', showProcessedBtn);
+  if (showProcessedBtn) {
+    showProcessedBtn.addEventListener('click', () => {
+      console.log('Botão Ver Processados clicado!');
+      showProcessedServersModal();
+    });
+    console.log('Event listener adicionado ao botão Ver Processados');
+  } else {
+    console.error('Botão show-processed-servers não encontrado!');
+  }
     
-    // Fechar modal ao clicar no X
-    const modal = document.getElementById('processed-servers-modal');
-    if (modal) {
-        const closeBtn = modal.querySelector('.close');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', closeProcessedServersModal);
-        }
+  // Fechar modal ao clicar no X
+  const modal = document.getElementById('processed-servers-modal');
+  if (modal) {
+    const closeBtn = modal.querySelector('.close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeProcessedServersModal);
+    }
         
-        // Fechar modal ao clicar fora dele
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
-                closeProcessedServersModal();
-            }
-        });
-    }
+    // Fechar modal ao clicar fora dele
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeProcessedServersModal();
+      }
+    });
+  }
     
-    // Search functionality for processed servers
-    const searchInput = document.getElementById('server-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            renderProcessedServersList();
-        });
-    }
+  // Search functionality for processed servers
+  const searchInput = document.getElementById('server-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      renderProcessedServersList();
+    });
+  }
     
-    // Search functionality for processing servers
-    const processingSearchInput = document.getElementById('processing-server-search');
-    if (processingSearchInput) {
-        processingSearchInput.addEventListener('input', function() {
-            renderProcessingServersList();
-        });
-    }
+  // Search functionality for processing servers
+  const processingSearchInput = document.getElementById('processing-server-search');
+  if (processingSearchInput) {
+    processingSearchInput.addEventListener('input', () => {
+      renderProcessingServersList();
+    });
+  }
     
-    // Tab switching functionality
-    const processedTab = document.getElementById('processed-tab');
-    const processingTab = document.getElementById('processing-tab');
+  // Tab switching functionality
+  const processedTab = document.getElementById('processed-tab');
+  const processingTab = document.getElementById('processing-tab');
     
-    if (processedTab) {
-        processedTab.addEventListener('click', () => switchServerTab('processed'));
-    }
+  if (processedTab) {
+    processedTab.addEventListener('click', () => switchServerTab('processed'));
+  }
     
-    if (processingTab) {
-        processingTab.addEventListener('click', () => switchServerTab('processing'));
-    }
+  if (processingTab) {
+    processingTab.addEventListener('click', () => switchServerTab('processing'));
+  }
 });
 
 // Expor funções globalmente

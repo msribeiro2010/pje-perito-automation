@@ -625,42 +625,42 @@ class TimeoutManager {
 
 // Timeouts específicos para São José dos Campos
 const SAO_JOSE_CAMPOS_TIMEOUTS = {
-    // Timeouts base (em ms)
-    navegacao: 15000,
-    carregamentoPagina: 20000,
-    buscaElemento: 10000,
+  // Timeouts base (em ms)
+  navegacao: 15000,
+  carregamentoPagina: 20000,
+  buscaElemento: 10000,
     
-    // Timeouts para busca de perito
-    buscaPerito: {
-        inputBusca: 8000,
-        botaoBuscar: 5000,
-        resultados: 15000,
-        carregamentoLista: 12000
-    },
+  // Timeouts para busca de perito
+  buscaPerito: {
+    inputBusca: 8000,
+    botaoBuscar: 5000,
+    resultados: 15000,
+    carregamentoLista: 12000
+  },
     
-    // Timeouts para vinculação
-    vinculacao: {
-        botaoVincular: 8000,
-        modalConfirmacao: 10000,
-        botaoConfirmar: 5000,
-        mensagemSucesso: 12000
-    },
+  // Timeouts para vinculação
+  vinculacao: {
+    botaoVincular: 8000,
+    modalConfirmacao: 10000,
+    botaoConfirmar: 5000,
+    mensagemSucesso: 12000
+  },
     
-    // Timeouts para aguardar entre ações
-    intervalos: {
-        entreCliques: 2000,
-        entreNavegacao: 3000,
-        entreTentativas: 5000,
-        aposCarregamento: 4000
-    },
+  // Timeouts para aguardar entre ações
+  intervalos: {
+    entreCliques: 2000,
+    entreNavegacao: 3000,
+    entreTentativas: 5000,
+    aposCarregamento: 4000
+  },
     
-    // Função para obter timeout específico
-    getTimeout(acao, subacao = null) {
-        if (subacao && this[acao] && this[acao][subacao]) {
-            return this[acao][subacao];
-        }
-        return this[acao] || this.navegacao;
+  // Função para obter timeout específico
+  getTimeout(acao, subacao = null) {
+    if (subacao && this[acao] && this[acao][subacao]) {
+      return this[acao][subacao];
     }
+    return this[acao] || this.navegacao;
+  }
 };
 
 

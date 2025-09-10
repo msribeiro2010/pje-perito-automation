@@ -10,508 +10,508 @@ const path = require('path');
 const Logger = require('./Logger');
 
 class LocationEfficiencyReporter {
-    constructor(options = {}) {
-        this.logger = new Logger('LocationEfficiencyReporter');
+  constructor(options = {}) {
+    this.logger = new Logger('LocationEfficiencyReporter');
         
-        // Configurações
-        this.config = {
-            reportDir: options.reportDir || path.join(process.cwd(), 'reports'),
-            enableHtmlReports: options.enableHtmlReports !== false,
-            enableJsonReports: options.enableJsonReports !== false,
-            enableCsvReports: options.enableCsvReports !== false,
-            includeCharts: options.includeCharts !== false,
-            maxHistoryDays: options.maxHistoryDays || 30,
-            autoGenerateReports: options.autoGenerateReports !== false
-        };
+    // Configurações
+    this.config = {
+      reportDir: options.reportDir || path.join(process.cwd(), 'reports'),
+      enableHtmlReports: options.enableHtmlReports !== false,
+      enableJsonReports: options.enableJsonReports !== false,
+      enableCsvReports: options.enableCsvReports !== false,
+      includeCharts: options.includeCharts !== false,
+      maxHistoryDays: options.maxHistoryDays || 30,
+      autoGenerateReports: options.autoGenerateReports !== false
+    };
         
-        // Dados coletados
-        this.data = {
-            sessions: [],
-            aggregatedStats: {
-                totalSessions: 0,
-                totalServers: 0,
-                totalLocations: 0,
-                totalSkipped: 0,
-                totalErrors: 0,
-                totalTime: 0,
-                averageEfficiency: 0,
-                averageThroughput: 0
-            },
-            trends: {
-                daily: [],
-                weekly: [],
-                monthly: []
-            }
-        };
-    }
+    // Dados coletados
+    this.data = {
+      sessions: [],
+      aggregatedStats: {
+        totalSessions: 0,
+        totalServers: 0,
+        totalLocations: 0,
+        totalSkipped: 0,
+        totalErrors: 0,
+        totalTime: 0,
+        averageEfficiency: 0,
+        averageThroughput: 0
+      },
+      trends: {
+        daily: [],
+        weekly: [],
+        monthly: []
+      }
+    };
+  }
     
-    /**
+  /**
      * Inicializa o gerador de relatórios
      */
-    async initialize() {
-        try {
-            // Criar diretório de relatórios
-            await fs.mkdir(this.config.reportDir, { recursive: true });
+  async initialize() {
+    try {
+      // Criar diretório de relatórios
+      await fs.mkdir(this.config.reportDir, { recursive: true });
             
-            // Carregar dados históricos
-            await this.loadHistoricalData();
+      // Carregar dados históricos
+      await this.loadHistoricalData();
             
-            this.logger.info('Gerador de relatórios inicializado');
+      this.logger.info('Gerador de relatórios inicializado');
             
-        } catch (error) {
-            this.logger.error('Erro ao inicializar gerador de relatórios:', error);
-            throw error;
-        }
+    } catch (error) {
+      this.logger.error('Erro ao inicializar gerador de relatórios:', error);
+      throw error;
     }
+  }
     
-    /**
+  /**
      * Adiciona dados de uma sessão
      */
-    addSessionData(sessionData) {
-        const processedSession = this.processSessionData(sessionData);
-        this.data.sessions.push(processedSession);
+  addSessionData(sessionData) {
+    const processedSession = this.processSessionData(sessionData);
+    this.data.sessions.push(processedSession);
         
-        // Atualizar estatísticas agregadas
-        this.updateAggregatedStats();
+    // Atualizar estatísticas agregadas
+    this.updateAggregatedStats();
         
-        // Atualizar tendências
-        this.updateTrends();
+    // Atualizar tendências
+    this.updateTrends();
         
-        this.logger.debug(`Dados da sessão ${sessionData.sessionId} adicionados`);
-    }
+    this.logger.debug(`Dados da sessão ${sessionData.sessionId} adicionados`);
+  }
     
-    /**
+  /**
      * Processa dados da sessão
      */
-    processSessionData(sessionData) {
-        const totalLocations = sessionData.locationsProcessed + sessionData.locationsSkipped + sessionData.locationsError;
-        const efficiency = totalLocations > 0 ? (sessionData.locationsProcessed / totalLocations) * 100 : 0;
-        const throughput = sessionData.totalTime > 0 ? (totalLocations / sessionData.totalTime) * 60000 : 0; // por minuto
+  processSessionData(sessionData) {
+    const totalLocations = sessionData.locationsProcessed + sessionData.locationsSkipped + sessionData.locationsError;
+    const efficiency = totalLocations > 0 ? (sessionData.locationsProcessed / totalLocations) * 100 : 0;
+    const throughput = sessionData.totalTime > 0 ? (totalLocations / sessionData.totalTime) * 60000 : 0; // por minuto
         
-        return {
-            sessionId: sessionData.sessionId,
-            timestamp: sessionData.startTime || Date.now(),
-            duration: sessionData.totalTime || 0,
-            servers: {
-                total: sessionData.serversTotal || 0,
-                processed: sessionData.serversProcessed || 0,
-                failed: sessionData.failedServers?.length || 0
-            },
-            locations: {
-                total: sessionData.locationsTotal || 0,
-                processed: sessionData.locationsProcessed || 0,
-                skipped: sessionData.locationsSkipped || 0,
-                error: sessionData.locationsError || 0
-            },
-            performance: {
-                efficiency: efficiency,
-                throughput: throughput,
-                averageLocationTime: sessionData.averageLocationTime || 0,
-                averageServerTime: sessionData.averageServerTime || 0,
-                skipRate: totalLocations > 0 ? (sessionData.locationsSkipped / totalLocations) * 100 : 0,
-                errorRate: totalLocations > 0 ? (sessionData.locationsError / totalLocations) * 100 : 0
-            },
-            cache: {
-                hits: sessionData.cacheHits || 0,
-                misses: sessionData.cacheMisses || 0,
-                hitRate: (sessionData.cacheHits + sessionData.cacheMisses) > 0 
-                    ? (sessionData.cacheHits / (sessionData.cacheHits + sessionData.cacheMisses)) * 100 
-                    : 0
-            },
-            errors: {
-                total: sessionData.totalErrors || 0,
-                consecutive: sessionData.maxConsecutiveErrors || 0,
-                types: sessionData.errorTypes || {}
-            },
-            recovery: {
-                retries: sessionData.totalRetries || 0,
-                recoveryRate: sessionData.totalRetries > 0 
-                    ? ((sessionData.totalRetries - sessionData.totalErrors) / sessionData.totalRetries) * 100 
-                    : 0
-            }
-        };
-    }
+    return {
+      sessionId: sessionData.sessionId,
+      timestamp: sessionData.startTime || Date.now(),
+      duration: sessionData.totalTime || 0,
+      servers: {
+        total: sessionData.serversTotal || 0,
+        processed: sessionData.serversProcessed || 0,
+        failed: sessionData.failedServers?.length || 0
+      },
+      locations: {
+        total: sessionData.locationsTotal || 0,
+        processed: sessionData.locationsProcessed || 0,
+        skipped: sessionData.locationsSkipped || 0,
+        error: sessionData.locationsError || 0
+      },
+      performance: {
+        efficiency,
+        throughput,
+        averageLocationTime: sessionData.averageLocationTime || 0,
+        averageServerTime: sessionData.averageServerTime || 0,
+        skipRate: totalLocations > 0 ? (sessionData.locationsSkipped / totalLocations) * 100 : 0,
+        errorRate: totalLocations > 0 ? (sessionData.locationsError / totalLocations) * 100 : 0
+      },
+      cache: {
+        hits: sessionData.cacheHits || 0,
+        misses: sessionData.cacheMisses || 0,
+        hitRate: (sessionData.cacheHits + sessionData.cacheMisses) > 0 
+          ? (sessionData.cacheHits / (sessionData.cacheHits + sessionData.cacheMisses)) * 100 
+          : 0
+      },
+      errors: {
+        total: sessionData.totalErrors || 0,
+        consecutive: sessionData.maxConsecutiveErrors || 0,
+        types: sessionData.errorTypes || {}
+      },
+      recovery: {
+        retries: sessionData.totalRetries || 0,
+        recoveryRate: sessionData.totalRetries > 0 
+          ? ((sessionData.totalRetries - sessionData.totalErrors) / sessionData.totalRetries) * 100 
+          : 0
+      }
+    };
+  }
     
-    /**
+  /**
      * Atualiza estatísticas agregadas
      */
-    updateAggregatedStats() {
-        if (this.data.sessions.length === 0) return;
+  updateAggregatedStats() {
+    if (this.data.sessions.length === 0) return;
         
-        const stats = this.data.aggregatedStats;
+    const stats = this.data.aggregatedStats;
         
-        stats.totalSessions = this.data.sessions.length;
-        stats.totalServers = this.data.sessions.reduce((sum, s) => sum + s.servers.processed, 0);
-        stats.totalLocations = this.data.sessions.reduce((sum, s) => sum + s.locations.processed, 0);
-        stats.totalSkipped = this.data.sessions.reduce((sum, s) => sum + s.locations.skipped, 0);
-        stats.totalErrors = this.data.sessions.reduce((sum, s) => sum + s.errors.total, 0);
-        stats.totalTime = this.data.sessions.reduce((sum, s) => sum + s.duration, 0);
+    stats.totalSessions = this.data.sessions.length;
+    stats.totalServers = this.data.sessions.reduce((sum, s) => sum + s.servers.processed, 0);
+    stats.totalLocations = this.data.sessions.reduce((sum, s) => sum + s.locations.processed, 0);
+    stats.totalSkipped = this.data.sessions.reduce((sum, s) => sum + s.locations.skipped, 0);
+    stats.totalErrors = this.data.sessions.reduce((sum, s) => sum + s.errors.total, 0);
+    stats.totalTime = this.data.sessions.reduce((sum, s) => sum + s.duration, 0);
         
-        // Médias
-        stats.averageEfficiency = this.data.sessions.reduce((sum, s) => sum + s.performance.efficiency, 0) / stats.totalSessions;
-        stats.averageThroughput = this.data.sessions.reduce((sum, s) => sum + s.performance.throughput, 0) / stats.totalSessions;
-    }
+    // Médias
+    stats.averageEfficiency = this.data.sessions.reduce((sum, s) => sum + s.performance.efficiency, 0) / stats.totalSessions;
+    stats.averageThroughput = this.data.sessions.reduce((sum, s) => sum + s.performance.throughput, 0) / stats.totalSessions;
+  }
     
-    /**
+  /**
      * Atualiza tendências
      */
-    updateTrends() {
-        const now = new Date();
+  updateTrends() {
+    const now = new Date();
         
-        // Tendências diárias (últimos 30 dias)
-        this.data.trends.daily = this.calculateTrends('daily', 30);
+    // Tendências diárias (últimos 30 dias)
+    this.data.trends.daily = this.calculateTrends('daily', 30);
         
-        // Tendências semanais (últimas 12 semanas)
-        this.data.trends.weekly = this.calculateTrends('weekly', 12);
+    // Tendências semanais (últimas 12 semanas)
+    this.data.trends.weekly = this.calculateTrends('weekly', 12);
         
-        // Tendências mensais (últimos 12 meses)
-        this.data.trends.monthly = this.calculateTrends('monthly', 12);
-    }
+    // Tendências mensais (últimos 12 meses)
+    this.data.trends.monthly = this.calculateTrends('monthly', 12);
+  }
     
-    /**
+  /**
      * Calcula tendências por período
      */
-    calculateTrends(period, count) {
-        const trends = [];
-        const now = new Date();
+  calculateTrends(period, count) {
+    const trends = [];
+    const now = new Date();
         
-        for (let i = count - 1; i >= 0; i--) {
-            let startDate, endDate;
+    for (let i = count - 1; i >= 0; i--) {
+      let startDate, endDate;
             
-            if (period === 'daily') {
-                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-                endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
-            } else if (period === 'weekly') {
-                const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
-                startDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() - weekStart.getDay());
-                endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
-            } else if (period === 'monthly') {
-                startDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                endDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-            }
+      if (period === 'daily') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
+      } else if (period === 'weekly') {
+        const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+        startDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() - weekStart.getDay());
+        endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      } else if (period === 'monthly') {
+        startDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      }
             
-            const sessionsInPeriod = this.data.sessions.filter(s => {
-                const sessionDate = new Date(s.timestamp);
-                return sessionDate >= startDate && sessionDate < endDate;
-            });
+      const sessionsInPeriod = this.data.sessions.filter(s => {
+        const sessionDate = new Date(s.timestamp);
+        return sessionDate >= startDate && sessionDate < endDate;
+      });
             
-            const trendData = this.calculatePeriodStats(sessionsInPeriod, startDate, endDate);
-            trends.push(trendData);
-        }
-        
-        return trends;
+      const trendData = this.calculatePeriodStats(sessionsInPeriod, startDate, endDate);
+      trends.push(trendData);
     }
+        
+    return trends;
+  }
     
-    /**
+  /**
      * Calcula estatísticas para um período
      */
-    calculatePeriodStats(sessions, startDate, endDate) {
-        if (sessions.length === 0) {
-            return {
-                period: startDate.toISOString().split('T')[0],
-                sessions: 0,
-                servers: 0,
-                locations: 0,
-                efficiency: 0,
-                throughput: 0,
-                errorRate: 0
-            };
-        }
-        
-        const totalLocations = sessions.reduce((sum, s) => sum + s.locations.processed + s.locations.skipped + s.locations.error, 0);
-        const processedLocations = sessions.reduce((sum, s) => sum + s.locations.processed, 0);
-        const totalErrors = sessions.reduce((sum, s) => sum + s.errors.total, 0);
-        
-        return {
-            period: startDate.toISOString().split('T')[0],
-            sessions: sessions.length,
-            servers: sessions.reduce((sum, s) => sum + s.servers.processed, 0),
-            locations: processedLocations,
-            efficiency: totalLocations > 0 ? (processedLocations / totalLocations) * 100 : 0,
-            throughput: sessions.reduce((sum, s) => sum + s.performance.throughput, 0) / sessions.length,
-            errorRate: totalLocations > 0 ? (totalErrors / totalLocations) * 100 : 0
-        };
+  calculatePeriodStats(sessions, startDate, endDate) {
+    if (sessions.length === 0) {
+      return {
+        period: startDate.toISOString().split('T')[0],
+        sessions: 0,
+        servers: 0,
+        locations: 0,
+        efficiency: 0,
+        throughput: 0,
+        errorRate: 0
+      };
     }
+        
+    const totalLocations = sessions.reduce((sum, s) => sum + s.locations.processed + s.locations.skipped + s.locations.error, 0);
+    const processedLocations = sessions.reduce((sum, s) => sum + s.locations.processed, 0);
+    const totalErrors = sessions.reduce((sum, s) => sum + s.errors.total, 0);
+        
+    return {
+      period: startDate.toISOString().split('T')[0],
+      sessions: sessions.length,
+      servers: sessions.reduce((sum, s) => sum + s.servers.processed, 0),
+      locations: processedLocations,
+      efficiency: totalLocations > 0 ? (processedLocations / totalLocations) * 100 : 0,
+      throughput: sessions.reduce((sum, s) => sum + s.performance.throughput, 0) / sessions.length,
+      errorRate: totalLocations > 0 ? (totalErrors / totalLocations) * 100 : 0
+    };
+  }
     
-    /**
+  /**
      * Gera relatório completo
      */
-    async generateReport(options = {}) {
-        try {
-            const reportData = this.compileReportData();
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  async generateReport(options = {}) {
+    try {
+      const reportData = this.compileReportData();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             
-            const reports = [];
+      const reports = [];
             
-            // Relatório JSON
-            if (this.config.enableJsonReports) {
-                const jsonPath = path.join(this.config.reportDir, `efficiency-report-${timestamp}.json`);
-                await fs.writeFile(jsonPath, JSON.stringify(reportData, null, 2));
-                reports.push({ type: 'json', path: jsonPath });
-            }
+      // Relatório JSON
+      if (this.config.enableJsonReports) {
+        const jsonPath = path.join(this.config.reportDir, `efficiency-report-${timestamp}.json`);
+        await fs.writeFile(jsonPath, JSON.stringify(reportData, null, 2));
+        reports.push({ type: 'json', path: jsonPath });
+      }
             
-            // Relatório HTML
-            if (this.config.enableHtmlReports) {
-                const htmlPath = path.join(this.config.reportDir, `efficiency-report-${timestamp}.html`);
-                const htmlContent = this.generateHtmlReport(reportData);
-                await fs.writeFile(htmlPath, htmlContent);
-                reports.push({ type: 'html', path: htmlPath });
-            }
+      // Relatório HTML
+      if (this.config.enableHtmlReports) {
+        const htmlPath = path.join(this.config.reportDir, `efficiency-report-${timestamp}.html`);
+        const htmlContent = this.generateHtmlReport(reportData);
+        await fs.writeFile(htmlPath, htmlContent);
+        reports.push({ type: 'html', path: htmlPath });
+      }
             
-            // Relatório CSV
-            if (this.config.enableCsvReports) {
-                const csvPath = path.join(this.config.reportDir, `efficiency-report-${timestamp}.csv`);
-                const csvContent = this.generateCsvReport(reportData);
-                await fs.writeFile(csvPath, csvContent);
-                reports.push({ type: 'csv', path: csvPath });
-            }
+      // Relatório CSV
+      if (this.config.enableCsvReports) {
+        const csvPath = path.join(this.config.reportDir, `efficiency-report-${timestamp}.csv`);
+        const csvContent = this.generateCsvReport(reportData);
+        await fs.writeFile(csvPath, csvContent);
+        reports.push({ type: 'csv', path: csvPath });
+      }
             
-            this.logger.info(`Relatórios gerados: ${reports.map(r => r.type).join(', ')}`);
+      this.logger.info(`Relatórios gerados: ${reports.map(r => r.type).join(', ')}`);
             
-            return reports;
+      return reports;
             
-        } catch (error) {
-            this.logger.error('Erro ao gerar relatório:', error);
-            throw error;
-        }
+    } catch (error) {
+      this.logger.error('Erro ao gerar relatório:', error);
+      throw error;
     }
+  }
     
-    /**
+  /**
      * Compila dados para o relatório
      */
-    compileReportData() {
-        const recentSessions = this.data.sessions.slice(-10); // Últimas 10 sessões
+  compileReportData() {
+    const recentSessions = this.data.sessions.slice(-10); // Últimas 10 sessões
         
-        return {
-            metadata: {
-                generatedAt: new Date().toISOString(),
-                reportPeriod: {
-                    start: this.data.sessions.length > 0 ? new Date(Math.min(...this.data.sessions.map(s => s.timestamp))).toISOString() : null,
-                    end: new Date().toISOString()
-                },
-                totalSessions: this.data.sessions.length
-            },
-            summary: {
-                ...this.data.aggregatedStats,
-                averageSessionDuration: this.data.aggregatedStats.totalSessions > 0 
-                    ? this.data.aggregatedStats.totalTime / this.data.aggregatedStats.totalSessions 
-                    : 0,
-                overallSuccessRate: (this.data.aggregatedStats.totalLocations + this.data.aggregatedStats.totalSkipped) > 0 
-                    ? (this.data.aggregatedStats.totalLocations / (this.data.aggregatedStats.totalLocations + this.data.aggregatedStats.totalSkipped + this.data.aggregatedStats.totalErrors)) * 100 
-                    : 0
-            },
-            performance: {
-                bestSession: this.findBestSession(),
-                worstSession: this.findWorstSession(),
-                averageMetrics: this.calculateAverageMetrics(),
-                performanceTrends: this.analyzePerformanceTrends()
-            },
-            efficiency: {
-                cacheEfficiency: this.calculateCacheEfficiency(),
-                skipEfficiency: this.calculateSkipEfficiency(),
-                errorRecovery: this.calculateErrorRecoveryStats(),
-                timeDistribution: this.calculateTimeDistribution()
-            },
-            trends: this.data.trends,
-            recentSessions: recentSessions,
-            recommendations: this.generateRecommendations()
-        };
-    }
+    return {
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        reportPeriod: {
+          start: this.data.sessions.length > 0 ? new Date(Math.min(...this.data.sessions.map(s => s.timestamp))).toISOString() : null,
+          end: new Date().toISOString()
+        },
+        totalSessions: this.data.sessions.length
+      },
+      summary: {
+        ...this.data.aggregatedStats,
+        averageSessionDuration: this.data.aggregatedStats.totalSessions > 0 
+          ? this.data.aggregatedStats.totalTime / this.data.aggregatedStats.totalSessions 
+          : 0,
+        overallSuccessRate: (this.data.aggregatedStats.totalLocations + this.data.aggregatedStats.totalSkipped) > 0 
+          ? (this.data.aggregatedStats.totalLocations / (this.data.aggregatedStats.totalLocations + this.data.aggregatedStats.totalSkipped + this.data.aggregatedStats.totalErrors)) * 100 
+          : 0
+      },
+      performance: {
+        bestSession: this.findBestSession(),
+        worstSession: this.findWorstSession(),
+        averageMetrics: this.calculateAverageMetrics(),
+        performanceTrends: this.analyzePerformanceTrends()
+      },
+      efficiency: {
+        cacheEfficiency: this.calculateCacheEfficiency(),
+        skipEfficiency: this.calculateSkipEfficiency(),
+        errorRecovery: this.calculateErrorRecoveryStats(),
+        timeDistribution: this.calculateTimeDistribution()
+      },
+      trends: this.data.trends,
+      recentSessions,
+      recommendations: this.generateRecommendations()
+    };
+  }
     
-    /**
+  /**
      * Encontra melhor sessão
      */
-    findBestSession() {
-        if (this.data.sessions.length === 0) return null;
+  findBestSession() {
+    if (this.data.sessions.length === 0) return null;
         
-        return this.data.sessions.reduce((best, current) => {
-            const bestScore = (best.performance.efficiency * 0.4) + (best.performance.throughput * 0.3) + ((100 - best.performance.errorRate) * 0.3);
-            const currentScore = (current.performance.efficiency * 0.4) + (current.performance.throughput * 0.3) + ((100 - current.performance.errorRate) * 0.3);
+    return this.data.sessions.reduce((best, current) => {
+      const bestScore = (best.performance.efficiency * 0.4) + (best.performance.throughput * 0.3) + ((100 - best.performance.errorRate) * 0.3);
+      const currentScore = (current.performance.efficiency * 0.4) + (current.performance.throughput * 0.3) + ((100 - current.performance.errorRate) * 0.3);
             
-            return currentScore > bestScore ? current : best;
-        });
-    }
+      return currentScore > bestScore ? current : best;
+    });
+  }
     
-    /**
+  /**
      * Encontra pior sessão
      */
-    findWorstSession() {
-        if (this.data.sessions.length === 0) return null;
+  findWorstSession() {
+    if (this.data.sessions.length === 0) return null;
         
-        return this.data.sessions.reduce((worst, current) => {
-            const worstScore = (worst.performance.efficiency * 0.4) + (worst.performance.throughput * 0.3) + ((100 - worst.performance.errorRate) * 0.3);
-            const currentScore = (current.performance.efficiency * 0.4) + (current.performance.throughput * 0.3) + ((100 - current.performance.errorRate) * 0.3);
+    return this.data.sessions.reduce((worst, current) => {
+      const worstScore = (worst.performance.efficiency * 0.4) + (worst.performance.throughput * 0.3) + ((100 - worst.performance.errorRate) * 0.3);
+      const currentScore = (current.performance.efficiency * 0.4) + (current.performance.throughput * 0.3) + ((100 - current.performance.errorRate) * 0.3);
             
-            return currentScore < worstScore ? current : worst;
-        });
-    }
+      return currentScore < worstScore ? current : worst;
+    });
+  }
     
-    /**
+  /**
      * Calcula métricas médias
      */
-    calculateAverageMetrics() {
-        if (this.data.sessions.length === 0) return {};
+  calculateAverageMetrics() {
+    if (this.data.sessions.length === 0) return {};
         
-        const sessions = this.data.sessions;
+    const sessions = this.data.sessions;
         
-        return {
-            efficiency: sessions.reduce((sum, s) => sum + s.performance.efficiency, 0) / sessions.length,
-            throughput: sessions.reduce((sum, s) => sum + s.performance.throughput, 0) / sessions.length,
-            errorRate: sessions.reduce((sum, s) => sum + s.performance.errorRate, 0) / sessions.length,
-            skipRate: sessions.reduce((sum, s) => sum + s.performance.skipRate, 0) / sessions.length,
-            cacheHitRate: sessions.reduce((sum, s) => sum + s.cache.hitRate, 0) / sessions.length,
-            recoveryRate: sessions.reduce((sum, s) => sum + s.recovery.recoveryRate, 0) / sessions.length
-        };
-    }
+    return {
+      efficiency: sessions.reduce((sum, s) => sum + s.performance.efficiency, 0) / sessions.length,
+      throughput: sessions.reduce((sum, s) => sum + s.performance.throughput, 0) / sessions.length,
+      errorRate: sessions.reduce((sum, s) => sum + s.performance.errorRate, 0) / sessions.length,
+      skipRate: sessions.reduce((sum, s) => sum + s.performance.skipRate, 0) / sessions.length,
+      cacheHitRate: sessions.reduce((sum, s) => sum + s.cache.hitRate, 0) / sessions.length,
+      recoveryRate: sessions.reduce((sum, s) => sum + s.recovery.recoveryRate, 0) / sessions.length
+    };
+  }
     
-    /**
+  /**
      * Analisa tendências de performance
      */
-    analyzePerformanceTrends() {
-        const recent = this.data.sessions.slice(-5);
-        const older = this.data.sessions.slice(-10, -5);
+  analyzePerformanceTrends() {
+    const recent = this.data.sessions.slice(-5);
+    const older = this.data.sessions.slice(-10, -5);
         
-        if (recent.length === 0 || older.length === 0) {
-            return { trend: 'insufficient_data' };
-        }
-        
-        const recentAvg = recent.reduce((sum, s) => sum + s.performance.efficiency, 0) / recent.length;
-        const olderAvg = older.reduce((sum, s) => sum + s.performance.efficiency, 0) / older.length;
-        
-        const change = ((recentAvg - olderAvg) / olderAvg) * 100;
-        
-        return {
-            trend: change > 5 ? 'improving' : change < -5 ? 'declining' : 'stable',
-            change: change,
-            recentAverage: recentAvg,
-            previousAverage: olderAvg
-        };
+    if (recent.length === 0 || older.length === 0) {
+      return { trend: 'insufficient_data' };
     }
+        
+    const recentAvg = recent.reduce((sum, s) => sum + s.performance.efficiency, 0) / recent.length;
+    const olderAvg = older.reduce((sum, s) => sum + s.performance.efficiency, 0) / older.length;
+        
+    const change = ((recentAvg - olderAvg) / olderAvg) * 100;
+        
+    return {
+      trend: change > 5 ? 'improving' : change < -5 ? 'declining' : 'stable',
+      change,
+      recentAverage: recentAvg,
+      previousAverage: olderAvg
+    };
+  }
     
-    /**
+  /**
      * Calcula eficiência do cache
      */
-    calculateCacheEfficiency() {
-        const sessions = this.data.sessions;
-        if (sessions.length === 0) return {};
+  calculateCacheEfficiency() {
+    const sessions = this.data.sessions;
+    if (sessions.length === 0) return {};
         
-        const totalHits = sessions.reduce((sum, s) => sum + s.cache.hits, 0);
-        const totalMisses = sessions.reduce((sum, s) => sum + s.cache.misses, 0);
-        const total = totalHits + totalMisses;
+    const totalHits = sessions.reduce((sum, s) => sum + s.cache.hits, 0);
+    const totalMisses = sessions.reduce((sum, s) => sum + s.cache.misses, 0);
+    const total = totalHits + totalMisses;
         
-        return {
-            totalHits: totalHits,
-            totalMisses: totalMisses,
-            hitRate: total > 0 ? (totalHits / total) * 100 : 0,
-            efficiency: total > 0 ? 'high' : 'unknown'
-        };
-    }
+    return {
+      totalHits,
+      totalMisses,
+      hitRate: total > 0 ? (totalHits / total) * 100 : 0,
+      efficiency: total > 0 ? 'high' : 'unknown'
+    };
+  }
     
-    /**
+  /**
      * Calcula eficiência de pulo
      */
-    calculateSkipEfficiency() {
-        const sessions = this.data.sessions;
-        if (sessions.length === 0) return {};
+  calculateSkipEfficiency() {
+    const sessions = this.data.sessions;
+    if (sessions.length === 0) return {};
         
-        const totalSkipped = sessions.reduce((sum, s) => sum + s.locations.skipped, 0);
-        const totalProcessed = sessions.reduce((sum, s) => sum + s.locations.processed, 0);
-        const total = totalSkipped + totalProcessed;
+    const totalSkipped = sessions.reduce((sum, s) => sum + s.locations.skipped, 0);
+    const totalProcessed = sessions.reduce((sum, s) => sum + s.locations.processed, 0);
+    const total = totalSkipped + totalProcessed;
         
-        return {
-            totalSkipped: totalSkipped,
-            skipRate: total > 0 ? (totalSkipped / total) * 100 : 0,
-            timeSaved: totalSkipped * 2000 // Estimativa de 2s por localização
-        };
-    }
+    return {
+      totalSkipped,
+      skipRate: total > 0 ? (totalSkipped / total) * 100 : 0,
+      timeSaved: totalSkipped * 2000 // Estimativa de 2s por localização
+    };
+  }
     
-    /**
+  /**
      * Calcula estatísticas de recuperação de erro
      */
-    calculateErrorRecoveryStats() {
-        const sessions = this.data.sessions;
-        if (sessions.length === 0) return {};
+  calculateErrorRecoveryStats() {
+    const sessions = this.data.sessions;
+    if (sessions.length === 0) return {};
         
-        const totalRetries = sessions.reduce((sum, s) => sum + s.recovery.retries, 0);
-        const totalErrors = sessions.reduce((sum, s) => sum + s.errors.total, 0);
+    const totalRetries = sessions.reduce((sum, s) => sum + s.recovery.retries, 0);
+    const totalErrors = sessions.reduce((sum, s) => sum + s.errors.total, 0);
         
-        return {
-            totalRetries: totalRetries,
-            totalErrors: totalErrors,
-            recoveryRate: totalRetries > 0 ? ((totalRetries - totalErrors) / totalRetries) * 100 : 0,
-            averageRetriesPerError: totalErrors > 0 ? totalRetries / totalErrors : 0
-        };
-    }
+    return {
+      totalRetries,
+      totalErrors,
+      recoveryRate: totalRetries > 0 ? ((totalRetries - totalErrors) / totalRetries) * 100 : 0,
+      averageRetriesPerError: totalErrors > 0 ? totalRetries / totalErrors : 0
+    };
+  }
     
-    /**
+  /**
      * Calcula distribuição de tempo
      */
-    calculateTimeDistribution() {
-        const sessions = this.data.sessions;
-        if (sessions.length === 0) return {};
+  calculateTimeDistribution() {
+    const sessions = this.data.sessions;
+    if (sessions.length === 0) return {};
         
-        const durations = sessions.map(s => s.duration);
-        durations.sort((a, b) => a - b);
+    const durations = sessions.map(s => s.duration);
+    durations.sort((a, b) => a - b);
         
-        return {
-            min: durations[0] || 0,
-            max: durations[durations.length - 1] || 0,
-            median: durations[Math.floor(durations.length / 2)] || 0,
-            average: durations.reduce((sum, d) => sum + d, 0) / durations.length || 0
-        };
-    }
+    return {
+      min: durations[0] || 0,
+      max: durations[durations.length - 1] || 0,
+      median: durations[Math.floor(durations.length / 2)] || 0,
+      average: durations.reduce((sum, d) => sum + d, 0) / durations.length || 0
+    };
+  }
     
-    /**
+  /**
      * Gera recomendações
      */
-    generateRecommendations() {
-        const recommendations = [];
-        const metrics = this.calculateAverageMetrics();
+  generateRecommendations() {
+    const recommendations = [];
+    const metrics = this.calculateAverageMetrics();
         
-        if (metrics.efficiency < 70) {
-            recommendations.push({
-                type: 'efficiency',
-                priority: 'high',
-                message: 'Eficiência baixa detectada. Considere otimizar o sistema de pulo inteligente.',
-                suggestion: 'Revisar critérios de pulo e melhorar cache de localizações.'
-            });
-        }
-        
-        if (metrics.errorRate > 10) {
-            recommendations.push({
-                type: 'errors',
-                priority: 'high',
-                message: 'Taxa de erro elevada. Implementar melhorias na recuperação de erros.',
-                suggestion: 'Aumentar timeouts e melhorar detecção de elementos.'
-            });
-        }
-        
-        if (metrics.cacheHitRate < 50) {
-            recommendations.push({
-                type: 'cache',
-                priority: 'medium',
-                message: 'Taxa de acerto do cache baixa. Otimizar estratégia de cache.',
-                suggestion: 'Revisar algoritmo de cache e aumentar tamanho do cache.'
-            });
-        }
-        
-        if (metrics.throughput < 10) {
-            recommendations.push({
-                type: 'performance',
-                priority: 'medium',
-                message: 'Throughput baixo detectado. Considere otimizações de performance.',
-                suggestion: 'Implementar processamento paralelo ou otimizar timeouts.'
-            });
-        }
-        
-        return recommendations;
+    if (metrics.efficiency < 70) {
+      recommendations.push({
+        type: 'efficiency',
+        priority: 'high',
+        message: 'Eficiência baixa detectada. Considere otimizar o sistema de pulo inteligente.',
+        suggestion: 'Revisar critérios de pulo e melhorar cache de localizações.'
+      });
     }
+        
+    if (metrics.errorRate > 10) {
+      recommendations.push({
+        type: 'errors',
+        priority: 'high',
+        message: 'Taxa de erro elevada. Implementar melhorias na recuperação de erros.',
+        suggestion: 'Aumentar timeouts e melhorar detecção de elementos.'
+      });
+    }
+        
+    if (metrics.cacheHitRate < 50) {
+      recommendations.push({
+        type: 'cache',
+        priority: 'medium',
+        message: 'Taxa de acerto do cache baixa. Otimizar estratégia de cache.',
+        suggestion: 'Revisar algoritmo de cache e aumentar tamanho do cache.'
+      });
+    }
+        
+    if (metrics.throughput < 10) {
+      recommendations.push({
+        type: 'performance',
+        priority: 'medium',
+        message: 'Throughput baixo detectado. Considere otimizações de performance.',
+        suggestion: 'Implementar processamento paralelo ou otimizar timeouts.'
+      });
+    }
+        
+    return recommendations;
+  }
     
-    /**
+  /**
      * Gera relatório HTML
      */
-    generateHtmlReport(data) {
-        return `
+  generateHtmlReport(data) {
+    return `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -651,97 +651,97 @@ class LocationEfficiencyReporter {
 </body>
 </html>
         `;
-    }
+  }
     
-    /**
+  /**
      * Gera relatório CSV
      */
-    generateCsvReport(data) {
-        const headers = [
-            'Data',
-            'Sessão ID',
-            'Duração (min)',
-            'Servidores Processados',
-            'Localizações Processadas',
-            'Localizações Puladas',
-            'Erros',
-            'Eficiência (%)',
-            'Throughput (loc/min)',
-            'Taxa de Erro (%)',
-            'Taxa de Cache (%)'
-        ];
+  generateCsvReport(data) {
+    const headers = [
+      'Data',
+      'Sessão ID',
+      'Duração (min)',
+      'Servidores Processados',
+      'Localizações Processadas',
+      'Localizações Puladas',
+      'Erros',
+      'Eficiência (%)',
+      'Throughput (loc/min)',
+      'Taxa de Erro (%)',
+      'Taxa de Cache (%)'
+    ];
         
-        const rows = data.recentSessions.map(session => [
-            new Date(session.timestamp).toLocaleDateString('pt-BR'),
-            session.sessionId,
-            (session.duration / 1000 / 60).toFixed(1),
-            session.servers.processed,
-            session.locations.processed,
-            session.locations.skipped,
-            session.errors.total,
-            session.performance.efficiency.toFixed(1),
-            session.performance.throughput.toFixed(1),
-            session.performance.errorRate.toFixed(1),
-            session.cache.hitRate.toFixed(1)
-        ]);
+    const rows = data.recentSessions.map(session => [
+      new Date(session.timestamp).toLocaleDateString('pt-BR'),
+      session.sessionId,
+      (session.duration / 1000 / 60).toFixed(1),
+      session.servers.processed,
+      session.locations.processed,
+      session.locations.skipped,
+      session.errors.total,
+      session.performance.efficiency.toFixed(1),
+      session.performance.throughput.toFixed(1),
+      session.performance.errorRate.toFixed(1),
+      session.cache.hitRate.toFixed(1)
+    ]);
         
-        return [headers, ...rows]
-            .map(row => row.map(cell => `"${cell}"`).join(','))
-            .join('\n');
-    }
+    return [headers, ...rows]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+  }
     
-    /**
+  /**
      * Carrega dados históricos
      */
-    async loadHistoricalData() {
+  async loadHistoricalData() {
+    try {
+      const files = await fs.readdir(this.config.reportDir);
+      const jsonFiles = files.filter(f => f.endsWith('.json') && f.includes('efficiency-report'));
+            
+      for (const file of jsonFiles.slice(-5)) { // Últimos 5 relatórios
         try {
-            const files = await fs.readdir(this.config.reportDir);
-            const jsonFiles = files.filter(f => f.endsWith('.json') && f.includes('efficiency-report'));
-            
-            for (const file of jsonFiles.slice(-5)) { // Últimos 5 relatórios
-                try {
-                    const data = await fs.readFile(path.join(this.config.reportDir, file), 'utf8');
-                    const reportData = JSON.parse(data);
+          const data = await fs.readFile(path.join(this.config.reportDir, file), 'utf8');
+          const reportData = JSON.parse(data);
                     
-                    if (reportData.recentSessions) {
-                        this.data.sessions.push(...reportData.recentSessions);
-                    }
-                } catch (error) {
-                    this.logger.warn(`Erro ao carregar arquivo ${file}:`, error);
-                }
-            }
-            
-            // Remover duplicatas e ordenar
-            this.data.sessions = this.data.sessions
-                .filter((session, index, self) => 
-                    index === self.findIndex(s => s.sessionId === session.sessionId)
-                )
-                .sort((a, b) => a.timestamp - b.timestamp);
-            
-            // Manter apenas dados recentes
-            const cutoffDate = Date.now() - (this.config.maxHistoryDays * 24 * 60 * 60 * 1000);
-            this.data.sessions = this.data.sessions.filter(s => s.timestamp > cutoffDate);
-            
-            this.logger.info(`Dados históricos carregados: ${this.data.sessions.length} sessões`);
-            
+          if (reportData.recentSessions) {
+            this.data.sessions.push(...reportData.recentSessions);
+          }
         } catch (error) {
-            if (error.code !== 'ENOENT') {
-                this.logger.warn('Erro ao carregar dados históricos:', error);
-            }
+          this.logger.warn(`Erro ao carregar arquivo ${file}:`, error);
         }
+      }
+            
+      // Remover duplicatas e ordenar
+      this.data.sessions = this.data.sessions
+        .filter((session, index, self) => 
+          index === self.findIndex(s => s.sessionId === session.sessionId)
+        )
+        .sort((a, b) => a.timestamp - b.timestamp);
+            
+      // Manter apenas dados recentes
+      const cutoffDate = Date.now() - (this.config.maxHistoryDays * 24 * 60 * 60 * 1000);
+      this.data.sessions = this.data.sessions.filter(s => s.timestamp > cutoffDate);
+            
+      this.logger.info(`Dados históricos carregados: ${this.data.sessions.length} sessões`);
+            
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        this.logger.warn('Erro ao carregar dados históricos:', error);
+      }
     }
+  }
     
-    /**
+  /**
      * Limpa recursos
      */
-    async cleanup() {
-        // Salvar dados finais se necessário
-        if (this.config.autoGenerateReports && this.data.sessions.length > 0) {
-            await this.generateReport();
-        }
-        
-        this.logger.info('Gerador de relatórios finalizado');
+  async cleanup() {
+    // Salvar dados finais se necessário
+    if (this.config.autoGenerateReports && this.data.sessions.length > 0) {
+      await this.generateReport();
     }
+        
+    this.logger.info('Gerador de relatórios finalizado');
+  }
 }
 
 module.exports = LocationEfficiencyReporter;
