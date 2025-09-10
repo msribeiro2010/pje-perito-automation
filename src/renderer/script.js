@@ -14,6 +14,15 @@ class PeritoApp {
     this.automationStartTime = null;
     this.automationTimer = null;
     
+    // Visual status tracking
+    this.currentDetailedStatus = {
+      servidor: '',
+      orgaoJulgador: '',
+      startTime: null,
+      currentStep: '',
+      isProcessing: false
+    };
+    
     // Sistema de memória/histórico
     this.cpfHistory = [];
     this.ojHistory = [];
@@ -50,10 +59,11 @@ class PeritoApp {
       this.addStatusMessage(data.type, data.message);
       this.updateLoadingProgress(data);
     });
-    
+
     // Listen for automation progress updates
     window.electronAPI.onAutomationProgress((data) => {
       this.updateLoadingProgress(data);
+      this.updateDetailedStatus(data);
     });
     
     // Listen for automation reports
@@ -1044,6 +1054,9 @@ class PeritoApp {
     
     // Iniciar timer
     this.startAutomationTimer();
+    
+    // Reset detailed status for new automation
+    this.resetDetailedStatus();
         
     this.showLoading('Iniciando automação...', 'Preparando sistema e abrindo navegador');
     this.clearStatusLog();
@@ -1082,6 +1095,9 @@ class PeritoApp {
       stopButton.disabled = true;
       this.updateAutomationButton();
       this.stopAutomationTimer();
+      
+      // Reset detailed status when automation stops
+      this.resetDetailedStatus();
     });
   }
 
@@ -1106,6 +1122,9 @@ class PeritoApp {
     this.isAutomationRunning = true;
     const startButton = document.getElementById('start-servidor-automation');
     const stopButton = document.getElementById('stop-servidor-automation');
+    
+    // Reset detailed status for new automation
+    this.resetDetailedStatus();
     startButton.disabled = true;
     startButton.classList.add('loading');
     stopButton.disabled = false;
@@ -1188,6 +1207,10 @@ class PeritoApp {
     this.isAutomationRunning = true;
     const startButton = document.getElementById('start-servidor-automation');
     const stopButton = document.getElementById('stop-servidor-automation');
+    
+    // Reset detailed status for new automation
+    this.resetDetailedStatus();
+    
     startButton.disabled = true;
     startButton.classList.add('loading');
     stopButton.disabled = false;
@@ -1278,6 +1301,9 @@ class PeritoApp {
       const stopButton = document.getElementById('stop-servidor-automation');
       if (startButton) startButton.disabled = false;
       if (stopButton) stopButton.disabled = true;
+      
+      // Reset detailed status when automation stops
+      this.resetDetailedStatus();
     }
   }
 
@@ -1440,6 +1466,156 @@ class PeritoApp {
 
   clearStatusLog() {
     document.getElementById('status-log').innerHTML = '';
+  }
+
+  // Detailed visual status management
+  updateDetailedStatus(data) {
+    const detailedStatus = document.getElementById('detailed-status');
+    const currentServerEl = document.getElementById('current-server');
+    const currentOjEl = document.getElementById('current-oj');
+    const currentStatusEl = document.getElementById('current-status');
+
+    if (!detailedStatus) return;
+
+    // Update server name
+    if (data.servidor && currentServerEl) {
+      this.currentDetailedStatus.servidor = data.servidor;
+      currentServerEl.querySelector('.status-text').textContent = data.servidor;
+      currentServerEl.classList.add('active');
+    }
+
+    // Update OJ being processed
+    if (data.orgaoJulgador && currentOjEl) {
+      this.currentDetailedStatus.orgaoJulgador = data.orgaoJulgador;
+      currentOjEl.querySelector('.status-text').textContent = data.orgaoJulgador;
+      currentOjEl.classList.add('active');
+    }
+
+    // Update processing state
+    if (data.type && currentStatusEl) {
+      const statusIcon = currentStatusEl.querySelector('.status-icon');
+      const statusText = currentStatusEl.querySelector('.status-text');
+      
+      // Reset all state classes
+      currentStatusEl.classList.remove('success', 'error', 'processing', 'waiting');
+      
+      switch (data.type) {
+        case 'info':
+          if (data.message.includes('Processando') || data.message.includes('Vinculando')) {
+            this.startDetailedTimer();
+            currentStatusEl.classList.add('processing');
+            statusIcon.textContent = '🔄';
+            statusText.textContent = 'Processando...';
+            this.currentDetailedStatus.isProcessing = true;
+          }
+          break;
+        case 'success':
+          this.stopDetailedTimer();
+          currentStatusEl.classList.add('success');
+          statusIcon.textContent = '✅';
+          statusText.textContent = 'Concluído com sucesso';
+          this.currentDetailedStatus.isProcessing = false;
+          break;
+        case 'error':
+          this.stopDetailedTimer();
+          currentStatusEl.classList.add('error');
+          statusIcon.textContent = '❌';
+          statusText.textContent = 'Erro no processamento';
+          this.currentDetailedStatus.isProcessing = false;
+          break;
+        case 'warning':
+          currentStatusEl.classList.add('waiting');
+          statusIcon.textContent = '⚠️';
+          statusText.textContent = 'Aguardando...';
+          break;
+        default:
+          currentStatusEl.classList.add('waiting');
+          statusIcon.textContent = '⏳';
+          statusText.textContent = 'Aguardando início...';
+      }
+    }
+
+    // Show detailed status when automation is running
+    if (this.isAutomationRunning && (data.servidor || data.orgaoJulgador)) {
+      detailedStatus.style.display = 'grid';
+    }
+  }
+
+  startDetailedTimer() {
+    if (!this.currentDetailedStatus.startTime) {
+      this.currentDetailedStatus.startTime = Date.now();
+    }
+    
+    const timerEl = document.getElementById('processing-timer');
+    if (!timerEl) return;
+    
+    timerEl.classList.add('active');
+    
+    // Update timer every second
+    if (this.detailedTimer) {
+      clearInterval(this.detailedTimer);
+    }
+    
+    this.detailedTimer = setInterval(() => {
+      if (this.currentDetailedStatus.startTime) {
+        const elapsed = Math.floor((Date.now() - this.currentDetailedStatus.startTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        const timeText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        const timerTextEl = timerEl.querySelector('.status-text');
+        if (timerTextEl) {
+          timerTextEl.textContent = timeText;
+        }
+      }
+    }, 1000);
+  }
+
+  stopDetailedTimer() {
+    if (this.detailedTimer) {
+      clearInterval(this.detailedTimer);
+      this.detailedTimer = null;
+    }
+    
+    const timerEl = document.getElementById('processing-timer');
+    if (timerEl) {
+      timerEl.classList.remove('active');
+    }
+    
+    this.currentDetailedStatus.startTime = null;
+  }
+
+  resetDetailedStatus() {
+    const detailedStatus = document.getElementById('detailed-status');
+    if (!detailedStatus) return;
+
+    // Hide detailed status
+    detailedStatus.style.display = 'none';
+    
+    // Reset all elements
+    const elements = detailedStatus.querySelectorAll('.status-section');
+    elements.forEach(el => {
+      el.classList.remove('active', 'success', 'error', 'processing', 'waiting');
+      const statusText = el.querySelector('.status-text');
+      if (statusText) {
+        statusText.textContent = el.id === 'processing-timer' ? '00:00' : 'Aguardando...';
+      }
+      const statusIcon = el.querySelector('.status-icon');
+      if (statusIcon) {
+        statusIcon.textContent = el.id === 'processing-timer' ? '⏱️' : '⏳';
+      }
+    });
+
+    // Reset state
+    this.currentDetailedStatus = {
+      servidor: '',
+      orgaoJulgador: '',
+      startTime: null,
+      currentStep: '',
+      isProcessing: false
+    };
+
+    this.stopDetailedTimer();
   }
 
   async loadConfig() {

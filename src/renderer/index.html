@@ -319,6 +319,43 @@
 
             <div class="status-panel">
                 <h3>Status da Automação:</h3>
+                
+                <!-- Status visual detalhado -->
+                <div id="detailed-status" class="detailed-status-container">
+                    <div id="current-server-status" class="status-section">
+                        <div class="status-icon">👤</div>
+                        <div class="status-content">
+                            <div class="status-label">Servidor Atual:</div>
+                            <div id="current-server-name" class="status-value">Aguardando início...</div>
+                        </div>
+                    </div>
+                    
+                    <div id="current-oj-status" class="status-section">
+                        <div class="status-icon">🏛️</div>
+                        <div class="status-content">
+                            <div class="status-label">OJ sendo processado:</div>
+                            <div id="current-oj-name" class="status-value">-</div>
+                        </div>
+                    </div>
+                    
+                    <div id="processing-time-status" class="status-section">
+                        <div class="status-icon timer-icon">⏱️</div>
+                        <div class="status-content">
+                            <div class="status-label">Tempo de processamento:</div>
+                            <div id="processing-time" class="status-value timer">00:00:00</div>
+                        </div>
+                    </div>
+                    
+                    <div id="current-result-status" class="status-section">
+                        <div id="result-icon" class="status-icon">⏳</div>
+                        <div class="status-content">
+                            <div class="status-label">Status atual:</div>
+                            <div id="current-result" class="status-value">Aguardando...</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Log de status tradicional (mantido para compatibilidade) -->
                 <div id="status-log" class="status-log">
                     <p class="status-item info">Aguardando início da automação...</p>
                 </div>
