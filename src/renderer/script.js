@@ -2190,6 +2190,28 @@ class PeritoApp {
       });
     });
 
+    // Event listener para mudança do número de instâncias paralelas
+    const maxInstancesSelect = document.getElementById('max-instances');
+    const configHelp = parallelConfig.querySelector('.config-help');
+    
+    maxInstancesSelect.addEventListener('change', (e) => {
+      const instances = parseInt(e.target.value);
+      const originalHelp = '💡 <strong>Recomendação:</strong> 2-4 instâncias são ideais para a maioria dos casos. Valores altos podem sobrecarregar o sistema e causar erros.';
+      
+      if (instances >= 20) {
+        configHelp.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #c07b73;"></i> 
+          <strong style="color: #c07b73;">ATENÇÃO:</strong> ${instances} instâncias podem causar sobrecarga e erros. Use com cautela!`;
+        configHelp.style.color = '#c07b73';
+      } else if (instances >= 10) {
+        configHelp.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #d4a574;"></i> 
+          <strong style="color: #d4a574;">AVISO:</strong> ${instances} instâncias usam muitos recursos. Monitore o desempenho.`;
+        configHelp.style.color = '#d4a574';
+      } else {
+        configHelp.innerHTML = originalHelp;
+        configHelp.style.color = '';
+      }
+    });
+
     // Inicializar estado baseado na seleção atual
     const selectedMode = document.querySelector('input[name="automation-mode"]:checked');
     if (selectedMode && selectedMode.value === 'parallel') {

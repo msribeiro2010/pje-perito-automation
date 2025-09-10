@@ -11,13 +11,22 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const ServidorAutomationV2 = require('./servidor-automation-v2');
 
 class ParallelServerManager {
   constructor(maxInstances = 2, eventEmitter = null) {
+    // Verificar recursos do sistema e ajustar limite se necessário
+    const recommendedMax = this.getRecommendedMaxInstances();
+    
     // Validar parâmetros de entrada
-    if (!Number.isInteger(maxInstances) || maxInstances < 1 || maxInstances > 10) {
-      throw new Error(`maxInstances deve ser um número inteiro entre 1 e 10, recebido: ${maxInstances}`);
+    if (!Number.isInteger(maxInstances) || maxInstances < 1 || maxInstances > 30) {
+      throw new Error(`maxInstances deve ser um número inteiro entre 1 e 30, recebido: ${maxInstances}`);
+    }
+    
+    // Avisar se o usuário está tentando usar mais instâncias do que o recomendado
+    if (maxInstances > recommendedMax) {
+      console.warn(`⚠️ AVISO: ${maxInstances} instâncias podem sobrecarregar o sistema. Recomendado: ${recommendedMax} instâncias baseado nos recursos disponíveis.`);
     }
     
     this.maxInstances = maxInstances;
@@ -34,6 +43,96 @@ class ParallelServerManager {
     this.initializationErrors = [];
     
     console.log(`🔧 ParallelServerManager criado com ${maxInstances} instâncias máximas`);
+  }
+
+  /**
+   * Calcula o número máximo recomendado de instâncias baseado nos recursos do sistema
+   */
+  getRecommendedMaxInstances() {
+    try {
+      const totalMemoryGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+      const cpuCores = os.cpus().length;
+      const freeMemoryGB = Math.round(os.freemem() / (1024 * 1024 * 1024));
+      
+      // Cada instância do browser usa aproximadamente 200-500MB de RAM
+      // Vamos assumir 300MB por instância como média
+      const memoryBasedLimit = Math.floor(freeMemoryGB * 0.7 / 0.3); // 70% da memória livre
+      
+      // Baseado no número de CPUs (2 instâncias por core é razoável)
+      const cpuBasedLimit = Math.floor(cpuCores * 1.5);
+      
+      // Usar o menor dos dois limites para segurança
+      const recommendedMax = Math.min(memoryBasedLimit, cpuBasedLimit, 10);
+      
+      console.log(`💾 Sistema: ${totalMemoryGB}GB RAM total, ${freeMemoryGB}GB livres, ${cpuCores} CPUs`);
+      console.log(`📊 Limite recomendado: ${recommendedMax} instâncias (Memória: ${memoryBasedLimit}, CPU: ${cpuBasedLimit})`);
+      
+      // Garantir um mínimo de 2 instâncias
+      return Math.max(2, recommendedMax);
+      
+    } catch (error) {
+      console.warn('⚠️ Erro ao calcular recursos do sistema, usando limite padrão de 4 instâncias');
+      return 4;
+    }
+  }
+
+  /**
+   * Gera argumentos otimizados do browser baseado no número total de instâncias
+   */
+  getOptimizedBrowserArgs(instanceId) {
+    const baseArgs = [
+      `--window-position=${instanceId * 420},${instanceId * 120}`,
+      '--disable-web-security',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-extensions',
+      '--disable-plugins'
+    ];
+
+    // Para muitas instâncias, usar configurações mais restritivas
+    if (this.maxInstances >= 10) {
+      baseArgs.push(
+        '--disable-gpu',
+        '--disable-features=VizDisplayCompositor,TranslateUI',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-ipc-flooding-protection',
+        '--memory-pressure-off',
+        '--max_old_space_size=2048', // Reduzir memória para muitas instâncias
+        '--disable-sync',
+        '--disable-default-apps',
+        '--disable-background-networking'
+      );
+    } else if (this.maxInstances >= 5) {
+      baseArgs.push(
+        '--disable-gpu',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--max_old_space_size=3072'
+      );
+    } else {
+      baseArgs.push(
+        '--max_old_space_size=4096'
+      );
+    }
+
+    return baseArgs;
+  }
+
+  /**
+   * Define viewport otimizado baseado no número de instâncias
+   */
+  getOptimizedViewport() {
+    if (this.maxInstances >= 15) {
+      // Para muitas instâncias, usar janelas menores
+      return { width: 800, height: 600 };
+    } else if (this.maxInstances >= 8) {
+      return { width: 1000, height: 700 };
+    } else {
+      return { width: 1200, height: 800 };
+    }
   }
 
   /**
@@ -133,25 +232,15 @@ class ParallelServerManager {
       }
       
       console.log(`🌐 Iniciando contexto do navegador para instância ${id}...`);
+      
+      // Configurações otimizadas baseadas no número de instâncias
+      const browserArgs = this.getOptimizedBrowserArgs(id);
+      const viewportSize = this.getOptimizedViewport();
+      
       const context = await chromium.launchPersistentContext(userDataDir, {
         headless: false,
-        args: [
-          `--window-position=${id * 420},${id * 120}`,
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-ipc-flooding-protection',
-          '--max_old_space_size=4096',
-          '--disable-extensions',
-          '--disable-plugins'
-        ],
-        viewport: { width: 1200, height: 800 },
+        args: browserArgs,
+        viewport: viewportSize,
         timeout: 60000 // Timeout de 60 segundos para criação do contexto
       });
       
