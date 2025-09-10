@@ -29,6 +29,7 @@
     "setup": "npm install && npm run create-shortcut",
     "prepare-icons": "node generate-modern-icons.js",
     "update-icons": "node generate-modern-icons.js && npm run create-shortcut",
+    "set-desktop-icon": "node set-desktop-icon.js",
     "clean": "rimraf dist/ && echo 'Build directory cleaned'",
     "rebuild": "npm run clean && npm run build",
     "build:cross-platform": "node build-cross-platform.js",
