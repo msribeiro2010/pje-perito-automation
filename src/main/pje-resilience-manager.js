@@ -148,7 +148,13 @@ class PJEResilienceManager {
       'ECONNRESET',
       'ECONNREFUSED',
       'ETIMEDOUT',
-      'socket hang up'
+      'socket hang up',
+      'wrong_secret',
+      'GCM',
+      'GPU process',
+      'Navigation timeout',
+      'Protocol error',
+      'Connection closed'
     ];
     
     return serverErrorPatterns.some(pattern => 
@@ -162,7 +168,11 @@ class PJEResilienceManager {
       'page.goto: Target closed',
       'page.click: Target closed',
       'page.waitForSelector: Target closed',
-      'Browser has been closed'
+      'Browser has been closed',
+      'Session closed',
+      'Connection terminated',
+      'Context disposed',
+      'Page crashed'
     ];
     
     return pageClosedPatterns.some(pattern => 

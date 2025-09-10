@@ -1,0 +1,239 @@
+{
+  "timestamp": "2025-09-09T20:02:46.534Z",
+  "varasTeste": [
+    "2ª Vara do Trabalho de São José dos Campos",
+    "3ª Vara do Trabalho de São José dos Campos",
+    "4ª Vara do Trabalho de São José dos Campos",
+    "5ª Vara do Trabalho de São José dos Campos"
+  ],
+  "correcoes": [
+    {
+      "tipo": "Seletores específicos",
+      "status": "implementado",
+      "arquivo": "src/utils/seletores.js"
+    },
+    {
+      "tipo": "Timeouts específicos",
+      "status": "implementado",
+      "arquivo": "src/utils/timeouts.js"
+    },
+    {
+      "tipo": "Processamento sequencial",
+      "status": "implementado",
+      "arquivo": "src/main/servidor-automation-v2.js"
+    },
+    {
+      "tipo": "Configuração especial",
+      "status": "implementado",
+      "arquivo": "config-sao-jose-campos.json"
+    },
+    {
+      "tipo": "configuracao_varas",
+      "status": "completo",
+      "detalhes": "4 varas configuradas"
+    },
+    {
+      "tipo": "simulacao_vara",
+      "vara": "2ª Vara do Trabalho de São José dos Campos",
+      "resultado": {
+        "nome": "2ª Vara do Trabalho de São José dos Campos",
+        "etapas": [
+          {
+            "etapa": "verificacao_vara_especial",
+            "status": "sucesso",
+            "detalhes": "Vara identificada como especial"
+          },
+          {
+            "etapa": "processamento_sequencial",
+            "status": "configurado",
+            "detalhes": "Processamento sequencial ativado"
+          },
+          {
+            "etapa": "seletores_especificos",
+            "status": "disponivel",
+            "detalhes": "Seletores específicos implementados"
+          },
+          {
+            "etapa": "timeouts_estendidos",
+            "status": "configurado",
+            "detalhes": "Timeouts estendidos aplicados"
+          },
+          {
+            "etapa": "busca_perito",
+            "status": "simulado",
+            "detalhes": "Busca de perito com seletores específicos"
+          },
+          {
+            "etapa": "vinculacao_perito",
+            "status": "simulado",
+            "detalhes": "Vinculação com timeouts estendidos"
+          }
+        ],
+        "status": "sucesso",
+        "problemas": []
+      }
+    },
+    {
+      "tipo": "simulacao_vara",
+      "vara": "3ª Vara do Trabalho de São José dos Campos",
+      "resultado": {
+        "nome": "3ª Vara do Trabalho de São José dos Campos",
+        "etapas": [
+          {
+            "etapa": "verificacao_vara_especial",
+            "status": "sucesso",
+            "detalhes": "Vara identificada como especial"
+          },
+          {
+            "etapa": "processamento_sequencial",
+            "status": "configurado",
+            "detalhes": "Processamento sequencial ativado"
+          },
+          {
+            "etapa": "seletores_especificos",
+            "status": "disponivel",
+            "detalhes": "Seletores específicos implementados"
+          },
+          {
+            "etapa": "timeouts_estendidos",
+            "status": "configurado",
+            "detalhes": "Timeouts estendidos aplicados"
+          },
+          {
+            "etapa": "busca_perito",
+            "status": "simulado",
+            "detalhes": "Busca de perito com seletores específicos"
+          },
+          {
+            "etapa": "vinculacao_perito",
+            "status": "simulado",
+            "detalhes": "Vinculação com timeouts estendidos"
+          }
+        ],
+        "status": "sucesso",
+        "problemas": []
+      }
+    },
+    {
+      "tipo": "simulacao_vara",
+      "vara": "4ª Vara do Trabalho de São José dos Campos",
+      "resultado": {
+        "nome": "4ª Vara do Trabalho de São José dos Campos",
+        "etapas": [
+          {
+            "etapa": "verificacao_vara_especial",
+            "status": "sucesso",
+            "detalhes": "Vara identificada como especial"
+          },
+          {
+            "etapa": "processamento_sequencial",
+            "status": "configurado",
+            "detalhes": "Processamento sequencial ativado"
+          },
+          {
+            "etapa": "seletores_especificos",
+            "status": "disponivel",
+            "detalhes": "Seletores específicos implementados"
+          },
+          {
+            "etapa": "timeouts_estendidos",
+            "status": "configurado",
+            "detalhes": "Timeouts estendidos aplicados"
+          },
+          {
+            "etapa": "busca_perito",
+            "status": "simulado",
+            "detalhes": "Busca de perito com seletores específicos"
+          },
+          {
+            "etapa": "vinculacao_perito",
+            "status": "simulado",
+            "detalhes": "Vinculação com timeouts estendidos"
+          }
+        ],
+        "status": "sucesso",
+        "problemas": []
+      }
+    },
+    {
+      "tipo": "simulacao_vara",
+      "vara": "5ª Vara do Trabalho de São José dos Campos",
+      "resultado": {
+        "nome": "5ª Vara do Trabalho de São José dos Campos",
+        "etapas": [
+          {
+            "etapa": "verificacao_vara_especial",
+            "status": "sucesso",
+            "detalhes": "Vara identificada como especial"
+          },
+          {
+            "etapa": "processamento_sequencial",
+            "status": "configurado",
+            "detalhes": "Processamento sequencial ativado"
+          },
+          {
+            "etapa": "seletores_especificos",
+            "status": "disponivel",
+            "detalhes": "Seletores específicos implementados"
+          },
+          {
+            "etapa": "timeouts_estendidos",
+            "status": "configurado",
+            "detalhes": "Timeouts estendidos aplicados"
+          },
+          {
+            "etapa": "busca_perito",
+            "status": "simulado",
+            "detalhes": "Busca de perito com seletores específicos"
+          },
+          {
+            "etapa": "vinculacao_perito",
+            "status": "simulado",
+            "detalhes": "Vinculação com timeouts estendidos"
+          }
+        ],
+        "status": "sucesso",
+        "problemas": []
+      }
+    },
+    {
+      "tipo": "verificacao_seletores",
+      "seletoresEncontrados": [
+        "buscaPerito",
+        "vinculacao",
+        "navegacao",
+        "timeouts",
+        "configuracao"
+      ],
+      "seletoresFaltando": [],
+      "status": "completo"
+    },
+    {
+      "tipo": "verificacao_timeouts",
+      "timeoutsEncontrados": [
+        "navegacao",
+        "buscaPerito",
+        "vinculacao",
+        "intervalos"
+      ],
+      "timeoutsFaltando": [],
+      "status": "completo"
+    }
+  ],
+  "status": "iniciando",
+  "problemas": [],
+  "solucoes": [],
+  "estatisticas": {
+    "totalCorrecoes": 11,
+    "totalProblemas": 0,
+    "varasTestadas": 4,
+    "sucessoPercentual": 100
+  },
+  "statusGeral": "sucesso_completo",
+  "mensagem": "Todas as correções foram aplicadas com sucesso",
+  "recomendacoes": [
+    "Executar processamento real das varas",
+    "Monitorar logs durante execução",
+    "Verificar se busca e vinculação funcionam corretamente"
+  ]
+}

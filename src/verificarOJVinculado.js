@@ -21,7 +21,9 @@ async function verificacaoConservadoraOJ(page, nomeOJ) {
     
     for (const seletor of seletoresTabela) {
       try {
+        console.log(`🔎 Testando seletor: ${seletor}`);
         const linhas = await page.locator(seletor).all();
+        console.log(`📊 Encontradas ${linhas.length} linhas com seletor "${seletor}"`);
         
         for (const linha of linhas) {
           try {
@@ -219,5 +221,6 @@ function validarOrgaoJulgador(texto) {
 
 module.exports = {
   verificarOJJaVinculado,
-  listarOJsVinculados
+  listarOJsVinculados,
+  verificacaoConservadoraOJ
 };

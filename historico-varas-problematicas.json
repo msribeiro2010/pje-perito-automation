@@ -1,0 +1,66 @@
+{
+  "Vara do Trabalho de Hortolândia": [
+    {
+      "timestamp": "2025-09-09T21:27:00.375Z",
+      "categoria": "hortolandia",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-09T21:34:03.882Z",
+      "categoria": "hortolandia",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Sumaré": [
+    {
+      "timestamp": "2025-09-09T21:27:00.512Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-09T21:34:03.983Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Santa Bárbara D'Oeste": [
+    {
+      "timestamp": "2025-09-09T21:27:00.630Z",
+      "categoria": "santa_barbara",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-09T21:34:04.079Z",
+      "categoria": "santa_barbara",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de São João da Boa Vista": [
+    {
+      "timestamp": "2025-09-09T21:27:00.738Z",
+      "categoria": "sao_joao_boa_vista",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-09T21:34:04.176Z",
+      "categoria": "sao_joao_boa_vista",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ]
+}

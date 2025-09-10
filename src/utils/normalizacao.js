@@ -22,7 +22,7 @@ class NormalizadorTexto {
     'trabalhista', 'eleitoral', 'militar', 'especial', 'especializada',
     'civel', 'fazenda', 'publica', 'pública', 'familia', 'família',
     'sucessoes', 'sucessões', 'orfaos', 'órfãos', 'execucao', 'execução',
-    'execucoes', 'execuções', 'falencia', 'falência', 'recuperacao',
+    'execucoes', 'execuções', 'divisao', 'divisão', 'divex', 'falencia', 'falência', 'recuperacao',
     'recuperação', 'empresarial', 'consumidor', 'ambiental', 'agraria',
     'agrária', 'previdenciaria', 'previdenciária', 'acidente', 'trabalho',
     'violencia', 'violência', 'domestica', 'doméstica', 'familiar',
@@ -100,7 +100,13 @@ class NormalizadorTexto {
     'pb': 'paraiba',
     'al': 'alagoas',
     'se': 'sergipe',
-    'es': 'espirito santo'
+    'es': 'espirito santo',
+    
+    // Abreviações específicas para DIVEX
+    'divex': 'divisao execucao',
+    'div': 'divisao',
+    'exec': 'execucao',
+    'exe': 'execucao'
   };
 
   /**

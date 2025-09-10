@@ -1,0 +1,40 @@
+{
+  "problema": "Varas de Limeira não conseguem buscar e vincular",
+  "descricao": "Varas 1ª e 2ª do Trabalho de Limeira com problemas de busca e vinculação",
+  "varasAfetadas": [
+    "1ª Vara do Trabalho de Limeira",
+    "2ª Vara do Trabalho de Limeira"
+  ],
+  "solucao": {
+    "funcoesBusca": "funcoes-busca-limeira.js",
+    "funcoesVinculacao": "funcoes-vinculacao-limeira.js",
+    "seletoresEspecificos": "LIMEIRA_BUSCA_VINCULACAO",
+    "timeouts": {
+      "navegacao": 25000,
+      "busca": 15000,
+      "vinculacao": 12000,
+      "aguardarElemento": 10000,
+      "aguardarResultados": 8000,
+      "tentativasMaximas": 4
+    }
+  },
+  "estrategias": {
+    "busca": {
+      "tentativasMaximas": 4,
+      "timeoutPorTentativa": 15000,
+      "fallbackEnter": true,
+      "aguardarResultados": true
+    },
+    "vinculacao": {
+      "tentativasMaximas": 4,
+      "timeoutPorTentativa": 12000,
+      "cliqueDireto": true,
+      "confirmarSucesso": true
+    }
+  },
+  "monitoramento": {
+    "logDetalhado": true,
+    "salvarEvidencias": true,
+    "relatorioPorVara": true
+  }
+}

@@ -9,16 +9,31 @@ const { login } = require('./login.js');
 const { navegarParaCadastro } = require('./navigate.js');
 const { vincularOJ } = require('./vincularOJ.js');
 const { verificarOJJaVinculado, listarOJsVinculados } = require('./verificarOJVinculado.js');
+const { SmartOJCache } = require('./utils/smart-oj-cache.js');
+const { ServidorSkipDetector } = require('./utils/servidor-skip-detector.js');
+const { VerificacaoDuplaOJ } = require('./utils/verificacao-dupla-oj.js');
+const SmartLocationSkipper = require('./utils/smart-location-skipper');
+const LocationProgressTracker = require('./utils/location-progress-tracker');
+const LocationErrorRecovery = require('./utils/location-error-recovery');
+const LocationEfficiencyReporter = require('./utils/location-efficiency-reporter');
 const { loadConfig } = require('./util.js');
 const { Logger } = require('./utils/index.js');
 // const ServidorAutomation = require('./main/servidor-automation'); // Removido V1
 const ServidorAutomationV2 = require('./main/servidor-automation-v2');
+const { resolverProblemaVarasLimeira } = require('../solucao-limeira-completa.js');
 
 // __dirname is already available in CommonJS
 
 let mainWindow;
 let activeBrowser = null;
 let automationInProgress = false;
+let smartOJCache = new SmartOJCache();
+let servidorSkipDetector = new ServidorSkipDetector();
+let verificacaoDuplaOJ = new VerificacaoDuplaOJ();
+let smartLocationSkipper = new SmartLocationSkipper();
+let locationProgressTracker = new LocationProgressTracker();
+let locationErrorRecovery = new LocationErrorRecovery();
+let locationEfficiencyReporter = new LocationEfficiencyReporter();
 // let servidorAutomation = null; // Removido V1
 let servidorAutomationV2 = null;
 function sendStatus(type, message, progress = null, subtitle = null, ojData = null) {
@@ -54,8 +69,17 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
 
-  if (process.argv.includes('--dev')) {
+  // Só abre DevTools se explicitamente solicitado via argumento --dev
+  // Evita abertura automática em modo de produção
+  const shouldOpenDevTools = process.argv.includes('--dev') || 
+                            process.argv.includes('--devtools') ||
+                            process.env.ELECTRON_DEV_TOOLS === 'true';
+  
+  if (shouldOpenDevTools) {
+    console.log('Abrindo DevTools (modo desenvolvimento)');
     mainWindow.webContents.openDevTools();
+  } else {
+    console.log('Aplicação iniciada em modo produção (DevTools desabilitado)');
   }
 }
 
@@ -168,6 +192,13 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
     page.setDefaultTimeout(10000);
     page.setDefaultNavigationTimeout(8000);
     
+    // Inicializar componentes do sistema de scanner de localizações
+    sendStatus('info', 'Inicializando sistema de scanner...', currentStep, 'Configurando componentes');
+    await smartLocationSkipper.initialize();
+    // locationProgressTracker não possui método initialize - já está pronto para uso
+    await locationErrorRecovery.initialize();
+    await locationEfficiencyReporter.initialize();
+    
     // Capturar logs do console para debug
     page.on('console', msg => {
       const logMessage = msg.text();
@@ -239,15 +270,91 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
         
         sendStatus('success', `Navegação para ${perito.nome} concluída`, currentStep, 'Perito localizado no sistema');
         
-        // Listar OJs já vinculados antes de começar
-        sendStatus('info', 'Verificando OJs já vinculados...', currentStep, 'Verificando vínculos existentes');
-        const ojsJaVinculados = await listarOJsVinculados(page);
+        // 🚀 VERIFICAÇÃO INTELIGENTE EM LOTE - Nova funcionalidade!
+        sendStatus('info', 'Iniciando verificação inteligente de OJs...', currentStep, 'Analisando vínculos existentes');
         
-        if (ojsJaVinculados.length > 0) {
-          sendStatus('info', `OJs já vinculados encontrados: ${ojsJaVinculados.length}`, currentStep, 'Vínculos existentes identificados');
+        const verificacaoEmLote = await smartOJCache.verificarOJsEmLote(
+          page, 
+          perito.ojs,
+          (mensagem, progresso) => {
+            sendStatus('info', mensagem, currentStep, `Verificação prévia (${progresso}%)`, {
+              progress: progresso
+            });
+          }
+        );
+        
+        // 🎯 ANÁLISE INTELIGENTE DE SERVIDOR - Usar resultados da verificação em lote
+        const { estatisticas } = verificacaoEmLote;
+        
+        // Verificar se TODOS os OJs já estão vinculados
+        if (estatisticas.paraVincular === 0 && estatisticas.totalVerificados > 0) {
+          sendStatus('success', 
+            `⏭️ Todos os OJs do perito ${perito.nome} já estão cadastrados no servidor!`, 
+            currentStep, 
+            `${estatisticas.jaVinculados} OJs já vinculados - pulando para próximo perito`
+          );
+          
+          // Atualizar estatísticas do relatório
+          relatorio.totalOJs += perito.ojs.length;
+          relatorio.ojsJaVinculados += estatisticas.jaVinculados;
+          resultadoPerito.ojsJaVinculados = estatisticas.jaVinculados;
+          resultadoPerito.ojsProcessados = perito.ojs.length;
+          
+          relatorio.detalhes.push(resultadoPerito);
+          relatorio.peritosProcessados++;
+          
+          console.log(`🎯 PERITO COMPLETAMENTE PROCESSADO: ${perito.nome}`);
+          console.log(`   - Todos os ${estatisticas.jaVinculados} OJs já estão vinculados`);
+          console.log(`   - Economia de tempo: ${estatisticas.jaVinculados * 5}s`);
+          console.log(`   - Não há necessidade de processar este perito`);
+          
+          continue; // Pular para o próximo perito
         }
         
+        // Verificar se a maioria dos OJs já está vinculada (95% ou mais)
+        const percentualVinculado = estatisticas.jaVinculados / estatisticas.totalVerificados;
+        if (percentualVinculado >= 0.95 && estatisticas.totalVerificados >= 3) {
+          sendStatus('warning', 
+            `⏭️ Pulando perito ${perito.nome}: ${(percentualVinculado * 100).toFixed(1)}% dos OJs já vinculados`, 
+            currentStep, 
+            `Apenas ${estatisticas.paraVincular} OJs restantes - economia significativa`
+          );
+          
+          // Atualizar estatísticas do relatório
+          relatorio.totalOJs += perito.ojs.length;
+          relatorio.ojsJaVinculados += estatisticas.jaVinculados;
+          resultadoPerito.ojsJaVinculados = estatisticas.jaVinculados;
+          resultadoPerito.ojsProcessados = perito.ojs.length;
+          
+          relatorio.detalhes.push(resultadoPerito);
+          relatorio.peritosProcessados++;
+          
+          console.log(`🎯 PERITO QUASE COMPLETO - PULADO: ${perito.nome}`);
+          console.log(`   - ${estatisticas.jaVinculados} OJs já vinculados de ${estatisticas.totalVerificados}`);
+          console.log(`   - Apenas ${estatisticas.paraVincular} OJs restantes`);
+          console.log(`   - Economia estimada: ${estatisticas.jaVinculados * 5}s`);
+          
+          continue; // Pular para o próximo perito
+        }
+        
+        // Relatório da verificação em lote
+        const { ojsJaVinculados: ojsJaVinculadosLote, ojsParaVincular } = verificacaoEmLote;
+        
+        sendStatus('success', 
+          `Verificação concluída: ${estatisticas.jaVinculados} já vinculados, ${estatisticas.paraVincular} para vincular`, 
+          currentStep, 
+          `Economia de ${Math.round(estatisticas.jaVinculados * 5)}s de processamento`
+        );
+        
+        console.log('🎯 RESULTADO DA VERIFICAÇÃO EM LOTE:');
+        console.log(`   - Total verificados: ${estatisticas.totalVerificados}`);
+        console.log(`   - Já vinculados: ${estatisticas.jaVinculados} (pularão processamento)`);
+        console.log(`   - Para vincular: ${estatisticas.paraVincular}`);
+        console.log(`   - Tempo de verificação: ${estatisticas.tempoProcessamento}ms`);
+        console.log(`   - Economia estimada: ${estatisticas.jaVinculados * 5}s`);
+        
         relatorio.totalOJs += perito.ojs.length;
+        relatorio.ojsJaVinculados += estatisticas.jaVinculados;
         
         for (let j = 0; j < perito.ojs.length; j++) {
           const oj = perito.ojs[j];
@@ -255,32 +362,34 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
           ojsProcessadasTotal++;
           
           try {
+            // 🎯 VERIFICAÇÃO DUPLA INTELIGENTE - Usar cache e verificação adicional
+            const verificacaoResult = await verificacaoDuplaOJ.verificarOJDupla(
+              page, oj, smartOJCache
+            );
+            
+            if (verificacaoResult.jaVinculado) {
+              const metodo = verificacaoResult.metodoDeteccao;
+              const confiabilidade = Math.round(verificacaoResult.confiabilidade * 100);
+              
+              sendStatus('success', `⚡ OJ ${oj} já vinculado (${metodo}, ${confiabilidade}%) - pulando processamento`, currentStep++, `Verificação dupla - ${metodo}`, {
+                ojProcessed: ojsProcessadasTotal,
+                totalOjs: relatorio.totalOJs,
+                orgaoJulgador: oj
+              });
+              // Não incrementa relatorio.ojsJaVinculados pois já foi contado na verificação em lote
+              continue;
+            }
+            
             sendStatus('info', `Processando OJ ${j + 1}/${perito.ojs.length}: ${oj}`, currentStep++, 'Analisando órgão julgador', {
               ojProcessed: ojsProcessadasTotal,
               totalOjs: relatorio.totalOJs,
               orgaoJulgador: oj
             });
             
-            // 1. Verificar se o OJ já está vinculado (apenas verificação conservadora)
+            // 1. Processar vinculação do OJ (já verificado pelo cache inteligente)
             console.log(`\n=== PROCESSANDO OJ: "${oj}" ===`);
-            const verificacao = await verificarOJJaVinculado(page, oj);
-            
-            if (verificacao.jaVinculado) {
-              // Log detalhado para debug
-              console.log(`✅ OJ JÁ VINCULADO:`);
-              console.log(`   - OJ: "${oj}"`);
-              console.log(`   - Texto encontrado: "${verificacao.textoEncontrado}"`);
-              console.log(`   - Tipo: ${verificacao.tipoCorrespondencia || 'padrão'}`);
-              
-              sendStatus('warning', `OJ "${oj}" já está vinculado - pulando`, currentStep, 'Vínculo já existe', {
-                ojProcessed: ojsProcessadasTotal,
-                totalOjs: relatorio.totalOJs,
-                orgaoJulgador: oj
-              });
-              resultadoPerito.ojsJaVinculados++;
-              relatorio.ojsJaVinculados++;
-              continue;
-            } else {
+            console.log(`🔗 Iniciando vinculação (não encontrado no cache)`);
+            {
               console.log(`🔄 OJ "${oj}" NÃO está vinculado - tentando vincular...`);
             }
             
@@ -293,6 +402,11 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
               totalOjs: relatorio.totalOJs,
               orgaoJulgador: oj
             });
+            
+            // 🎯 ATUALIZAR CACHE INTELIGENTE - Marcar OJ como vinculado
+            smartOJCache.adicionarOJVinculado(oj);
+            console.log(`📝 Cache atualizado: OJ "${oj}" marcado como vinculado`);
+            
             resultadoPerito.ojsVinculados++;
             relatorio.ojsVinculados++;
             console.log(`✅ SUCESSO: OJ "${oj}" vinculado!`);
@@ -331,6 +445,17 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
               
               resultadoPerito.ojsComErro.push(ojComErro);
               relatorio.ojsComErro.push(ojComErro);
+              
+            } else if (ojError && ojError.code === 'OJ_JA_CADASTRADO') {
+              // OJ já cadastrado na página - pular e continuar
+              console.log(`⚠️ OJ "${oj}" já está cadastrado na página`);
+              sendStatus('warning', `OJ "${oj}" já cadastrado - pulando`, currentStep, 'OJ duplicado');
+              
+              // Marcar como já vinculado no cache
+              smartOJCache.adicionarOJVinculado(oj);
+              
+              resultadoPerito.ojsJaVinculados++;
+              relatorio.ojsJaVinculados++;
               
             } else {
               // Outros tipos de erro
@@ -385,12 +510,48 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
       }
     }
     
-    // Enviar status final com contador completo
-    sendStatus('success', 'Processamento finalizado com sucesso!', totalSteps, 'Todas as OJs foram processadas', {
-      ojProcessed: relatorio.totalOJs,
-      totalOjs: relatorio.totalOJs,
-      orgaoJulgador: 'Finalizado'
-    });
+    // Gerar relatório de eficiência dos servidores
+    const relatorioEficiencia = servidorSkipDetector.gerarRelatorioEficiencia();
+    
+    console.log('\n📊 RELATÓRIO DE EFICIÊNCIA DOS SERVIDORES:');
+    console.log(`   - Total de servidores analisados: ${relatorioEficiencia.totalServidores}`);
+    console.log(`   - Servidores completos: ${relatorioEficiencia.servidoresCompletos}`);
+    console.log(`   - Servidores quase completos: ${relatorioEficiencia.servidoresQuaseCompletos}`);
+    console.log(`   - Servidores ativos: ${relatorioEficiencia.servidoresAtivos}`);
+    console.log(`   - Economia total estimada: ${Math.round(relatorioEficiencia.economiaEstimada)}s`);
+    
+    // Gerar relatório de estatísticas da verificação dupla
+    const estatisticasVerificacao = verificacaoDuplaOJ.gerarRelatorioEstatisticas();
+    console.log('\n🔍 RELATÓRIO DE VERIFICAÇÃO DUPLA:');
+    console.log(`   - Total verificações: ${estatisticasVerificacao.totalVerificacoes}`);
+    console.log(`   - Cache hits: ${estatisticasVerificacao.cacheHits}`);
+    console.log(`   - Verificações diretas: ${estatisticasVerificacao.verificacoesDiretas}`);
+    console.log(`   - OJs detectados já vinculados: ${estatisticasVerificacao.ojsDetectadosJaVinculados}`);
+    console.log(`   - Falso positivos: ${estatisticasVerificacao.falsoPositivos}`);
+    console.log(`   - Tempo médio: ${estatisticasVerificacao.tempoMedioMs}ms`);
+    console.log(`   - Eficiência cache: ${estatisticasVerificacao.eficienciaCache.toFixed(1)}%`);
+    console.log(`   - Taxa detecção: ${estatisticasVerificacao.taxaDeteccao.toFixed(1)}%`);
+    
+    // Adicionar relatórios ao relatório principal
+    relatorio.eficienciaServidores = relatorioEficiencia;
+    relatorio.estatisticasVerificacaoDupla = estatisticasVerificacao;
+    
+    // Enviar status final com contador completo (apenas se houver OJs processadas)
+    if (relatorio.totalOJs > 0) {
+      sendStatus('success', 'Processamento finalizado com sucesso!', totalSteps, 'Todas as OJs foram processadas', {
+        ojProcessed: relatorio.totalOJs,
+        totalOjs: relatorio.totalOJs,
+        orgaoJulgador: 'Finalizado'
+      });
+    } else {
+      // Log silencioso quando não há OJs para processar
+      console.log('🔄 [AUTOMATION] Processamento finalizado - nenhum OJ para processar');
+      sendStatus('info', 'Processamento concluído', totalSteps, 'Nenhum OJ para processar', {
+        ojProcessed: 0,
+        totalOjs: 0,
+        orgaoJulgador: 'Finalizado'
+      });
+    }
     
     // Enviar relatório final
     enviarRelatorioFinal(relatorio);

@@ -1,0 +1,50 @@
+{
+  "timestamp": "2025-09-09T21:33:51.734Z",
+  "problema": "Varas de Limeira não conseguem buscar e vincular ao perito",
+  "solucao": "Implementação de funções robustas específicas para Limeira",
+  "varas_processadas": [
+    {
+      "vara_id": "vara_1_trabalho_limeira",
+      "vara_nome": "1ª Vara do Trabalho de Limeira",
+      "sucesso": true,
+      "detalhes": {
+        "sucesso": true,
+        "busca": {
+          "sucesso": true,
+          "metodo": "ultra_robusta",
+          "seletor": "input[name=\"orgaoJulgador\"]",
+          "tentativa": 1
+        },
+        "vinculacao": {
+          "sucesso": true,
+          "metodo": "vinculacao_otimizada",
+          "seletor": "button[title*=\"Adicionar\"]"
+        }
+      },
+      "timestamp": "2025-09-09T21:33:55.741Z"
+    },
+    {
+      "vara_id": "vara_2_trabalho_limeira",
+      "vara_nome": "2ª Vara do Trabalho de Limeira",
+      "sucesso": true,
+      "detalhes": {
+        "sucesso": true,
+        "busca": {
+          "sucesso": true,
+          "metodo": "super_robusta",
+          "seletor": "input[name=\"orgaoJulgador\"]",
+          "tentativa": 1
+        },
+        "vinculacao": {
+          "sucesso": true,
+          "metodo": "vinculacao_otimizada",
+          "seletor": ".btn-adicionar-orgao"
+        }
+      },
+      "timestamp": "2025-09-09T21:34:01.754Z"
+    }
+  ],
+  "sucessos": 2,
+  "falhas": 0,
+  "taxa_sucesso": "100.0"
+}

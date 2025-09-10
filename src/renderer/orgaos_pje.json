@@ -19,7 +19,9 @@
         "EXE2 - Araraquara",
         "LIQ1 - Araraquara",
         "LIQ2 - Araraquara",
-        "Órgão Centralizador de Leilões Judiciais de Araraquara"
+        "Órgão Centralizador de Leilões Judiciais de Araraquara",
+        "Divisão de Execução de Araraquara",
+        "DIVEX - Araraquara"
     ],
     "Araras": [
         "Vara do Trabalho de Araras"
@@ -28,7 +30,11 @@
         "1ª Vara do Trabalho de Araçatuba",
         "2ª Vara do Trabalho de Araçatuba",
         "3ª Vara do Trabalho de Araçatuba",
-        "Órgão Centralizador de Leilões Judiciais de Araçatuba"
+        "Órgão Centralizador de Leilões Judiciais de Araçatuba",
+        "CEJUSC ARAÇATUBA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho",
+        "Juizado Especial da Infância e Adolescência de Araçatuba",
+        "Divisão de Execução de Araçatuba",
+        "DIVEX - Araçatuba"
     ],
     "Assis": [
         "1ª Vara do Trabalho de Assis",
@@ -42,7 +48,10 @@
         "2ª Vara do Trabalho de Bauru",
         "3ª Vara do Trabalho de Bauru",
         "4ª Vara do Trabalho de Bauru",
-        "LIQ2 - Bauru"
+        "Juizado Especial da Infância e Adolescência de Bauru",
+        "LIQ2 - Bauru",
+        "Divisão de Execução de Bauru",
+        "DIVEX - Bauru"
     ],
     "Botucatu": [
         "Vara do Trabalho de Botucatu"
@@ -64,35 +73,53 @@
         "11ª Vara do Trabalho de Campinas",
         "12ª Vara do Trabalho de Campinas",
         "13ª Vara do Trabalho de Campinas",
+        "Juizado Especial da Infância e Adolescência de Campinas",
         "Órgão Centralizador de Leilões Judiciais de Campinas",
         "EXE1 - Campinas",
         "EXE2 - Campinas",
         "EXE3 - Campinas",
         "EXE4 - Campinas",
         "EXE5 - Campinas",
-        "EXE6 - Campinas"
+        "EXE6 - Campinas",
+        "Divisão de Execução de Campinas",
+        "DIVEX - Campinas"
     ],
-    "Campinas em Valinhos": [
-        "Posto Avançado da Justiça do Trabalho de Campinas em Valinhos"
-    ],
-    "Caraguatatuba": [
-        "Vara do Trabalho de Caraguatatuba"
+    "Capivari": [
+        "Vara do Trabalho de Capivari"
     ],
     "Catanduva": [
-        "Vara do Trabalho de Catanduva"
+        "1ª Vara do Trabalho de Catanduva",
+        "2ª Vara do Trabalho de Catanduva"
     ],
     "Cruzeiro": [
         "Vara do Trabalho de Cruzeiro"
     ],
+    "Diadema": [
+        "1ª Vara do Trabalho de Diadema",
+        "2ª Vara do Trabalho de Diadema"
+    ],
+    "Dracena": [
+        "Vara do Trabalho de Dracena"
+    ],
+    "Espírito Santo Do Pinhal": [
+        "Posto Avançado da Justiça do Trabalho de São João da Boa Vista em Espírito Santo Do Pinhal"
+    ],
     "Fernandópolis": [
-        "Vara do Trabalho de Fernandópolis"
+        "Vara do Trabalho de Fernandópolis",
+        "Juizado Especial da Infância e Adolescência de Fernandópolis"
     ],
     "Franca": [
         "1ª Vara do Trabalho de Franca",
-        "2ª Vara do Trabalho de Franca"
+        "2ª Vara do Trabalho de Franca",
+        "CEJUSC FRANCA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho",
+        "Divisão de Execução de Franca",
+        "DIVEX - Franca"
     ],
     "Guaratinguetá": [
         "Vara do Trabalho de Guaratinguetá"
+    ],
+    "Guarujá": [
+        "Vara do Trabalho de Guarujá"
     ],
     "Guarulhos": [
         "1ª Vara do Trabalho de Guarulhos",
@@ -114,37 +141,58 @@
     "Itapira": [
         "Vara do Trabalho de Itapira"
     ],
-    "Itatiba": [
-        "Vara do Trabalho de Itatiba"
+    "Itararé": [
+        "Vara do Trabalho de Itararé"
     ],
     "Itatiba": [
         "Vara do Trabalho de Itatiba"
+    ],
+    "Itápolis": [
+        "Vara do Trabalho de Itápolis"
     ],
     "Jales": [
         "Vara do Trabalho de Jales"
     ],
     "Jaú": [
-        "Vara do Trabalho de Jaú"
+        "1ª Vara do Trabalho de Jaú",
+        "2ª Vara do Trabalho de Jaú"
     ],
     "Jundiaí": [
         "1ª Vara do Trabalho de Jundiaí",
         "2ª Vara do Trabalho de Jundiaí",
-        "3ª Vara do Trabalho de Jundiaí"
+        "3ª Vara do Trabalho de Jundiaí",
+        "4ª Vara do Trabalho de Jundiaí",
+        "5ª Vara do Trabalho de Jundiaí",
+        "Divisão de Execução de Jundiaí",
+        "DIVEX - Jundiaí"
     ],
     "Limeira": [
         "Vara do Trabalho de Limeira",
-        "Órgão Centralizador de Leilões Judiciais de Limeira"
+        "2ª Vara do Trabalho de Limeira",
+        "Órgão Centralizador de Leilões Judiciais de Limeira",
+        "CEJUSC LIMEIRA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho",
+        "Divisão de Execução de Limeira",
+        "DIVEX - Limeira"
     ],
     "Lins": [
         "Vara do Trabalho de Lins"
+    ],
+    "Lorena": [
+        "Vara do Trabalho de Lorena"
     ],
     "Marília": [
         "1ª Vara do Trabalho de Marília",
         "2ª Vara do Trabalho de Marília"
     ],
+    "Matão": [
+        "Vara do Trabalho de Matão"
+    ],
     "Mogi das Cruzes": [
         "1ª Vara do Trabalho de Mogi das Cruzes",
         "2ª Vara do Trabalho de Mogi das Cruzes"
+    ],
+    "Olímpia": [
+        "Vara do Trabalho de Olímpia"
     ],
     "Osasco": [
         "1ª Vara do Trabalho de Osasco",
@@ -156,13 +204,21 @@
     "Ourinhos": [
         "Vara do Trabalho de Ourinhos"
     ],
+    "Pederneiras": [
+        "Vara do Trabalho de Pederneiras"
+    ],
     "Piracicaba": [
         "1ª Vara do Trabalho de Piracicaba",
-        "2ª Vara do Trabalho de Piracicaba"
+        "2ª Vara do Trabalho de Piracicaba",
+        "CEJUSC PIRACICABA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho",
+        "Divisão de Execução de Piracicaba",
+        "DIVEX - Piracicaba"
     ],
     "Presidente Prudente": [
         "1ª Vara do Trabalho de Presidente Prudente",
-        "2ª Vara do Trabalho de Presidente Prudente"
+        "2ª Vara do Trabalho de Presidente Prudente",
+        "Divisão de Execução de Presidente Prudente",
+        "DIVEX - Presidente Prudente"
     ],
     "Ribeirão Preto": [
         "1ª Vara do Trabalho de Ribeirão Preto",
@@ -170,10 +226,21 @@
         "3ª Vara do Trabalho de Ribeirão Preto",
         "4ª Vara do Trabalho de Ribeirão Preto",
         "5ª Vara do Trabalho de Ribeirão Preto",
-        "6ª Vara do Trabalho de Ribeirão Preto"
+        "6ª Vara do Trabalho de Ribeirão Preto",
+        "Divisão de Execução de Ribeirão Preto",
+        "DIVEX - Ribeirão Preto"
     ],
     "Rio Claro": [
         "Vara do Trabalho de Rio Claro"
+    ],
+    "Salto": [
+        "Vara do Trabalho de Salto"
+    ],
+    "Santa Bárbara D'Oeste": [
+        "Vara do Trabalho de Santa Bárbara D'Oeste"
+    ],
+    "Santa Cruz do Rio Pardo": [
+        "Vara do Trabalho de Santa Cruz do Rio Pardo"
     ],
     "Santos": [
         "1ª Vara do Trabalho de Santos",
@@ -182,9 +249,6 @@
         "4ª Vara do Trabalho de Santos",
         "5ª Vara do Trabalho de Santos",
         "6ª Vara do Trabalho de Santos"
-    ],
-    "Salto": [
-        "Vara do Trabalho de Salto"
     ],
     "São Bernardo do Campo": [
         "1ª Vara do Trabalho de São Bernardo do Campo",
@@ -199,10 +263,14 @@
         "1ª Vara do Trabalho de São Carlos",
         "2ª Vara do Trabalho de São Carlos"
     ],
+    "São João da Boa Vista": [
+        "Vara do Trabalho de São João da Boa Vista"
+    ],
     "São José do Rio Preto": [
         "1ª Vara do Trabalho de São José do Rio Preto",
         "2ª Vara do Trabalho de São José do Rio Preto",
         "3ª Vara do Trabalho de São José do Rio Preto",
+        "Juizado Especial da Infância e Adolescência de São José do Rio Preto",
         "CCP SÃO JOSÉ DO RIO PRETO - Centro de Conciliação Pré Processual",
         "CON1 – São José do Rio Preto",
         "CON2 – São José do Rio Preto",
@@ -213,13 +281,21 @@
         "LIQ1 - São José do Rio Preto",
         "LIQ2 – São José do Rio Preto",
         "DIVEX - São José do Rio Preto",
+        "Divisão de Execução de São José do Rio Preto",
         "CEJUSC – São José do Rio Preto"
     ],
     "São José dos Campos": [
         "1ª Vara do Trabalho de São José dos Campos",
         "2ª Vara do Trabalho de São José dos Campos",
         "3ª Vara do Trabalho de São José dos Campos",
-        "EXE1 - São José dos Campos"
+        "4ª Vara do Trabalho de São José dos Campos",
+        "5ª Vara do Trabalho de São José dos Campos",
+        "Vara do Trabalho de Caçapava",
+        "Vara do Trabalho de Caraguatatuba",
+        "Vara do Trabalho de Cruzeiro",
+        "Vara do Trabalho de Guaratinguetá",
+        "Vara do Trabalho de Lorena",
+        "CON1 - São José dos Campos"
     ],
     "São Paulo": [
         "1ª Vara do Trabalho de São Paulo",
@@ -228,15 +304,35 @@
         "4ª Vara do Trabalho de São Paulo",
         "5ª Vara do Trabalho de São Paulo"
     ],
+    "São Roque": [
+        "Vara do Trabalho de São Roque"
+    ],
+    "Sumaré": [
+        "Vara do Trabalho de Sumaré"
+    ],
     "Sorocaba": [
         "1ª Vara do Trabalho de Sorocaba",
         "2ª Vara do Trabalho de Sorocaba",
         "3ª Vara do Trabalho de Sorocaba",
-        "4ª Vara do Trabalho de Sorocaba"
+        "4ª Vara do Trabalho de Sorocaba",
+        "Divisão de Execução de Sorocaba",
+        "DIVEX - Sorocaba"
+    ],
+    "Tanabi": [
+        "Vara do Trabalho de Tanabi"
     ],
     "Taubaté": [
         "1ª Vara do Trabalho de Taubaté",
-        "2ª Vara do Trabalho de Taubaté"
+        "2ª Vara do Trabalho de Taubaté",
+        "CEJUSC TAUBATÉ - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho",
+        "Divisão de Execução de Taubaté",
+        "DIVEX - Taubaté"
+    ],
+    "Teodoro Sampaio": [
+        "Vara do Trabalho de Teodoro Sampaio"
+    ],
+    "Tietê": [
+        "Vara do Trabalho de Tietê"
     ],
     "Tupã": [
         "Vara do Trabalho de Tupã"

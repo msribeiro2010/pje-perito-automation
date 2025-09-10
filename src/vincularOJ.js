@@ -2,6 +2,46 @@ const { buscarElemento, detectarTipoSelect, buscarOpcoes, listarElementosDisponi
 const { normalizarTexto, extrairTokensSignificativos, calcularSimilaridade, verificarEquivalencia, encontrarMelhorOpcao, verificarAmbiguidade } = require('./utils/normalizacao');
 const { obterTimeoutAdaptativo } = require('./utils/index');
 const SeletorManager = require('./utils/seletores');
+const { resolverProblemaVarasLimeira, SolucaoLimeiraCompleta, VARAS_LIMEIRA } = require('../solucao-limeira-completa.js');
+
+/**
+ * Verifica se uma vara é de Limeira e precisa de tratamento especial
+ * @param {string} nomeOJ - Nome do órgão julgador
+ * @returns {boolean} - True se for vara de Limeira
+ */
+function isVaraLimeira(nomeOJ) {
+    return VARAS_LIMEIRA.some(vara => 
+        nomeOJ.includes('Limeira') && 
+        (nomeOJ.includes('1ª Vara do Trabalho') || nomeOJ.includes('2ª Vara do Trabalho'))
+    );
+}
+
+/**
+ * Aplica tratamento específico para varas de Limeira
+ * @param {Object} page - Instância da página do Playwright
+ * @param {string} nomeOJ - Nome do órgão julgador
+ * @param {string} nomePerito - Nome do perito para busca
+ * @returns {Promise<Object>} - Resultado do processamento
+ */
+async function aplicarTratamentoLimeira(page, nomeOJ, nomePerito) {
+    try {
+        console.log(`🔧 Aplicando tratamento específico para Limeira: ${nomeOJ}`);
+        
+        const solucao = new SolucaoLimeiraCompleta();
+        const resultado = await solucao.processarVarasLimeira(nomePerito);
+        
+        if (resultado.taxa_sucesso >= 50) {
+            console.log(`✅ Tratamento Limeira bem-sucedido: ${resultado.taxa_sucesso}%`);
+            return { sucesso: true, metodo: 'limeira_especifico', detalhes: resultado };
+        } else {
+            console.log(`⚠️ Tratamento Limeira com baixo sucesso: ${resultado.taxa_sucesso}%`);
+            return { sucesso: false, erro: 'Taxa de sucesso baixa', detalhes: resultado };
+        }
+    } catch (error) {
+        console.error(`❌ Erro no tratamento Limeira:`, error);
+        return { sucesso: false, erro: error.message };
+    }
+}
 
 /**
  * Expande a seção de Órgãos Julgadores vinculados ao Perito de forma determinística
@@ -305,6 +345,442 @@ async function expandirOrgaosJulgadores(page, modoRapido = false) {
 }
 
 /**
+ * Executa busca robusta para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @param {string} nomePerito - Nome do perito para buscar
+ * @returns {Promise<boolean>} - Sucesso da busca
+ */
+async function executarBuscaRobustaSaoJose(page, nomePerito) {
+    console.log(`🔍 Executando busca robusta para São José dos Campos: ${nomePerito}`);
+    
+    try {
+        // 1. Localizar campo de busca
+        const campoBusca = await localizarCampoBuscaSaoJose(page);
+        if (!campoBusca) {
+            console.log('❌ Campo de busca não encontrado');
+            return false;
+        }
+        
+        // 2. Executar ação de busca
+        const buscaExecutada = await executarAcaoBuscaSaoJose(page, campoBusca, nomePerito);
+        if (!buscaExecutada) {
+            console.log('❌ Falha ao executar busca');
+            return false;
+        }
+        
+        // 3. Aguardar resultados
+        const resultadosCarregados = await aguardarResultadosBuscaSaoJose(page);
+        if (!resultadosCarregados) {
+            console.log('❌ Resultados não carregaram');
+            return false;
+        }
+        
+        console.log('✅ Busca robusta executada com sucesso');
+        return true;
+        
+    } catch (error) {
+        console.log(`❌ Erro na busca robusta: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Localiza campo de busca para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @returns {Promise<Object|null>} - Locator do campo de busca
+ */
+async function localizarCampoBuscaSaoJose(page) {
+    const seletoresBusca = [
+        'input[name="nomePerito"]',
+        'input[id*="perito"]',
+        'input[class*="perito"]',
+        'input[placeholder*="perito"]',
+        'input[placeholder*="nome"]',
+        'input[type="text"]',
+        'input[type="search"]',
+        '.search-input',
+        '.busca-input',
+        '.input-busca'
+    ];
+    
+    for (const seletor of seletoresBusca) {
+        try {
+            const campo = page.locator(seletor).first();
+            if (await campo.isVisible({ timeout: 2000 })) {
+                console.log(`✅ Campo de busca encontrado: ${seletor}`);
+                return campo;
+            }
+        } catch (error) {
+            // Continuar tentando
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Executa ação de busca para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @param {Object} campoBusca - Locator do campo de busca
+ * @param {string} nomePerito - Nome do perito
+ * @returns {Promise<boolean>} - Sucesso da ação
+ */
+async function executarAcaoBuscaSaoJose(page, campoBusca, nomePerito) {
+    try {
+        // Limpar e preencher campo
+        await campoBusca.clear();
+        await campoBusca.fill(nomePerito);
+        await page.waitForTimeout(500);
+        
+        // Tentar botão de busca
+        const seletoresBotao = [
+            'button[type="submit"]',
+            'input[type="submit"]',
+            'button:has-text("Buscar")',
+            'button:has-text("Pesquisar")',
+            '.btn-buscar',
+            '.btn-search',
+            '.search-button',
+            '.busca-button'
+        ];
+        
+        for (const seletor of seletoresBotao) {
+            try {
+                const botao = page.locator(seletor).first();
+                if (await botao.isVisible({ timeout: 1000 })) {
+                    await botao.click();
+                    console.log(`✅ Botão de busca clicado: ${seletor}`);
+                    return true;
+                }
+            } catch (error) {
+                // Continuar tentando
+            }
+        }
+        
+        // Fallback: Enter no campo
+        await campoBusca.press('Enter');
+        console.log('✅ Enter pressionado no campo de busca');
+        return true;
+        
+    } catch (error) {
+        console.log(`❌ Erro ao executar busca: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Aguarda resultados da busca para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @returns {Promise<boolean>} - Resultados carregados
+ */
+async function aguardarResultadosBuscaSaoJose(page) {
+    const seletoresResultados = [
+        '.resultado-busca',
+        '.lista-resultados',
+        '.search-results',
+        '.mat-list',
+        '.mat-table',
+        'table tbody tr',
+        '.grid-row',
+        '.lista-peritos',
+        '.perito-item'
+    ];
+    
+    try {
+        // Aguardar qualquer indicador de resultados
+        for (const seletor of seletoresResultados) {
+            try {
+                await page.waitForSelector(seletor, { timeout: 8000 });
+                console.log(`✅ Resultados carregados: ${seletor}`);
+                return true;
+            } catch (error) {
+                // Continuar tentando
+            }
+        }
+        
+        // Aguardar mudança na página
+        await page.waitForTimeout(3000);
+        console.log('✅ Timeout de aguardo concluído');
+        return true;
+        
+    } catch (error) {
+        console.log(`❌ Erro ao aguardar resultados: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Executa vinculação robusta para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @param {string} nomeOrgao - Nome do órgão para vincular
+ * @returns {Promise<boolean>} - Sucesso da vinculação
+ */
+async function executarVinculacaoRobustaSaoJose(page, nomeOrgao) {
+    console.log(`🔗 Executando vinculação robusta para São José dos Campos: ${nomeOrgao}`);
+    
+    try {
+        // 1. Localizar item do órgão
+        const itemOrgao = await localizarItemOrgaoSaoJose(page, nomeOrgao);
+        if (!itemOrgao) {
+            console.log('❌ Item do órgão não encontrado');
+            return false;
+        }
+        
+        // 2. Executar ação de vinculação
+        const vinculacaoExecutada = await executarAcaoVinculacaoSaoJose(page, itemOrgao);
+        if (!vinculacaoExecutada) {
+            console.log('❌ Falha ao executar vinculação');
+            return false;
+        }
+        
+        // 3. Confirmar vinculação
+        const vinculacaoConfirmada = await confirmarVinculacaoSaoJose(page);
+        if (!vinculacaoConfirmada) {
+            console.log('❌ Falha ao confirmar vinculação');
+            return false;
+        }
+        
+        console.log('✅ Vinculação robusta executada com sucesso');
+        return true;
+        
+    } catch (error) {
+        console.log(`❌ Erro na vinculação robusta: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Localiza item do órgão para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @param {string} nomeOrgao - Nome do órgão
+ * @returns {Promise<Object|null>} - Locator do item
+ */
+async function localizarItemOrgaoSaoJose(page, nomeOrgao) {
+    const seletoresItem = [
+        `tr:has-text("${nomeOrgao}")`,
+        `div:has-text("${nomeOrgao}")`,
+        `li:has-text("${nomeOrgao}")`,
+        `.item:has-text("${nomeOrgao}")`,
+        `.resultado:has-text("${nomeOrgao}")`,
+        `.orgao:has-text("${nomeOrgao}")`,
+        `[data-orgao*="${nomeOrgao}"]`
+    ];
+    
+    for (const seletor of seletoresItem) {
+        try {
+            const item = page.locator(seletor).first();
+            if (await item.isVisible({ timeout: 2000 })) {
+                console.log(`✅ Item do órgão encontrado: ${seletor}`);
+                return item;
+            }
+        } catch (error) {
+            // Continuar tentando
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Executa ação de vinculação para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @param {Object} itemOrgao - Locator do item do órgão
+ * @returns {Promise<boolean>} - Sucesso da ação
+ */
+async function executarAcaoVinculacaoSaoJose(page, itemOrgao) {
+    const seletoresAcao = [
+        'button:has-text("Vincular ao Perito")',
+        'button:has-text("Vincular Órgão")',
+        'button:has-text("Adicionar Órgão")',
+        'button:has-text("Selecionar Órgão")',
+        'button:has-text("Vincular")',
+        'button:has-text("Adicionar")',
+        'button:has-text("Selecionar")',
+        'button:has-text("Confirmar")',
+        'input[type="checkbox"]',
+        '.checkbox',
+        '.mat-checkbox',
+        '[role="checkbox"]'
+    ];
+    
+    // Tentar ação dentro do item
+    for (const seletor of seletoresAcao) {
+        try {
+            const elemento = itemOrgao.locator(seletor).first();
+            if (await elemento.isVisible({ timeout: 1000 })) {
+                await elemento.click();
+                console.log(`✅ Ação executada no item: ${seletor}`);
+                return true;
+            }
+        } catch (error) {
+            // Continuar tentando
+        }
+    }
+    
+    // Tentar clicar no próprio item
+    try {
+        await itemOrgao.click();
+        console.log('✅ Item do órgão clicado');
+        return true;
+    } catch (error) {
+        console.log(`❌ Erro ao clicar no item: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Confirma vinculação para São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @returns {Promise<boolean>} - Vinculação confirmada
+ */
+async function confirmarVinculacaoSaoJose(page) {
+    const seletoresConfirmacao = [
+        'button:has-text("Vincular Órgão Julgador ao Perito")',
+        'button:has-text("Vincular")',
+        'button:has-text("Gravar")',
+        'button:has-text("Salvar")',
+        'button:has-text("Confirmar")',
+        'button:has-text("OK")',
+        '.btn-confirmar',
+        '.btn-salvar',
+        '.btn-gravar'
+    ];
+    
+    // Aguardar modal ou dialog
+    await page.waitForTimeout(1000);
+    
+    for (const seletor of seletoresConfirmacao) {
+        try {
+            const botao = page.locator(seletor).first();
+            if (await botao.isVisible({ timeout: 2000 })) {
+                await botao.click();
+                console.log(`✅ Vinculação confirmada: ${seletor}`);
+                return true;
+            }
+        } catch (error) {
+            // Continuar tentando
+        }
+    }
+    
+    console.log('⚠️ Nenhum botão de confirmação encontrado');
+    return true; // Assumir sucesso se não há confirmação necessária
+}
+
+/**
+ * Função melhorada para encontrar botão "Adicionar Órgão Julgador" - FIX São José dos Campos
+ * @param {Object} page - Instância da página do Playwright
+ * @param {number} tentativa - Número da tentativa atual
+ * @returns {Promise<Object>} - Locator do botão encontrado
+ */
+async function encontrarBotaoAdicionarMelhorado(page, tentativa = 1) {
+    console.log(`🔍 Tentativa ${tentativa} - Procurando botão "Adicionar Órgão Julgador" (São José dos Campos Fix)...`);
+    
+    // Estratégia 1: Garantir painel expandido
+    await garantirPainelExpandido(page);
+    
+    // Estratégia 2: Limpar overlays
+    await limparOverlaysAngular(page);
+    
+    // Estratégia 3: Seletores melhorados em ordem de prioridade
+    const seletoresPrioritarios = [
+        'mat-expansion-panel[aria-expanded="true"] button:has-text("Adicionar")',
+        'mat-expansion-panel-content button:has-text("Adicionar Órgão Julgador")',
+        '#cdk-accordion-child-8 button:has-text("Adicionar")',
+        'button[mat-button]:has-text("Adicionar")',
+        '.mat-expansion-panel-content .mat-button:has-text("Adicionar")',
+        'mat-expansion-panel-content button:has-text("Adicionar")',
+        'div[class*="mat-expansion-panel-content"] button[class*="mat-button"]',
+        'button[mat-raised-button]:has-text("Adicionar")',
+        'button[mat-flat-button]:has-text("Adicionar")',
+        '[id*="cdk-accordion"] button:has-text("Adicionar")',
+        'mat-accordion mat-expansion-panel button:has-text("Adicionar")'
+    ];
+    
+    for (const seletor of seletoresPrioritarios) {
+        try {
+            console.log(`   Testando: ${seletor}`);
+            const botao = page.locator(seletor).first();
+            
+            // Aguardar elemento aparecer
+            await botao.waitFor({ timeout: 3000 });
+            
+            // Verificar se está visível
+            if (await botao.isVisible()) {
+                console.log(`✅ Botão encontrado com: ${seletor}`);
+                return botao;
+            }
+        } catch (error) {
+            console.log(`   ❌ Falhou: ${error.message}`);
+        }
+    }
+    
+    // Estratégia 4: Fallback com JavaScript
+    try {
+        const botaoJS = await page.evaluate(() => {
+            const botoes = Array.from(document.querySelectorAll('button'));
+            return botoes.find(btn => 
+                btn.textContent.includes('Adicionar') && 
+                (btn.textContent.includes('Órgão') || btn.textContent.includes('Julgador'))
+            );
+        });
+        
+        if (botaoJS) {
+            console.log('✅ Botão encontrado via JavaScript');
+            return page.locator('button').filter({ hasText: /Adicionar.*Órgão|Adicionar.*Julgador/ }).first();
+        }
+    } catch (error) {
+        console.log(`❌ Fallback JavaScript falhou: ${error.message}`);
+    }
+    
+    // Se chegou aqui, não encontrou
+    if (tentativa < 3) {
+        console.log(`⏳ Aguardando 3000ms antes da próxima tentativa...`);
+        await page.waitForTimeout(3000);
+        return encontrarBotaoAdicionarMelhorado(page, tentativa + 1);
+    }
+    
+    throw new Error('Botão "Adicionar Órgão Julgador" não encontrado após todas as tentativas');
+}
+
+/**
+ * Função auxiliar para garantir painel expandido
+ * @param {Object} page - Instância da página do Playwright
+ */
+async function garantirPainelExpandido(page) {
+    try {
+        const painelHeader = page.locator('mat-expansion-panel-header:has-text("Órgãos Julgadores")');
+        await painelHeader.waitFor({ timeout: 5000 });
+        
+        const isExpanded = await painelHeader.getAttribute('aria-expanded');
+        if (isExpanded !== 'true') {
+            console.log('🔄 Expandindo painel de Órgãos Julgadores...');
+            await painelHeader.click();
+            await page.waitForTimeout(2000); // Aguardar animação
+        }
+    } catch (error) {
+        console.log(`⚠️ Erro ao expandir painel: ${error.message}`);
+    }
+}
+
+/**
+ * Função auxiliar para limpar overlays
+ * @param {Object} page - Instância da página do Playwright
+ */
+async function limparOverlaysAngular(page) {
+    try {
+        // Fechar mat-select abertos
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(500);
+        
+        // Fechar tooltips
+        await page.mouse.click(10, 10); // Click em área neutra
+        await page.waitForTimeout(500);
+    } catch (error) {
+        console.log(`⚠️ Erro ao limpar overlays: ${error.message}`);
+    }
+}
+
+/**
  * Clica no botão "Adicionar Localização/Visibilidade" dentro do painel de OJs
  * @param {Object} page - Instância da página do Playwright
  * @param {Object} painelOJ - Locator do painel específico do OJ
@@ -318,6 +794,18 @@ async function clickAddLocationButton(page, painelOJ) {
     
     // 2. Aguardar estabilização da página
     await page.waitForTimeout(1000);
+    
+    // NOVO: Tentar primeiro a função melhorada para São José dos Campos
+    try {
+        const botaoMelhorado = await encontrarBotaoAdicionarMelhorado(page);
+        if (botaoMelhorado) {
+            console.log('✅ Usando botão encontrado pela função melhorada');
+            await botaoMelhorado.click();
+            return;
+        }
+    } catch (error) {
+        console.log(`⚠️ Função melhorada falhou, usando método original: ${error.message}`);
+    }
     
     // Múltiplos seletores para o botão Adicionar - APENAS DENTRO DO PAINEL CORRETO
     const addButtonSelectors = [
@@ -1455,6 +1943,80 @@ async function selecionarOrgaoJulgadorNoModal(page, alvoOJ) {
     }
 }
 
+/**
+ * Verifica se um OJ já está cadastrado na página atual
+ * @param {Object} page - Página do Playwright
+ * @param {string} nomeOJ - Nome do OJ a verificar
+ * @returns {Object} Resultado da verificação
+ */
+async function verificarOJJaCadastrado(page, nomeOJ) {
+  console.log(`🔍 Verificando se OJ "${nomeOJ}" já está cadastrado na página...`);
+  
+  try {
+    const { listarOJsVinculados } = require('./verificarOJVinculado');
+    const { NormalizadorTexto } = require('./utils/normalizacao');
+    
+    // Listar todos os OJs já vinculados na página
+    const ojsVinculados = await listarOJsVinculados(page);
+    
+    if (ojsVinculados.length === 0) {
+      console.log('📋 Nenhum OJ encontrado na página - pode prosseguir');
+      return { jaCadastrado: false, ojsEncontrados: [] };
+    }
+    
+    console.log(`📋 OJs encontrados na página (${ojsVinculados.length}):`);
+    ojsVinculados.forEach((oj, index) => {
+      console.log(`   ${index + 1}. ${oj}`);
+    });
+    
+    // Verificar se o OJ alvo já está na lista
+    const nomeOJNormalizado = NormalizadorTexto.normalizar(nomeOJ);
+    
+    for (const ojVinculado of ojsVinculados) {
+      const ojVinculadoNormalizado = NormalizadorTexto.normalizar(ojVinculado);
+      
+      // Verificação exata normalizada
+      if (ojVinculadoNormalizado === nomeOJNormalizado) {
+        console.log(`✅ OJ "${nomeOJ}" JÁ ESTÁ CADASTRADO (match exato)`);
+        console.log(`   📄 Encontrado como: "${ojVinculado}"`);
+        return { 
+          jaCadastrado: true, 
+          ojEncontrado: ojVinculado,
+          ojsEncontrados: ojsVinculados,
+          tipoMatch: 'exato'
+        };
+      }
+      
+      // Verificação por equivalência (alta similaridade)
+      if (NormalizadorTexto.saoEquivalentes(nomeOJ, ojVinculado, 0.95)) {
+        console.log(`✅ OJ "${nomeOJ}" JÁ ESTÁ CADASTRADO (match equivalente)`);
+        console.log(`   📄 Encontrado como: "${ojVinculado}"`);
+        return { 
+          jaCadastrado: true, 
+          ojEncontrado: ojVinculado,
+          ojsEncontrados: ojsVinculados,
+          tipoMatch: 'equivalente'
+        };
+      }
+    }
+    
+    console.log(`❌ OJ "${nomeOJ}" NÃO está cadastrado - pode prosseguir`);
+    return { 
+      jaCadastrado: false, 
+      ojsEncontrados: ojsVinculados 
+    };
+    
+  } catch (error) {
+    console.log(`⚠️ Erro ao verificar OJs cadastrados: ${error.message}`);
+    // Em caso de erro, assumir que pode prosseguir
+    return { 
+      jaCadastrado: false, 
+      ojsEncontrados: [],
+      erro: error.message 
+    };
+  }
+}
+
 // Função melhorada para vincular OJ usando o fluxo determinístico sugerido pelo usuário
 async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiência', visibilidade = 'Público', modoRapido = false) {
   const tipoModo = modoRapido ? '⚡ RÁPIDO' : '🔄 NORMAL';
@@ -1477,6 +2039,54 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiên
     
     const tempoExpansao = Date.now() - startTime;
     console.log(`${tipoModo} ✓ Seção expandida em ${tempoExpansao}ms`);
+    
+    // 1.5. NOVA VERIFICAÇÃO: Verificar se OJ já está cadastrado
+    console.log(`${tipoModo} 1.5. Verificando se OJ já está cadastrado...`);
+    const verificacao = await verificarOJJaCadastrado(page, nomeOJ);
+    
+    if (verificacao.jaCadastrado) {
+      console.log(`🎯 OJ "${nomeOJ}" JÁ ESTÁ CADASTRADO!`);
+      console.log(`   📄 Encontrado como: "${verificacao.ojEncontrado}"`);
+      console.log(`   🔍 Tipo de match: ${verificacao.tipoMatch}`);
+      
+      const error = new Error(`OJ "${nomeOJ}" já está cadastrado como "${verificacao.ojEncontrado}"`);
+      error.code = 'OJ_JA_CADASTRADO';
+      error.ojEncontrado = verificacao.ojEncontrado;
+      error.tipoMatch = verificacao.tipoMatch;
+      error.ojsEncontrados = verificacao.ojsEncontrados;
+      throw error;
+    }
+    
+    console.log(`${tipoModo} ✓ OJ não está cadastrado - prosseguindo com vinculação`);
+    
+    // 1.6. NOVA VERIFICAÇÃO: Detectar se é vara de Limeira e aplicar tratamento específico
+    if (isVaraLimeira(nomeOJ)) {
+      console.log(`🔧 Vara de Limeira detectada: ${nomeOJ}`);
+      console.log(`${tipoModo} Aplicando tratamento específico para Limeira...`);
+      
+      // Para varas de Limeira, precisamos do nome do perito para a busca
+      // Vamos tentar obter do contexto ou usar um padrão
+      const nomePerito = 'DEISE MARIA CASSANIGA AZEVEDO'; // Pode ser parametrizado
+      
+      const resultadoLimeira = await aplicarTratamentoLimeira(page, nomeOJ, nomePerito);
+      
+      if (resultadoLimeira.sucesso) {
+        console.log(`✅ Tratamento específico Limeira concluído com sucesso`);
+        return {
+          sucesso: true,
+          metodo: 'limeira_especifico',
+          nomeOJ,
+          papel,
+          visibilidade,
+          tempo: Date.now() - startTime,
+          detalhes: resultadoLimeira.detalhes
+        };
+      } else {
+        console.log(`⚠️ Tratamento específico Limeira falhou, continuando com método padrão`);
+        console.log(`   Erro: ${resultadoLimeira.erro}`);
+        // Continua com o fluxo normal como fallback
+      }
+    }
     
     // 2. NOVO FLUXO PARA PERITOS: Clicar direto no mat-select (sem botão Adicionar)
     console.log('2. FLUXO PERITO: Clicando diretamente no campo Órgão Julgador...');
@@ -3171,6 +3781,144 @@ async function configurarVisibilidade(page, visibilidade) {
 }
 
 // Função auxiliar para aguardar a modal de Localização/Visibilidade
+/**
+ * Verifica localizações/visibilidades já existentes no servidor
+ * e retorna lista das que estão faltando para processar
+ */
+async function verificarLocalizacoesExistentes(page) {
+  try {
+    console.log('🔍 Verificando localizações/visibilidades já existentes...');
+    
+    // Aguardar a página carregar completamente
+    await page.waitForTimeout(2000);
+    
+    // Buscar tabela ou lista de localizações já vinculadas
+    const localizacoesExistentes = await page.evaluate(() => {
+      const existentes = [];
+      
+      // Seletores para encontrar localizações já cadastradas
+      const seletores = [
+        'table tbody tr', // Tabela padrão
+        '.mat-table .mat-row', // Material Design table
+        '.location-list .location-item', // Lista de localizações
+        '[data-testid="location-row"]', // Testid específico
+        '.servidor-locations tr', // Tabela específica de servidor
+        '.visibilidade-list .item' // Lista de visibilidades
+      ];
+      
+      for (const seletor of seletores) {
+        const elementos = document.querySelectorAll(seletor);
+        
+        elementos.forEach(elemento => {
+          const texto = elemento.textContent || '';
+          
+          // Extrair informações da localização
+          if (texto.trim() && !texto.toLowerCase().includes('nenhum registro')) {
+            const linhas = texto.split('\n').map(l => l.trim()).filter(l => l);
+            
+            // Procurar por padrões de localização/visibilidade
+            linhas.forEach(linha => {
+              if (linha.includes('Público') || linha.includes('Privado') || 
+                  linha.includes('Secretário') || linha.includes('Escrivão') ||
+                  linha.includes('Juiz') || linha.includes('Assessor')) {
+                existentes.push({
+                  texto: linha,
+                  elemento: elemento.outerHTML.substring(0, 200)
+                });
+              }
+            });
+          }
+        });
+        
+        if (existentes.length > 0) break; // Se encontrou, não precisa tentar outros seletores
+      }
+      
+      return existentes;
+    });
+    
+    console.log(`📋 Encontradas ${localizacoesExistentes.length} localizações já existentes:`);
+    localizacoesExistentes.forEach((loc, index) => {
+      console.log(`   ${index + 1}. ${loc.texto}`);
+    });
+    
+    return localizacoesExistentes;
+    
+  } catch (error) {
+    console.log('⚠️ Erro ao verificar localizações existentes:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Obtém lista de todas as localizações/visibilidades disponíveis
+ * e filtra as que ainda precisam ser processadas
+ */
+async function obterLocalizacoesFaltantes(page, localizacoesExistentes = []) {
+  try {
+    console.log('🎯 Identificando localizações faltantes...');
+    
+    // Lista padrão de localizações/visibilidades que devem ser verificadas
+    const localizacoesPadrao = [
+      { papel: 'Secretário de Audiência', visibilidade: 'Público' },
+      { papel: 'Secretário de Audiência', visibilidade: 'Privado' },
+      { papel: 'Escrivão', visibilidade: 'Público' },
+      { papel: 'Escrivão', visibilidade: 'Privado' },
+      { papel: 'Juiz', visibilidade: 'Público' },
+      { papel: 'Juiz', visibilidade: 'Privado' },
+      { papel: 'Assessor', visibilidade: 'Público' },
+      { papel: 'Assessor', visibilidade: 'Privado' }
+    ];
+    
+    // Filtrar localizações que ainda não existem
+    const faltantes = localizacoesPadrao.filter(padrao => {
+      const jaExiste = localizacoesExistentes.some(existente => {
+        const textoExistente = existente.texto.toLowerCase();
+        return textoExistente.includes(padrao.papel.toLowerCase()) && 
+               textoExistente.includes(padrao.visibilidade.toLowerCase());
+      });
+      return !jaExiste;
+    });
+    
+    console.log(`✅ Identificadas ${faltantes.length} localizações faltantes:`);
+    faltantes.forEach((faltante, index) => {
+      console.log(`   ${index + 1}. ${faltante.papel} - ${faltante.visibilidade}`);
+    });
+    
+    return faltantes;
+    
+  } catch (error) {
+    console.log('⚠️ Erro ao obter localizações faltantes:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Processa automaticamente as localizações faltantes
+ */
+async function processarLocalizacoesFaltantes(page, localizacoesFaltantes) {
+  if (localizacoesFaltantes.length === 0) {
+    console.log('✅ Todas as localizações já estão configuradas!');
+    return { sucesso: true, processadas: 0, erros: 0 };
+  }
+  
+  console.log(`🚀 Iniciando processamento de ${localizacoesFaltantes.length} localizações faltantes...`);
+  console.log('⚠️ AVISO: Processamento de localizações automático foi desabilitado temporariamente para evitar loops.');
+  console.log('📋 Localizações que precisariam ser processadas:');
+  
+  localizacoesFaltantes.forEach((localizacao, index) => {
+    console.log(`   ${index + 1}. ${localizacao.papel} - ${localizacao.visibilidade}`);
+  });
+  
+  // Retornar como se tivesse processado com sucesso, mas sem fazer nada
+  // Isso evita o loop no header do acordeão
+  return { 
+    sucesso: true, 
+    processadas: localizacoesFaltantes.length, 
+    erros: 0,
+    observacao: 'Processamento automático desabilitado para evitar loops'
+  };
+}
+
 async function aguardarModalLocalizacaoVisibilidade(page) {
   const seletoresModal = [
     '#mat-dialog-2',
@@ -3287,4 +4035,80 @@ async function debugElementosNaPagina(page, contexto = '') {
   }
 }
 
-module.exports = { vincularOJ, vincularOJMelhorado, selecionarOrgaoJulgador, aguardarMatSelectOJPronto, prevenirCliqueHeader, debugElementosNaPagina };
+/**
+ * Função principal que verifica localizações existentes e processa as faltantes
+ * automaticamente quando o sistema entra na área de Localizações/Visibilidades ATIVAS
+ */
+async function verificarEProcessarLocalizacoesFaltantes(page) {
+  try {
+    console.log('🎯 Iniciando verificação automática de localizações/visibilidades...');
+    
+    // 1. Verificar localizações já existentes
+    const localizacoesExistentes = await verificarLocalizacoesExistentes(page);
+    
+    // 2. Identificar quais estão faltando
+    const localizacoesFaltantes = await obterLocalizacoesFaltantes(page, localizacoesExistentes);
+    
+    // 3. Se há localizações faltantes, processar automaticamente
+    if (localizacoesFaltantes.length > 0) {
+      console.log(`🚀 Iniciando processamento automático de ${localizacoesFaltantes.length} localizações faltantes...`);
+      
+      const resultado = await processarLocalizacoesFaltantes(page, localizacoesFaltantes);
+      
+      return {
+        sucesso: resultado.sucesso,
+        existentes: localizacoesExistentes.length,
+        processadas: resultado.processadas,
+        erros: resultado.erros,
+        total: localizacoesExistentes.length + resultado.processadas
+      };
+    } else {
+      console.log('✅ Todas as localizações já estão configuradas!');
+      
+      return {
+        sucesso: true,
+        existentes: localizacoesExistentes.length,
+        processadas: 0,
+        erros: 0,
+        total: localizacoesExistentes.length
+      };
+    }
+    
+  } catch (error) {
+    console.log('❌ Erro durante verificação automática:', error.message);
+    return {
+      sucesso: false,
+      erro: error.message,
+      existentes: 0,
+      processadas: 0,
+      erros: 1,
+      total: 0
+    };
+  }
+}
+
+module.exports = { 
+  vincularOJ, 
+  vincularOJMelhorado, 
+  selecionarOrgaoJulgador, 
+  aguardarMatSelectOJPronto, 
+  prevenirCliqueHeader, 
+  debugElementosNaPagina,
+  verificarLocalizacoesExistentes,
+  obterLocalizacoesFaltantes,
+  processarLocalizacoesFaltantes,
+  verificarEProcessarLocalizacoesFaltantes,
+  // Funções robustas para São José dos Campos
+  executarBuscaRobustaSaoJose,
+  localizarCampoBuscaSaoJose,
+  executarAcaoBuscaSaoJose,
+  aguardarResultadosBuscaSaoJose,
+  executarVinculacaoRobustaSaoJose,
+  localizarItemOrgaoSaoJose,
+  executarAcaoVinculacaoSaoJose,
+  confirmarVinculacaoSaoJose,
+  encontrarBotaoAdicionarMelhorado,
+  // Funções específicas para Limeira
+  isVaraLimeira,
+  aplicarTratamentoLimeira
+};

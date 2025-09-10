@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-09-09T19:55:56.484Z",
+  "status": "SOLUÇÃO_IMPLEMENTADA",
+  "problema": {
+    "descricao": "Órgãos de São José dos Campos não sendo processados",
+    "orgaosAfetados": [
+      "2ª Vara de São José dos Campos",
+      "3ª Vara de São José dos Campos",
+      "4ª Vara de São José dos Campos",
+      "5ª Vara de São José dos Campos"
+    ],
+    "causaRaiz": "Tolerância do servidor skip detector muito alta (95%)"
+  },
+  "solucao": {
+    "implementada": true,
+    "tipo": "Ajuste de tolerância do servidor skip detector",
+    "toleranciaAnterior": "95%",
+    "toleranciaAtual": "85%",
+    "reducao": "10.0 pontos percentuais",
+    "backupCriado": true
+  },
+  "impactoEsperado": {
+    "orgaosQueSeraoProcessados": 4,
+    "melhoriaEficiencia": "Processamento mais conservador e completo",
+    "reducaoSkips": "Significativa para órgãos com poucos OJs"
+  },
+  "proximosPassos": [
+    "Executar processamento completo dos servidores",
+    "Monitorar logs para confirmar processamento dos 4 órgãos",
+    "Verificar relatórios de processamento paralelo",
+    "Ajustar tolerância se necessário (75% ou 70%)"
+  ],
+  "arquivosModificados": [
+    "src/utils/servidor-skip-detector.js"
+  ],
+  "scriptsUtilizados": [
+    "debug-sao-jose-orgaos.js",
+    "fix-sao-jose-cache.js",
+    "teste-orgaos-faltantes.js",
+    "fix-skip-detector-tolerance.js",
+    "solucao-sao-jose-completa.js",
+    "teste-final-sao-jose.js"
+  ]
+}

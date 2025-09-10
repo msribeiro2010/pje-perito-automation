@@ -1,0 +1,31 @@
+{
+  "timestamp": "2025-09-09T20:01:32.335Z",
+  "versao": "1.0.0",
+  "descricao": "Configuração especial para varas de São José dos Campos",
+  "varasEspeciais": [
+    "2ª Vara do Trabalho de São José dos Campos",
+    "3ª Vara do Trabalho de São José dos Campos",
+    "4ª Vara do Trabalho de São José dos Campos",
+    "5ª Vara do Trabalho de São José dos Campos"
+  ],
+  "configuracoes": {
+    "processamentoSequencial": true,
+    "timeoutExtendido": true,
+    "seletoresEspecificos": true,
+    "tentativasMaximas": 5,
+    "intervaloTentativas": 5000,
+    "aguardarCarregamento": 8000
+  },
+  "instrucoes": [
+    "Processar varas sequencialmente (uma por vez)",
+    "Usar timeouts estendidos para todas as operações",
+    "Aplicar seletores específicos para busca e vinculação",
+    "Aguardar carregamento completo antes de cada ação",
+    "Repetir tentativas em caso de falha"
+  ],
+  "monitoramento": {
+    "logDetalhado": true,
+    "capturarErros": true,
+    "salvarEvidencias": true
+  }
+}

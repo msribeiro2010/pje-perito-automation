@@ -24,55 +24,7 @@
             <button class="tab-button" data-tab="automation">Automação</button>
         </nav>
 
-        <!-- Loading Overlay -->
-        <div id="loading-overlay" class="loading-overlay hidden">
-            <div class="loading-content">
 
-                
-                <!-- Informações do Processamento -->
-                <div class="processing-info">
-                    <div id="loading-title" class="loading-text">🤖 Robô trabalhando...</div>
-                    <div id="loading-subtitle" class="loading-details">Aguarde enquanto o sistema processa</div>
-                    
-                    <!-- Nome do Servidor -->
-                    <div id="loading-servidor" class="loading-servidor" style="display: none;">
-                        Servidor: ---
-                    </div>
-                    
-                    <!-- Campo CPF Destacado -->
-                    <div class="cpf-display">
-                        <div class="cpf-label">📋 CPF do Servidor:</div>
-                        <div id="current-cpf" class="cpf-value">---.--.------</div>
-                    </div>
-                    
-                    <!-- Campo Perfil Destacado -->
-                    <div class="perfil-display">
-                        <div class="perfil-label">👤 Perfil do Servidor:</div>
-                        <div id="current-perfil" class="perfil-value">---</div>
-                    </div>
-                    
-                    <!-- OJ Atual -->
-                    <div id="loading-oj" class="loading-oj" style="display: none;">
-                        OJ: ---
-                    </div>
-                    
-                    <!-- Contador de OJs -->
-                    <div class="oj-counter">
-                        <div class="oj-icon">⚖️</div>
-                        <div id="oj-progress" class="oj-text">OJs processadas: 0/0</div>
-                    </div>
-                    
-                    <!-- Barra de Progresso -->
-                    <div class="progress-container">
-                        <div id="progress-bar" class="progress-bar"></div>
-                        <!-- progress-glow removido para evitar cansaço visual -->
-                    </div>
-                    <div id="progress-text" class="progress-text">Iniciando automação...</div>
-                    
-                    <!-- Botão de pausar removido conforme solicitação do usuário -->
-                </div>
-            </div>
-        </div>
 
         <!-- Dashboard de Processamento Paralelo -->
         <div id="parallel-dashboard" class="parallel-dashboard hidden">
@@ -142,7 +94,7 @@
             <!-- Informações sobre importação e vinculação em lote -->
             <div class="info-panel" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px;">
                 <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                    <i class="fas fa-info-circle" style="color: #007bff; margin-right: 8px;"></i>
+                    <i class="fas fa-info-circle" style="color: #8b7355; margin-right: 8px;"></i>
                     <strong>Importação e Vinculação em Lote</strong>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 14px;">
@@ -358,6 +310,9 @@
                         <button id="stop-servidor-automation" class="btn btn-danger" disabled>
                             <i class="fas fa-stop"></i> Parar Automação
                         </button>
+                        <button id="show-processed-servers" class="btn btn-info">
+                            <i class="fas fa-check-circle"></i> Ver Processados
+                        </button>
                     </div>
                 </div>
             </div>
@@ -367,6 +322,101 @@
                 <div id="status-log" class="status-log">
                     <p class="status-item info">Aguardando início da automação...</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Servidores Processados -->
+    <div id="processed-servers-modal" class="modal">
+        <div class="modal-content" style="max-width: 1200px;">
+            <div class="modal-header">
+                <h3>📊 Status dos Servidores</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Abas para alternar entre painéis -->
+                <div class="server-tabs">
+                    <button class="tab-button active" onclick="app.switchServerTab('processing')">
+                        <i class="fas fa-spinner"></i> Em Processamento
+                    </button>
+                    <button class="tab-button" onclick="app.switchServerTab('completed')">
+                        <i class="fas fa-check-circle"></i> Processados com Sucesso
+                    </button>
+                </div>
+
+                <!-- Painel de Servidores Em Processamento -->
+                <div id="processing-servers-panel" class="server-panel active">
+                    <div class="processing-servers-summary">
+                        <div class="summary-stats">
+                            <div class="stat-card">
+                                <div class="stat-number" id="total-processing-count">0</div>
+                                <div class="stat-label">Em Processamento</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number" id="current-processing-time">--:--:--</div>
+                                <div class="stat-label">Tempo Atual</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number" id="processing-progress">0%</div>
+                                <div class="stat-label">Progresso</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="processing-servers-list">
+                        <div class="list-header">
+                            <h4>Servidores Sendo Processados</h4>
+                            <div class="search-box">
+                                <input type="text" id="processing-server-search" placeholder="Buscar servidor..." class="form-control">
+                            </div>
+                        </div>
+                        
+                        <div id="processing-servers-container" class="servers-container">
+                            <!-- Servidores em processamento serão adicionados dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Painel de Servidores Processados com Sucesso -->
+                <div id="completed-servers-panel" class="server-panel">
+                    <div class="processed-servers-summary">
+                        <div class="summary-stats">
+                            <div class="stat-card">
+                                <div class="stat-number" id="total-processed-count">0</div>
+                                <div class="stat-label">Total Processados</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number" id="total-ojs-processed">0</div>
+                                <div class="stat-label">OJs Vinculadas</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number" id="processing-time">--:--:--</div>
+                                <div class="stat-label">Tempo Total</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="processed-servers-list">
+                        <div class="list-header">
+                            <h4>Lista de Servidores Processados</h4>
+                            <div class="search-box">
+                                <input type="text" id="server-search" placeholder="Buscar servidor..." class="form-control">
+                            </div>
+                        </div>
+                        
+                        <div id="processed-servers-container" class="servers-container">
+                            <!-- Servidores processados serão adicionados dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="app.exportProcessedServers()">
+                    <i class="fas fa-download"></i> Exportar Lista
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="app.closeProcessedServersModal()">
+                    Fechar
+                </button>
             </div>
         </div>
     </div>
@@ -401,7 +451,7 @@
     ]
   }
 ]</pre>
-                <div style="margin-top: 15px; padding: 10px; background-color: #e8f4fd; border-left: 4px solid #007bff; border-radius: 4px;">
+                <div style="margin-top: 15px; padding: 10px; background-color: #f9f7f4; border-left: 4px solid #8b7355; border-radius: 4px;">
                     <strong>Instruções:</strong>
                     <ul style="margin: 5px 0; padding-left: 20px;">
                         <li>O arquivo deve estar em formato JSON válido</li>
@@ -462,7 +512,7 @@
     ]
   }
 ]</pre>
-                <div style="margin-top: 15px; padding: 10px; background-color: #e8f4fd; border-left: 4px solid #007bff; border-radius: 4px;">
+                <div style="margin-top: 15px; padding: 10px; background-color: #f9f7f4; border-left: 4px solid #8b7355; border-radius: 4px;">
                     <strong>Instruções:</strong>
                     <ul style="margin: 5px 0; padding-left: 20px;">
                         <li>O arquivo deve estar em formato JSON válido</li>

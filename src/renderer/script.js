@@ -33,6 +33,7 @@ class PeritoApp {
     await this.loadPeritos();
     await this.loadServidores();
     await this.loadConfig();
+    await this.loadOJs(); // Carregar lista de OJs
     this.loadHistory(); // Carregar histórico
     this.updateSelectedPeritosDisplay();
     this.updateSelectedServidoresDisplay();
@@ -57,9 +58,11 @@ class PeritoApp {
     
     // Listen for automation reports
     window.electronAPI.onAutomationReport((data) => {
-      if (data.type === 'final-report') {
-        this.showFinalReport(data.relatorio);
-      } else if (data.type === 'error') {
+      // Comentado para evitar modal automático na inicialização
+      // if (data.type === 'final-report') {
+      //   this.showFinalReport(data.relatorio);
+      // } else 
+      if (data.type === 'error') {
         this.showAutomationError(data.error, data.context);
       }
     });
@@ -1133,7 +1136,8 @@ class PeritoApp {
         };
       });
       
-      this.addStatusMessage('info', `Processando ${servidoresParaProcessar.length} servidores sequencialmente`);
+      this.addStatusMessage('info', `Processando ${servidoresParaProcessar.length} servidores sequencialmente`, 
+        `Servidores: ${servidoresParaProcessar.map(s => s.nome).join(', ')}`);
       
       const config = {
         servidores: servidoresParaProcessar,
@@ -1149,11 +1153,19 @@ class PeritoApp {
       if (!result || !result.success) {
         this.addStatusMessage('error', `Erro na automação em lote: ${result && result.error ? result.error : 'Erro desconhecido'}`);
       } else {
-        this.addStatusMessage('success', `Automação de ${servidoresParaProcessar.length} servidores concluída com sucesso`);
+        this.addStatusMessage('success', `Automação de ${servidoresParaProcessar.length} servidores concluída com sucesso`, 
+          `Tempo total: ${this.getElapsedTime()}`);
         // Mostrar resultados individuais se disponíveis
         if (result.relatorio && result.relatorio.servidores) {
+          const totalSucessos = result.relatorio.servidores.reduce((sum, s) => sum + (s.sucessos || 0), 0);
+          const totalErros = result.relatorio.servidores.reduce((sum, s) => sum + (s.erros || 0), 0);
+          this.addStatusMessage('info', `Resumo Final: ${totalSucessos} sucessos, ${totalErros} erros`, 
+            `${result.relatorio.servidores.length} servidores processados`);
+          
           result.relatorio.servidores.forEach(relatorioServidor => {
-            this.addStatusMessage('info', `${relatorioServidor.nome}: ${relatorioServidor.sucessos || 0} sucessos, ${relatorioServidor.erros || 0} erros`);
+            const status = (relatorioServidor.erros || 0) > 0 ? 'warning' : 'success';
+            this.addStatusMessage(status, `${relatorioServidor.nome}`, 
+              `${relatorioServidor.sucessos || 0} sucessos, ${relatorioServidor.erros || 0} erros`);
           });
         }
       }
@@ -1393,16 +1405,37 @@ class PeritoApp {
 
   // ===== UTILITY METHODS =====
 
-  addStatusMessage(type, message) {
+  addStatusMessage(type, message, details = null) {
     const statusLog = document.getElementById('status-log');
     const timestamp = new Date().toLocaleTimeString();
-        
+    
     const statusItem = document.createElement('div');
     statusItem.className = `status-item ${type}`;
-    statusItem.textContent = `[${timestamp}] ${message}`;
-        
+    
+    // Criar conteúdo principal
+    const mainContent = document.createElement('div');
+    mainContent.style.fontWeight = '600';
+    mainContent.textContent = `[${timestamp}] ${message}`;
+    statusItem.appendChild(mainContent);
+    
+    // Adicionar detalhes se fornecidos
+    if (details) {
+      const detailsContent = document.createElement('div');
+      detailsContent.style.fontSize = '0.9em';
+      detailsContent.style.marginTop = '4px';
+      detailsContent.style.opacity = '0.8';
+      detailsContent.textContent = details;
+      statusItem.appendChild(detailsContent);
+    }
+    
     statusLog.appendChild(statusItem);
     statusLog.scrollTop = statusLog.scrollHeight;
+    
+    // Manter apenas os últimos 50 itens para performance
+    const items = statusLog.children;
+    if (items.length > 50) {
+      statusLog.removeChild(items[0]);
+    }
   }
 
   clearStatusLog() {
@@ -1418,6 +1451,88 @@ class PeritoApp {
       document.getElementById('password').value = config.PASSWORD || '';
     } catch (error) {
       console.error('Erro ao carregar configurações:', error);
+    }
+  }
+
+  async loadOJs() {
+    try {
+      console.log('Carregando lista de OJs...');
+      
+      // Inicializar window.ojList se não existir
+      if (!window.ojList) {
+        window.ojList = [];
+      }
+      
+      // Inicializar window.ojSelectors se não existir
+      if (!window.ojSelectors) {
+        window.ojSelectors = {};
+      }
+      
+      // Carregar OJs do arquivo JSON
+      const response = await fetch('./orgaos_pje.json');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const ojData = await response.json();
+      console.log('Dados de OJs carregados:', Object.keys(ojData).length, 'cidades');
+      
+      // Converter objeto em array plano de OJs
+      const allOJs = [];
+      for (const cidade in ojData) {
+        if (ojData.hasOwnProperty(cidade)) {
+          const ojs = ojData[cidade];
+          if (Array.isArray(ojs)) {
+            allOJs.push(...ojs);
+          }
+        }
+      }
+      
+      // Ordenar alfabeticamente
+      window.ojList = allOJs.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+      console.log('✅ Lista de OJs carregada com sucesso:', window.ojList.length, 'órgãos');
+      console.log('Primeiros 5 OJs:', window.ojList.slice(0, 5));
+      
+      // Inicializar seletores de OJs
+      this.initializeOJSelectors();
+      
+    } catch (error) {
+      console.error('❌ Erro ao carregar OJs:', error);
+      
+      // Lista de fallback
+      window.ojList = [
+        'Vara do Trabalho de São Paulo',
+        'Vara do Trabalho de Campinas',
+        'Vara do Trabalho de Santos',
+        'Vara do Trabalho de São Bernardo do Campo',
+        'Vara do Trabalho de Ribeirão Preto'
+      ];
+      console.log('⚠️ Usando lista de fallback com', window.ojList.length, 'órgãos');
+      
+      // Inicializar seletores mesmo com fallback
+      this.initializeOJSelectors();
+    }
+  }
+
+  initializeOJSelectors() {
+    try {
+      // Inicializar seletor principal de OJs
+      if (document.getElementById('oj-selector-main') && document.getElementById('oj-search')) {
+        window.ojSelectors.main = new OJSelector('oj-selector-main', 'oj-search', {
+          placeholder: 'Selecione um órgão julgador...',
+          searchPlaceholder: 'Digite para buscar órgãos julgadores...'
+        });
+        
+        // Event listener para quando um OJ for selecionado
+        document.getElementById('oj-selector-main').addEventListener('oj-selected', (e) => {
+          console.log('OJ selecionado:', e.detail.text);
+          this.saveOjToHistory(e.detail.text);
+        });
+      }
+      
+      console.log('Seletores de OJs inicializados com sucesso');
+    } catch (error) {
+      console.error('Erro ao inicializar seletores de OJs:', error);
     }
   }
 
@@ -1442,68 +1557,13 @@ class PeritoApp {
   }
 
   showLoading(title, subtitle = '') {
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const loadingTitle = document.getElementById('loading-title');
-    const loadingSubtitle = document.getElementById('loading-subtitle');
-    const currentCpf = document.getElementById('current-cpf');
-    const currentPerfil = document.getElementById('current-perfil');
-    const ojProgress = document.getElementById('oj-progress');
-    const loadingServidor = document.getElementById('loading-servidor');
-    const loadingOj = document.getElementById('loading-oj');
-        
-    loadingTitle.textContent = title;
-    loadingSubtitle.textContent = subtitle;
-    
-    // Inicializar elementos do CPF, perfil e contador de OJs
-    if (currentCpf) {
-      currentCpf.textContent = '---.--.------';
-    }
-    
-    if (currentPerfil) {
-      currentPerfil.textContent = '---';
-    }
-    
-    // Calcular total de OJs para o contador
-    let totalOjs = 0;
-    if (this.selectedPeritos && this.selectedPeritos.length > 0) {
-      const selectedPeritosList = this.selectedPeritos.map(index => this.peritos[index]);
-      totalOjs = selectedPeritosList.reduce((total, perito) => total + (perito.ojs ? perito.ojs.length : 0), 0);
-    } else if (this.selectedServidores && this.selectedServidores.length > 0) {
-      const selectedServidoresList = this.selectedServidores.map(index => this.servidores[index]);
-      totalOjs = selectedServidoresList.reduce((total, servidor) => total + (servidor.ojs ? servidor.ojs.length : 0), 0);
-    }
-    
-    if (ojProgress) {
-      ojProgress.textContent = `OJs processadas: 0/${totalOjs}`;
-    }
-    
-    // Inicializar elementos de servidor e OJ
-    if (loadingServidor) {
-      loadingServidor.textContent = 'Servidor: ---';
-      loadingServidor.style.display = 'block';
-    }
-    
-    if (loadingOj) {
-      loadingOj.textContent = 'OJ: ---';
-      loadingOj.style.display = 'block';
-    }
-    
-    // Resetar contadores
-    this.currentOjCount = 0;
-    this.totalOjCount = totalOjs;
-    
-    // Funcionalidade de pausar removida
-    
-    loadingOverlay.style.display = 'flex';
-    loadingOverlay.classList.remove('hidden');
+    // Modal de loading removido - função desabilitada
+    console.log(`Loading: ${title} - ${subtitle}`);
   }
 
   hideLoading() {
-    const loadingOverlay = document.getElementById('loading-overlay');
-    loadingOverlay.style.display = 'none';
-    loadingOverlay.classList.add('hidden');
-    
-    // Funcionalidade de pausar removida
+    // Modal de loading removido - função desabilitada
+    console.log('Loading hidden');
   }
 
   updateLoadingProgress(data) {
@@ -1542,11 +1602,12 @@ class PeritoApp {
       }
       ojProgress.textContent = `OJs processadas: ${this.currentOjCount}/${this.totalOjCount}`;
       
-      // Verificar se todas as OJs foram processadas e exibir alerta
-      if (this.currentOjCount === this.totalOjCount && this.totalOjCount > 0 && data.orgaoJulgador === 'Finalizado') {
-        setTimeout(() => {
-          alert(`Processamento finalizado com sucesso!\n\nTotal de OJs processadas: ${this.totalOjCount}`);
-        }, 500);
+      // Modal de finalização removido conforme solicitação do usuário
+      // Mantendo apenas o sistema de notificações na parte inferior
+      
+      // Se não há OJs para processar, apenas log silencioso
+      if (this.totalOjCount === 0 && data.orgaoJulgador === 'Finalizado') {
+        console.log('🔄 [AUTOMATION] Servidor finalizado - nenhum OJ para processar, partindo para o próximo');
       }
     }
     
@@ -1636,9 +1697,9 @@ class PeritoApp {
     // Estilos inline otimizados
     const colors = {
       success: '#27ae60',
-      error: '#e74c3c', 
-      warning: '#f39c12',
-      info: '#3498db'
+      error: '#c07b73',
+            warning: '#d4a574',
+            info: '#8b7355'
     };
         
     notification.style.cssText = `
@@ -2201,7 +2262,7 @@ class PeritoApp {
         border-left: 4px solid #ddd;
       }
       
-      .summary-card.success { border-left-color: #28a745; }
+      .summary-card.success { border-left-color: #6b8e58; }
       .summary-card.info { border-left-color: #17a2b8; }
       .summary-card.error { border-left-color: #dc3545; }
       .summary-card.total { border-left-color: #6c757d; }
@@ -2212,7 +2273,7 @@ class PeritoApp {
         margin-bottom: 5px;
       }
       
-      .summary-card.success .summary-number { color: #28a745; }
+      .summary-card.success .summary-number { color: #6b8e58; }
       .summary-card.info .summary-number { color: #17a2b8; }
       .summary-card.error .summary-number { color: #dc3545; }
       .summary-card.total .summary-number { color: #6c757d; }
@@ -2235,7 +2296,7 @@ class PeritoApp {
       }
       
       .progress-bar {
-        background: linear-gradient(90deg, #28a745, #20c997);
+        background: linear-gradient(90deg, #6b8e58, #b8956f);
         height: 100%;
         transition: width 0.3s ease;
       }
@@ -2674,6 +2735,290 @@ class PeritoApp {
       this.showNotification('Processamento paralelo interrompido', 'warning');
     }
   }
+
+  // Métodos para o modal de servidores processados
+  switchServerTab(tabName) {
+    return switchServerTab(tabName);
+  }
+
+  closeProcessedServersModal() {
+    return closeProcessedServersModal();
+  }
+
+  exportProcessedServers() {
+    return exportProcessedServers();
+  }
+}
+
+// Classe para gerenciar seletores de órgãos julgadores
+class OJSelector {
+  constructor(containerId, searchInputId, options = {}) {
+    this.container = document.getElementById(containerId);
+    this.searchInput = document.getElementById(searchInputId);
+    this.options = {
+      placeholder: 'Selecione um órgão julgador...',
+      searchPlaceholder: 'Digite para buscar...',
+      maxHeight: '300px',
+      ...options
+    };
+    
+    this.selectedValue = null;
+    this.selectedText = null;
+    this.isOpen = false;
+    this.filteredOptions = [];
+    this.highlightedIndex = -1;
+    
+    this.init();
+  }
+  
+  init() {
+    if (!this.container || !this.searchInput) {
+      console.error('OJSelector: Container ou input de busca não encontrado');
+      return;
+    }
+    
+    this.createStructure();
+    this.setupEventListeners();
+    this.loadOptions();
+  }
+  
+  createStructure() {
+    this.container.innerHTML = `
+      <div class="oj-selector-wrapper">
+        <div class="oj-selector-display" tabindex="0">
+          <span class="oj-selector-text">${this.options.placeholder}</span>
+          <span class="oj-selector-arrow">▼</span>
+        </div>
+        <div class="oj-selector-dropdown" style="display: none; max-height: ${this.options.maxHeight}; overflow-y: auto;">
+          <div class="oj-selector-search">
+            <input type="text" placeholder="${this.options.searchPlaceholder}" class="oj-search-input">
+          </div>
+          <div class="oj-selector-options"></div>
+        </div>
+      </div>
+    `;
+    
+    this.display = this.container.querySelector('.oj-selector-display');
+    this.dropdown = this.container.querySelector('.oj-selector-dropdown');
+    this.searchInputInternal = this.container.querySelector('.oj-search-input');
+    this.optionsContainer = this.container.querySelector('.oj-selector-options');
+    this.textElement = this.container.querySelector('.oj-selector-text');
+    this.arrowElement = this.container.querySelector('.oj-selector-arrow');
+  }
+  
+  setupEventListeners() {
+    // Toggle dropdown
+    this.display.addEventListener('click', () => this.toggle());
+    this.display.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.toggle();
+      }
+    });
+    
+    // Search functionality
+    this.searchInputInternal.addEventListener('input', (e) => {
+      this.filterOptions(e.target.value);
+    });
+    
+    this.searchInputInternal.addEventListener('keydown', (e) => {
+      this.handleKeyNavigation(e);
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!this.container.contains(e.target)) {
+        this.close();
+      }
+    });
+    
+    // Sync with external search input
+    if (this.searchInput) {
+      this.searchInput.addEventListener('input', (e) => {
+        this.filterOptions(e.target.value);
+        this.searchInputInternal.value = e.target.value;
+      });
+    }
+  }
+  
+  loadOptions() {
+    if (!window.ojList || !Array.isArray(window.ojList)) {
+      console.warn('OJSelector: Lista de OJs não encontrada');
+      return;
+    }
+    
+    this.allOptions = window.ojList.map(oj => ({
+      value: oj,
+      text: oj,
+      searchText: oj.toLowerCase()
+    }));
+    
+    this.filteredOptions = [...this.allOptions];
+    this.renderOptions();
+  }
+  
+  filterOptions(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    
+    if (!term) {
+      this.filteredOptions = [...this.allOptions];
+    } else {
+      this.filteredOptions = this.allOptions.filter(option => 
+        option.searchText.includes(term)
+      );
+    }
+    
+    this.highlightedIndex = -1;
+    this.renderOptions();
+  }
+  
+  renderOptions() {
+    if (!this.optionsContainer) return;
+    
+    if (this.filteredOptions.length === 0) {
+      this.optionsContainer.innerHTML = '<div class="oj-option oj-no-results">Nenhum resultado encontrado</div>';
+      return;
+    }
+    
+    this.optionsContainer.innerHTML = this.filteredOptions
+      .map((option, index) => `
+        <div class="oj-option" data-value="${option.value}" data-index="${index}">
+          ${option.text}
+        </div>
+      `)
+      .join('');
+    
+    // Add click listeners to options
+    this.optionsContainer.querySelectorAll('.oj-option').forEach((optionEl, index) => {
+      if (!optionEl.classList.contains('oj-no-results')) {
+        optionEl.addEventListener('click', () => {
+          this.selectOption(this.filteredOptions[index]);
+        });
+        
+        optionEl.addEventListener('mouseenter', () => {
+          this.highlightedIndex = index;
+          this.updateHighlight();
+        });
+      }
+    });
+  }
+  
+  selectOption(option) {
+    this.selectedValue = option.value;
+    this.selectedText = option.text;
+    this.textElement.textContent = option.text;
+    this.textElement.title = option.text;
+    
+    // Update external search input
+    if (this.searchInput) {
+      this.searchInput.value = option.text;
+      this.searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    
+    this.close();
+    
+    // Dispatch custom event
+    this.container.dispatchEvent(new CustomEvent('oj-selected', {
+      detail: { value: option.value, text: option.text }
+    }));
+  }
+  
+  handleKeyNavigation(e) {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        this.highlightedIndex = Math.min(this.highlightedIndex + 1, this.filteredOptions.length - 1);
+        this.updateHighlight();
+        break;
+        
+      case 'ArrowUp':
+        e.preventDefault();
+        this.highlightedIndex = Math.max(this.highlightedIndex - 1, -1);
+        this.updateHighlight();
+        break;
+        
+      case 'Enter':
+        e.preventDefault();
+        if (this.highlightedIndex >= 0 && this.filteredOptions[this.highlightedIndex]) {
+          this.selectOption(this.filteredOptions[this.highlightedIndex]);
+        }
+        break;
+        
+      case 'Escape':
+        this.close();
+        break;
+    }
+  }
+  
+  updateHighlight() {
+    const options = this.optionsContainer.querySelectorAll('.oj-option:not(.oj-no-results)');
+    options.forEach((option, index) => {
+      option.classList.toggle('highlighted', index === this.highlightedIndex);
+    });
+    
+    // Scroll highlighted option into view
+    if (this.highlightedIndex >= 0 && options[this.highlightedIndex]) {
+      options[this.highlightedIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }
+  
+  toggle() {
+    if (this.isOpen) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+  
+  open() {
+    this.isOpen = true;
+    this.dropdown.style.display = 'block';
+    this.arrowElement.textContent = '▲';
+    this.searchInputInternal.focus();
+    
+    // Reset search
+    this.searchInputInternal.value = '';
+    this.filterOptions('');
+  }
+  
+  close() {
+    this.isOpen = false;
+    this.dropdown.style.display = 'none';
+    this.arrowElement.textContent = '▼';
+    this.highlightedIndex = -1;
+  }
+  
+  setValue(value) {
+    const option = this.allOptions.find(opt => opt.value === value);
+    if (option) {
+      this.selectOption(option);
+    }
+  }
+  
+  getValue() {
+    return this.selectedValue;
+  }
+  
+  getText() {
+    return this.selectedText;
+  }
+  
+  clear() {
+    this.selectedValue = null;
+    this.selectedText = null;
+    this.textElement.textContent = this.options.placeholder;
+    this.textElement.title = '';
+    
+    if (this.searchInput) {
+      this.searchInput.value = '';
+    }
+    
+    this.close();
+  }
+  
+  refresh() {
+    this.loadOptions();
+  }
 }
 
 // Initialize the app
@@ -2681,3 +3026,389 @@ const app = new PeritoApp();
 
 // Make app globally available for onclick handlers
 window.app = app;
+
+// ===== PROCESSED SERVERS MODAL =====
+let processedServers = [];
+let processingServers = [];
+let processingStartTime = null;
+let currentActiveTab = 'processing';
+
+// Função para mostrar o modal de servidores processados
+function showProcessedServersModal() {
+    console.log('showProcessedServersModal chamada');
+    const modal = document.getElementById('processed-servers-modal');
+    console.log('Modal encontrado:', modal);
+    if (!modal) {
+        console.error('Modal processed-servers-modal não encontrado!');
+        return;
+    }
+    console.log('Chamando updateAllServersDisplay...');
+    updateAllServersDisplay();
+    console.log('Exibindo modal...');
+    modal.style.display = 'block';
+    console.log('Modal exibido com sucesso');
+}
+
+// Função para fechar o modal de servidores processados
+function closeProcessedServersModal() {
+    const modal = document.getElementById('processed-servers-modal');
+    modal.style.display = 'none';
+}
+
+// Função para alternar entre abas
+function switchServerTab(tabName) {
+    // Remover classe active de todas as abas
+    document.querySelectorAll('.tab-button').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Ocultar todos os painéis
+    document.querySelectorAll('.server-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+    
+    // Ativar aba e painel selecionados baseado no nome correto
+    if (tabName === 'processing') {
+        // Ativar aba "Em Processamento"
+        document.querySelector('.tab-button[onclick*="processing"]').classList.add('active');
+        document.getElementById('processing-servers-panel').classList.add('active');
+    } else if (tabName === 'completed') {
+        // Ativar aba "Processados com Sucesso"
+        document.querySelector('.tab-button[onclick*="completed"]').classList.add('active');
+        document.getElementById('completed-servers-panel').classList.add('active');
+    }
+    
+    currentActiveTab = tabName;
+    
+    // Atualizar display do painel ativo
+    if (tabName === 'completed') {
+        updateProcessedServersDisplay();
+    } else {
+        updateProcessingServersDisplay();
+    }
+}
+
+// Função para adicionar servidor processado
+function addProcessedServer(serverData) {
+    const processedServer = {
+        id: Date.now() + Math.random(),
+        name: serverData.name || 'Servidor não identificado',
+        cpf: serverData.cpf || '',
+        perfil: serverData.perfil || '',
+        ojsCount: serverData.ojsCount || 0,
+        processedAt: new Date(),
+        processingTime: serverData.processingTime || 0
+    };
+    
+    processedServers.push(processedServer);
+    
+    // Remover da lista de processamento se existir
+    processingServers = processingServers.filter(server => server.cpf !== serverData.cpf);
+    
+    // Atualizar display se o modal estiver aberto
+    const modal = document.getElementById('processed-servers-modal');
+    if (modal && modal.style.display === 'block') {
+        updateAllServersDisplay();
+    }
+}
+
+// Função para adicionar servidor em processamento
+function addProcessingServer(serverData) {
+    const processingServer = {
+        id: Date.now() + Math.random(),
+        name: serverData.name || 'Servidor não identificado',
+        cpf: serverData.cpf || '',
+        perfil: serverData.perfil || '',
+        startedAt: new Date(),
+        currentOJ: serverData.currentOJ || 'Iniciando...'
+    };
+    
+    // Verificar se já não está na lista
+    const exists = processingServers.find(server => server.cpf === serverData.cpf);
+    if (!exists) {
+        processingServers.push(processingServer);
+        
+        // Atualizar display se o modal estiver aberto
+        const modal = document.getElementById('processed-servers-modal');
+        if (modal && modal.style.display === 'block') {
+            updateAllServersDisplay();
+        }
+    }
+}
+
+// Função para atualizar servidor em processamento
+function updateProcessingServer(cpf, updateData) {
+    const server = processingServers.find(s => s.cpf === cpf);
+    if (server) {
+        Object.assign(server, updateData);
+        
+        // Atualizar display se o modal estiver aberto e na aba de processamento
+        const modal = document.getElementById('processed-servers-modal');
+        if (modal && modal.style.display === 'block' && currentActiveTab === 'processing') {
+            updateProcessingServersDisplay();
+        }
+    }
+}
+
+// Função para atualizar todos os displays
+function updateAllServersDisplay() {
+    updateProcessedServersDisplay();
+    updateProcessingServersDisplay();
+}
+
+// Função para atualizar o display do painel de processados
+function updateProcessedServersDisplay() {
+    updateProcessedServersSummary();
+    renderProcessedServersList();
+}
+
+// Função para atualizar o display do painel de processamento
+function updateProcessingServersDisplay() {
+    updateProcessingServersSummary();
+    renderProcessingServersList();
+}
+
+// Função para atualizar o resumo estatístico dos processados
+function updateProcessedServersSummary() {
+    const totalProcessed = processedServers.length;
+    const totalOJs = processedServers.reduce((sum, server) => sum + server.ojsCount, 0);
+    const totalTime = calculateTotalProcessingTime();
+    
+    document.getElementById('total-processed-count').textContent = totalProcessed;
+    document.getElementById('total-ojs-processed').textContent = totalOJs;
+    document.getElementById('processing-time').textContent = formatProcessingTime(totalTime);
+}
+
+// Função para atualizar o resumo estatístico dos em processamento
+function updateProcessingServersSummary() {
+    const totalServers = processingServers.length;
+    const avgTime = processingServers.length > 0 ? 
+        processingServers.reduce((sum, server) => {
+            const elapsed = Math.floor((new Date() - server.startedAt) / 1000);
+            return sum + elapsed;
+        }, 0) / processingServers.length : 0;
+    
+    document.getElementById('total-processing-count').textContent = totalServers;
+    document.getElementById('current-processing-time').textContent = formatProcessingTime(avgTime);
+    document.getElementById('processing-progress').textContent = totalServers > 0 ? '100%' : '0%';
+}
+
+// Função para calcular tempo total de processamento
+function calculateTotalProcessingTime() {
+    if (!processingStartTime || processedServers.length === 0) return 0;
+    
+    const lastProcessed = processedServers[processedServers.length - 1];
+    return Math.floor((lastProcessed.processedAt - processingStartTime) / 1000);
+}
+
+// Função para renderizar a lista de servidores
+function renderProcessedServersList() {
+    const container = document.getElementById('processed-servers-container');
+    const searchInput = document.getElementById('server-search');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    
+    const filteredServers = processedServers.filter(server => 
+        server.name.toLowerCase().includes(searchTerm) ||
+        server.cpf.includes(searchTerm) ||
+        server.perfil.toLowerCase().includes(searchTerm)
+    );
+    
+    if (filteredServers.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <h4>Nenhum servidor processado</h4>
+                <p>Os servidores processados com sucesso aparecerão aqui.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = filteredServers.map(server => `
+        <div class="server-item">
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="server-info">
+                <div class="server-name">${server.name}</div>
+                <div class="server-details">
+                    CPF: ${server.cpf} | Perfil: ${server.perfil}
+                </div>
+            </div>
+            <div class="server-stats">
+                <div>
+                    <span class="oj-count">${server.ojsCount}</span> OJs
+                </div>
+                <div class="processing-time">
+                    ${formatProcessingTime(server.processingTime)}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Função para renderizar a lista de servidores em processamento
+function renderProcessingServersList() {
+    const container = document.getElementById('processing-servers-container');
+    const searchInput = document.getElementById('processing-server-search');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    
+    const filteredServers = processingServers.filter(server => 
+        server.name.toLowerCase().includes(searchTerm) ||
+        server.cpf.includes(searchTerm) ||
+        server.perfil.toLowerCase().includes(searchTerm)
+    );
+    
+    if (filteredServers.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-clock"></i>
+                <h4>Nenhum servidor em processamento</h4>
+                <p>Os servidores que estão sendo processados aparecerão aqui.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = filteredServers.map(server => {
+        const elapsed = Math.floor((new Date() - server.startedAt) / 1000);
+        return `
+            <div class="server-item">
+                <div class="processing-icon">
+                    <i class="fas fa-spinner"></i>
+                </div>
+                <div class="server-info">
+                    <div class="server-name">${server.name}</div>
+                    <div class="server-details">
+                        CPF: ${server.cpf} | Perfil: ${server.perfil}
+                    </div>
+                    <div class="server-details">
+                        Processando: ${server.currentOJ || 'Iniciando...'}
+                    </div>
+                </div>
+                <div class="server-stats">
+                    <div class="processing-time">
+                        ${formatProcessingTime(elapsed)}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Função para exportar lista de servidores processados
+function exportProcessedServers() {
+    const data = {
+        timestamp: new Date().toISOString(),
+        summary: {
+            totalProcessed: processedServers.length,
+            totalOJs: processedServers.reduce((sum, server) => sum + server.ojsCount, 0),
+            totalProcessingTime: calculateTotalProcessingTime()
+        },
+        servers: processedServers.map(server => ({
+            name: server.name,
+            cpf: server.cpf,
+            perfil: server.perfil,
+            ojsCount: server.ojsCount,
+            processedAt: server.processedAt.toISOString(),
+            processingTime: server.processingTime
+        }))
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `servidores-processados-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Função para iniciar o tracking de tempo de processamento
+function startProcessingTimer() {
+    processingStartTime = new Date();
+    processedServers = []; // Reset da lista
+}
+
+// Função para formatar tempo em HH:MM:SS
+function formatProcessingTime(seconds) {
+    if (!seconds || seconds < 0) return '--:--:--';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Adicionar event listeners para o modal
+document.addEventListener('DOMContentLoaded', function() {
+    // Botão para mostrar servidores processados
+    const showProcessedBtn = document.getElementById('show-processed-servers');
+    console.log('Botão Ver Processados encontrado:', showProcessedBtn);
+    if (showProcessedBtn) {
+        showProcessedBtn.addEventListener('click', function() {
+            console.log('Botão Ver Processados clicado!');
+            showProcessedServersModal();
+        });
+        console.log('Event listener adicionado ao botão Ver Processados');
+    } else {
+        console.error('Botão show-processed-servers não encontrado!');
+    }
+    
+    // Fechar modal ao clicar no X
+    const modal = document.getElementById('processed-servers-modal');
+    if (modal) {
+        const closeBtn = modal.querySelector('.close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeProcessedServersModal);
+        }
+        
+        // Fechar modal ao clicar fora dele
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeProcessedServersModal();
+            }
+        });
+    }
+    
+    // Search functionality for processed servers
+    const searchInput = document.getElementById('server-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            renderProcessedServersList();
+        });
+    }
+    
+    // Search functionality for processing servers
+    const processingSearchInput = document.getElementById('processing-server-search');
+    if (processingSearchInput) {
+        processingSearchInput.addEventListener('input', function() {
+            renderProcessingServersList();
+        });
+    }
+    
+    // Tab switching functionality
+    const processedTab = document.getElementById('processed-tab');
+    const processingTab = document.getElementById('processing-tab');
+    
+    if (processedTab) {
+        processedTab.addEventListener('click', () => switchServerTab('processed'));
+    }
+    
+    if (processingTab) {
+        processingTab.addEventListener('click', () => switchServerTab('processing'));
+    }
+});
+
+// Expor funções globalmente
+window.showProcessedServersModal = showProcessedServersModal;
+window.closeProcessedServersModal = closeProcessedServersModal;
+window.switchServerTab = switchServerTab;
+window.addProcessedServer = addProcessedServer;
+window.addProcessingServer = addProcessingServer;
+window.updateProcessingServer = updateProcessingServer;
+window.exportProcessedServers = exportProcessedServers;
+window.startProcessingTimer = startProcessingTimer;

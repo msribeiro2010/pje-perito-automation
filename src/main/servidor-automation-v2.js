@@ -11,6 +11,12 @@ const SmartRetryManager = require('./smart-retry-manager.js');
 const NavigationOptimizer = require('./navigation-optimizer.js');
 const PerformanceMonitor = require('./performance-monitor.js');
 const PJEResilienceManager = require('./pje-resilience-manager.js');
+const { SmartOJCache } = require('../utils/smart-oj-cache.js');
+const { VerificacaoOJPapel } = require('../utils/verificacao-oj-papel.js');
+const { ServidorSkipDetector } = require('../utils/servidor-skip-detector.js');
+const { verificarEProcessarLocalizacoesFaltantes, isVaraLimeira, aplicarTratamentoLimeira } = require('../vincularOJ.js');
+const { resolverProblemaVarasLimeira, SolucaoLimeiraCompleta } = require('../../solucao-limeira-completa.js');
+const { DetectorVarasProblematicas } = require('../utils/detector-varas-problematicas.js');
 
 /**
  * Automação moderna para vinculação de OJs a servidores
@@ -27,6 +33,9 @@ class ServidorAutomationV2 {
     this.config = null;
     this.results = [];
     this.ojCache = new Set(); // Cache para OJs já cadastrados
+    this.smartOJCache = new SmartOJCache(); // Cache inteligente para verificação de OJs
+    this.verificacaoOJPapel = new VerificacaoOJPapel(); // Sistema de verificação OJ + papel
+    this.servidorSkipDetector = new ServidorSkipDetector(); // Detector de servidores para pular
     this.currentServidor = null; // Servidor sendo processado atualmente
     this.isProduction = process.env.NODE_ENV === 'production';
     this.timeoutManager = new TimeoutManager();
@@ -37,6 +46,7 @@ class ServidorAutomationV2 {
     this.resilienceManager = new PJEResilienceManager();
     this.domCache = null;
     this.parallelProcessor = null;
+    this.detectorVaras = new DetectorVarasProblematicas(); // Detector automático de varas problemáticas
   }
 
   setMainWindow(window) {
@@ -124,6 +134,17 @@ class ServidorAutomationV2 {
     
     // Iniciar monitoramento de performance
     this.performanceMonitor.startMonitoring();
+    
+    // Inicializar timer de processamento para o modal
+    if (this.mainWindow && this.mainWindow.webContents) {
+      this.mainWindow.webContents.executeJavaScript(`
+        if (typeof startProcessingTimer === 'function') {
+          startProcessingTimer();
+        }
+      `).catch(err => {
+        console.log('⚠️ Erro ao inicializar timer de processamento:', err.message);
+      });
+    }
 
     try {
       // Suporte para processamento em lote de múltiplos servidores
@@ -569,7 +590,20 @@ Sucessos por Servidor:
     const browserOptions = {
       headless: this.isProduction,
       slowMo: this.isProduction ? 0 : 50,
-      timeout: 30000
+      timeout: 60000,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-ipc-flooding-protection',
+        '--max_old_space_size=4096'
+      ]
     };
 
     // Usar o PJEResilienceManager para inicializar o navegador
@@ -624,11 +658,11 @@ Sucessos por Servidor:
     });
         
     // Configurar timeouts mais generosos
-    this.page.setDefaultTimeout(30000); // 30s para elementos
+    this.page.setDefaultTimeout(45000); // 45s para elementos
     
     // Inicializar cache DOM
     this.initializeDOMCache();
-    this.page.setDefaultNavigationTimeout(60000); // 60s para navegação
+    this.page.setDefaultNavigationTimeout(90000); // 90s para navegação
 
     // Capturar logs do console
     this.page.on('console', msg => {
@@ -1568,8 +1602,8 @@ Sucessos por Servidor:
       throw new Error('Configuração de órgãos julgadores inválida ou não definida');
     }
         
-    // Verificar OJs já cadastrados em lote (otimização com cache)
-    await this.loadExistingOJs();
+    // Verificar OJs já cadastrados em lote usando SmartOJCache
+    await this.loadExistingOJsWithSmartCache();
         
     // Normalizar e filtrar OJs que precisam ser processados
     const ojsNormalizados = this.config.orgaos.map(orgao => this.normalizeOrgaoName(orgao));
@@ -1635,8 +1669,23 @@ Sucessos por Servidor:
       }
     }
     
-    // Enviar status final de conclusão
-    this.sendStatus('success', 'Processamento finalizado com sucesso!', 100, 'Todas as OJs foram processadas', 'Finalizado', this.currentServidor?.nome, totalOjs, totalOjs);
+    // Enviar status final de conclusão com contador correto
+    console.log(`🔍 [CONTADOR] Total OJs configuradas: ${totalOjs}`);
+    console.log(`🔍 [CONTADOR] Total OJs processadas: ${ojsProcessadasTotal}`);
+    console.log(`🔍 [CONTADOR] Total resultados: ${this.results.length}`);
+    
+    // Só enviar status de sucesso se houver OJs processadas ou configuradas
+    if (ojsProcessadasTotal > 0 || totalOjs > 0) {
+      this.sendStatus('success', 'Processamento finalizado com sucesso!', 100, 
+        `${ojsProcessadasTotal} OJs processadas de ${totalOjs} configuradas`, 
+        'Finalizado', this.currentServidor?.nome, ojsProcessadasTotal, totalOjs);
+    } else {
+      // Log silencioso quando não há OJs para processar
+      console.log('🔄 [AUTOMATION] Servidor finalizado - nenhum OJ para processar, partindo para o próximo');
+      this.sendStatus('info', 'Servidor processado', 100, 
+        'Nenhum OJ para vincular - partindo para próximo servidor', 
+        'Finalizado', this.currentServidor?.nome, 0, 0);
+    }
   }
 
   async loadExistingOJs() {
@@ -1710,29 +1759,217 @@ Sucessos por Servidor:
     }
   }
 
+  /**
+   * Carrega OJs existentes usando SmartOJCache (versão otimizada)
+   */
+  async loadExistingOJsWithSmartCache() {
+    try {
+      this.sendStatus('info', 'Verificando OJs já cadastrados com SmartCache...', 58, 'Otimizando processo');
+      console.log('🔍 [SEQUENTIAL] Carregando OJs existentes usando SmartOJCache...');
+      
+      // Limpar cache antes de verificar
+      this.ojCache.clear();
+      this.smartOJCache.limparCache();
+      
+      // Usar o SmartOJCache para verificar OJs vinculados em lote
+      const resultadoVerificacao = await this.smartOJCache.verificarOJsEmLote(
+        this.page, 
+        this.config.orgaos,
+        (mensagem, progresso) => {
+          this.sendStatus('info', mensagem, 58 + (progresso * 0.3), 'Verificando OJs...');
+        }
+      );
+      
+      console.log(`📊 [SEQUENTIAL] Resultado da verificação em lote:`);
+      console.log(`   - Total verificados: ${resultadoVerificacao.estatisticas.totalVerificados}`);
+      console.log(`   - Já vinculados: ${resultadoVerificacao.estatisticas.jaVinculados}`);
+      console.log(`   - Para vincular: ${resultadoVerificacao.estatisticas.paraVincular}`);
+      
+      // Adicionar OJs já vinculados ao cache local
+      resultadoVerificacao.ojsJaVinculados.forEach(ojInfo => {
+        const ojNormalizado = this.normalizeOrgaoName(ojInfo.oj);
+        this.ojCache.add(ojNormalizado);
+        
+        // Também atualizar o SmartOJCache
+        this.smartOJCache.adicionarOJVinculado(ojInfo.oj);
+        
+        console.log(`✅ [SEQUENTIAL] OJ já vinculado: "${ojInfo.oj}" → normalizado: "${ojNormalizado}"`);
+      });
+      
+      // Marcar cache como válido
+      this.smartOJCache.cacheValido = true;
+      this.smartOJCache.ultimaAtualizacao = Date.now();
+      
+      console.log(`🎯 [SEQUENTIAL] Cache de OJs atualizado: ${this.ojCache.size} OJs já cadastrados`);
+      this.sendStatus('success', `${this.ojCache.size} OJs já cadastrados | ${resultadoVerificacao.estatisticas.paraVincular} para processar`, 90, 'SmartCache otimizado');
+      
+      return resultadoVerificacao;
+      
+    } catch (error) {
+      console.log('⚠️ [SEQUENTIAL] Erro ao carregar OJs com SmartCache:', error.message);
+      console.log('🔄 [SEQUENTIAL] Tentando fallback para método tradicional...');
+      
+      // Fallback para o método tradicional
+      await this.loadExistingOJs();
+      return null;
+    }
+  }
+
   async processOrgaoJulgador(orgao) {
     const processStartTime = Date.now();
     this.performanceMonitor.recordPJEOperationStart('processOrgaoJulgador', orgao);
     
-    console.log(`🚀 INICIANDO processamento otimizado para: ${orgao}`);
+    // Atualizar status do servidor no painel de processamento
+    if (this.mainWindow && this.mainWindow.webContents && this.currentServidor) {
+      this.mainWindow.webContents.executeJavaScript(`
+        if (typeof updateProcessingServer === 'function') {
+          updateProcessingServer('${this.currentServidor.cpf}', {
+            currentOJ: '${orgao.replace(/'/g, "\\'").replace(/"/g, '\\"')}'
+          });
+        }
+      `).catch(err => {
+        console.log('⚠️ Erro ao atualizar status do servidor:', err.message);
+      });
+    }
     
-    // Verificação rápida se OJ já está cadastrado (verificação dupla para garantir)
+    // BYPASS UNIVERSAL: Aplicar bypass a TODOS os servidores para garantir processamento completo
+    const isUniversalBypass = true; // Ativar bypass para todos os servidores
+    
+    if (isUniversalBypass) {
+      console.log(`🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO para OJ: ${orgao} (${this.currentServidor.nome})`);
+      console.log(`🔥 [BYPASS-UNIVERSAL] PULANDO TODAS as verificações prévias`);
+      // PULAR toda a lógica de verificação e ir direto para vinculação
+    } else {
+      console.log(`🚀 INICIANDO processamento otimizado para: ${orgao}`);
+      
+      // Verificação otimizada: Separar OJ de papel para respeitar configuração
+      const papelDesejado = this.config.perfil || 'Assessor';
+      console.log(`🔍 [OTIMIZADO] Verificando OJ "${orgao}" (papel será aplicado: "${papelDesejado}")`);
+      
+      try {
+        // ETAPA 1: Verificar APENAS se OJ já está vinculado (sem considerar papel)
+        console.log(`📋 [ETAPA 1] Verificação simples de OJ vinculado...`);
+        const { verificarOJJaVinculado } = require('../verificarOJVinculado');
+        const verificacaoSimples = await verificarOJJaVinculado(this.page, orgao);
+        
+        console.log(`📋 [RESULTADO] OJ "${orgao}" vinculado: ${verificacaoSimples.jaVinculado}`);
+        
+        if (verificacaoSimples.jaVinculado) {
+          console.log(`🔄 [ESTRATÉGIA] OJ já vinculado - ATUALIZAR papel para "${papelDesejado}"`);
+          console.log(`✅ [DECISÃO] Processamento LIBERADO - Aplicar papel configurado`);
+          // Continua processamento para atualizar papel
+        } else {
+          console.log(`➕ [ESTRATÉGIA] OJ não vinculado - CRIAR nova vinculação com papel "${papelDesejado}"`);
+          console.log(`✅ [DECISÃO] Processamento LIBERADO - Criar nova vinculação`);
+          // Continua processamento para criar vinculação
+        }
+        
+      } catch (verificacaoError) {
+        console.log(`⚠️ [ERRO] Verificação simples de OJ falhou: ${verificacaoError.message}`);
+        console.log(`🔄 [FALLBACK] Continuando processamento por segurança...`);
+        // Continua processamento mesmo com erro
+      }
+    }
+    
+    // DETECÇÃO AUTOMÁTICA DE VARAS PROBLEMÁTICAS - DESABILITADA PARA BYPASS UNIVERSAL
+    if (!isUniversalBypass) {
+      console.log(`🔍 [DETECTOR] Analisando vara para problemas conhecidos...`);
+      const deteccaoProblema = this.detectorVaras.detectarVaraProblematica(orgao);
+      
+      if (deteccaoProblema.problematica) {
+      console.log(`⚠️ [DETECTOR] Vara problemática detectada: ${deteccaoProblema.categoria}`);
+      console.log(`🔧 [DETECTOR] Aplicando tratamento: ${deteccaoProblema.tratamento}`);
+      
+      try {
+        const resultadoTratamento = await this.detectorVaras.aplicarTratamento(
+          deteccaoProblema, 
+          this.page, 
+          orgao, 
+          this.config.perfil || 'Assessor'
+        );
+        
+        if (resultadoTratamento.aplicado) {
+          console.log(`✅ [DETECTOR] Tratamento automático aplicado com sucesso`);
+          
+          this.results.push({
+            orgao,
+            status: 'sucesso',
+            metodo: 'detector_automatico',
+            tratamento: deteccaoProblema.tratamento,
+            categoria: deteccaoProblema.categoria,
+            confianca: deteccaoProblema.confianca,
+            tempo: Date.now() - processStartTime
+          });
+          
+          this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', orgao, true);
+          return { success: true, method: 'detector_automatico', details: resultadoTratamento };
+        } else {
+          console.log(`⚠️ [DETECTOR] Tratamento automático falhou: ${resultadoTratamento.motivo || 'motivo desconhecido'}`);
+          console.log(`🔄 [DETECTOR] Continuando com fluxo padrão...`);
+        }
+      } catch (detectorError) {
+        console.log(`❌ [DETECTOR] Erro no tratamento automático: ${detectorError.message}`);
+        console.log(`🔄 [DETECTOR] Continuando com fluxo padrão...`);
+        }
+      } else {
+        console.log(`✅ [DETECTOR] Vara não apresenta problemas conhecidos`);
+      }
+    } else {
+      console.log(`🔥 [BYPASS-UNIVERSAL] PULANDO detector de varas problemáticas completamente`);
+    }
+    
+    // Verificação específica para varas de Limeira - DESABILITADA PARA BYPASS UNIVERSAL
+    if (!isUniversalBypass && isVaraLimeira(orgao)) {
+      console.log(`🏛️ [LIMEIRA] Vara de Limeira detectada: ${orgao}`);
+      console.log(`🔧 [LIMEIRA] Aplicando tratamento específico...`);
+      
+      try {
+        const resultadoLimeira = await aplicarTratamentoLimeira(this.page, orgao, this.config.perfil || 'Assessor');
+        
+        if (resultadoLimeira.sucesso) {
+          console.log(`✅ [LIMEIRA] Tratamento específico bem-sucedido para: ${orgao}`);
+          this.results.push({
+            orgao,
+            status: 'sucesso',
+            metodo: 'tratamento_limeira_especifico',
+            tempo: Date.now() - processStartTime,
+            detalhes: resultadoLimeira.detalhes
+          });
+          this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', orgao, true);
+          return;
+        } else {
+          console.log(`⚠️ [LIMEIRA] Tratamento específico falhou, continuando com fluxo padrão...`);
+        }
+      } catch (limeiraError) {
+        console.log(`❌ [LIMEIRA] Erro no tratamento específico: ${limeiraError.message}`);
+        console.log(`🔄 [LIMEIRA] Continuando com fluxo padrão...`);
+      }
+    }
+    
+    // Se chegou até aqui, significa que pode vincular
+    console.log(`🚀 PROSSEGUINDO com vinculação do OJ: ${orgao}`);
+    
+    // Verificação de cache rápida como fallback - DESABILITADA PARA BYPASS UNIVERSAL
     const ojNormalizado = this.normalizeOrgaoName(orgao);
-    if (this.ojCache.has(ojNormalizado)) {
-      console.log(`⚡ OJ já cadastrado (cache hit): ${orgao}`);
+    if (!isUniversalBypass && this.ojCache.has(ojNormalizado)) {
+      console.log(`⚡ OJ encontrado no cache local: ${orgao}`);
+      
+      // Se está no cache, também deveria pular
+      console.log(`⏭️ CACHE: Pulando OJ já processado: ${orgao}`);
       this.results.push({
         orgao,
-        status: 'Já Incluído',
+        status: 'Já Incluído (Cache)',
         erro: null,
-        perfil: this.config.perfil,
+        perfil: papelDesejado,
         cpf: this.config.cpf,
         timestamp: new Date().toISOString()
       });
       
-      // Registrar fim da operação PJE com sucesso (cache hit)
+      // Registrar fim da operação com sucesso (cache hit)
       this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', Date.now() - processStartTime, true);
-      
       return; // Skip processamento
+    } else if (isUniversalBypass && this.ojCache.has(ojNormalizado)) {
+      console.log(`🔥 [BYPASS-UNIVERSAL] OJ ${orgao} encontrado no cache, mas IGNORANDO cache para forçar processamento`);
     }
     
     const startTime = Date.now();
@@ -1801,7 +2038,17 @@ Sucessos por Servidor:
       // Registrar fim da operação PJE com erro
       this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', Date.now() - processStartTime, false);
       
-      throw error;
+      // Não fazer throw - apenas registrar o erro e continuar
+      this.results.push({
+        orgao,
+        status: 'Erro na Vinculação',
+        erro: error.message,
+        perfil: this.config.perfil,
+        cpf: this.config.cpf,
+        timestamp: new Date().toISOString()
+      });
+      
+      console.log(`⚠️ Erro processando ${orgao}, mas continuando com próximo...`);
     }
   }
 
@@ -2157,104 +2404,28 @@ Sucessos por Servidor:
         
         let perfilSelecionado = false;
         
-        // Se perfil foi configurado, procurar pela opção correta
+        // PRIORIDADE MÁXIMA: Perfil configurado pelo usuário
         if (this.config.perfil && this.config.perfil.trim() !== '') {
-          console.log(`🔍 Procurando perfil: "${this.config.perfil}"`);
+          console.log(`🎯 [PRIORIDADE] Procurando perfil CONFIGURADO: "${this.config.perfil}"`);
           
-          // Verificar diferentes variações do nome do perfil
-          const perfilVariacoes = [
-            this.config.perfil,
-            this.config.perfil.replace(/de /gi, ''),
-            this.config.perfil.replace(/Secretario/gi, 'Secretário'),
-            this.config.perfil.replace(/Secretário/gi, 'Secretario'),
-            this.config.perfil.replace(/Audiencia/gi, 'Audiência'),
-            this.config.perfil.replace(/Audiência/gi, 'Audiencia'),
-            this.config.perfil.toLowerCase(),
-            this.config.perfil.toUpperCase()
-          ];
+          // Estratégia 1: Busca por similaridade inteligente
+          perfilSelecionado = await this.selecionarPerfilComSimilaridade(opcoesPapel, this.config.perfil);
           
-          console.log(`🔍 [DEBUG] Variações do perfil a testar:`, perfilVariacoes);
-          
-          // Tentar encontrar o perfil exato
-          for (const variacao of perfilVariacoes) {
-            if (perfilSelecionado) break;
+          if (perfilSelecionado) {
+            console.log(`✅ [SUCESSO] Perfil configurado selecionado com sucesso!`);
+          } else {
+            console.log(`⚠️ [FALLBACK] Perfil configurado não encontrado, usando estratégias alternativas...`);
             
-            console.log(`🔍 [DEBUG] Testando variação: "${variacao}"`);
-            try {
-              const opcaoPerfil = opcoesPapel.filter({ hasText: new RegExp(variacao.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') });
-              const countOpcao = await opcaoPerfil.count();
-              console.log(`🔍 [DEBUG] Opções encontradas para "${variacao}": ${countOpcao}`);
-              
-              if (countOpcao > 0) {
-                const textoEncontrado = await opcaoPerfil.first().textContent();
-                console.log(`🔍 [DEBUG] Texto da opção encontrada: "${textoEncontrado?.trim()}"`);
-                await opcaoPerfil.first().click({ timeout: 2000 });
-                console.log(`✅ Papel encontrado e selecionado: ${variacao}`);
-                perfilSelecionado = true;
-                break;
-              }
-            } catch (error) {
-              console.log(`⚠️ [DEBUG] Erro ao testar variação "${variacao}": ${error.message}`);
-            }
+            // Estratégia 2: Busca por palavras-chave específicas do perfil configurado
+            perfilSelecionado = await this.selecionarPerfilPorPalavrasChave(opcoesPapel, this.config.perfil);
           }
-          
-          // Se não encontrou exato, procurar por palavras-chave
-          if (!perfilSelecionado) {
-            console.log('⚠️ Perfil exato não encontrado, procurando por palavras-chave...');
-            
-            if (this.config.perfil.toLowerCase().includes('secretario') || this.config.perfil.toLowerCase().includes('secretário')) {
-              if (this.config.perfil.toLowerCase().includes('audiencia') || this.config.perfil.toLowerCase().includes('audiência')) {
-                // Procurar "Secretário de Audiência"
-                console.log('🔍 [DEBUG] Procurando "Secretário de Audiência"...');
-                const secretarioAudiencia = opcoesPapel.filter({ hasText: /Secretári[oa].*Audiênc/i });
-                const countSecretario = await secretarioAudiencia.count();
-                console.log(`🔍 [DEBUG] Opções "Secretário de Audiência" encontradas: ${countSecretario}`);
-                
-                if (countSecretario > 0) {
-                  const textoSecretario = await secretarioAudiencia.first().textContent();
-                  console.log(`🔍 [DEBUG] Texto "Secretário de Audiência": "${textoSecretario?.trim()}"`);
-                  await secretarioAudiencia.first().click();
-                  console.log('✅ Papel: Secretário de Audiência selecionado');
-                  perfilSelecionado = true;
-                }
-              } else {
-                // Procurar "Diretor de Secretaria" como fallback
-                console.log('🔍 [DEBUG] Procurando "Diretor de Secretaria"...');
-                const diretorSecretaria = opcoesPapel.filter({ hasText: /Diretor.*Secretaria/i });
-                const countDiretor = await diretorSecretaria.count();
-                console.log(`🔍 [DEBUG] Opções "Diretor de Secretaria" encontradas: ${countDiretor}`);
-                
-                if (countDiretor > 0) {
-                  const textoDiretor = await diretorSecretaria.first().textContent();
-                  console.log(`🔍 [DEBUG] Texto "Diretor de Secretaria": "${textoDiretor?.trim()}"`);
-                  await diretorSecretaria.first().click();
-                  console.log('✅ Papel: Diretor de Secretaria selecionado (fallback)');
-                  perfilSelecionado = true;
-                }
-              }
-            }
-            
-            // Procurar especificamente por "Assessor" se for o perfil configurado
-            if (!perfilSelecionado && this.config.perfil.toLowerCase().includes('assessor')) {
-              console.log('🔍 [DEBUG] Procurando especificamente por "Assessor"...');
-              const assessorOpcao = opcoesPapel.filter({ hasText: /Assessor/i });
-              const countAssessor = await assessorOpcao.count();
-              console.log(`🔍 [DEBUG] Opções "Assessor" encontradas: ${countAssessor}`);
-              
-              if (countAssessor > 0) {
-                const textoAssessor = await assessorOpcao.first().textContent();
-                console.log(`🔍 [DEBUG] Texto "Assessor": "${textoAssessor?.trim()}"`);
-                await assessorOpcao.first().click();
-                console.log('✅ Papel: Assessor selecionado');
-                perfilSelecionado = true;
-              }
-            }
-          }
+        } else {
+          console.log(`⚠️ [AVISO] Nenhum perfil foi configurado - usando perfil padrão...`);
         }
         
-        // Se ainda não encontrou, tentar estratégias de fallback
+        // FALLBACKS apenas se perfil configurado falhou
         if (!perfilSelecionado) {
-          console.log('⚠️ [DEBUG] Nenhum perfil específico encontrado, tentando fallbacks...');
+          console.log('⚠️ [FALLBACK GERAL] Usando estratégias de fallback...');
           
           // Estratégia 1: Procurar por palavras-chave comuns
           const palavrasChave = ['Secretário', 'Secretario', 'Assessor', 'Diretor', 'Analista'];
@@ -2577,6 +2748,42 @@ Sucessos por Servidor:
         
     // Usar a função melhorada com estratégia de trigger
     const { vincularOJMelhorado } = require('../vincularOJ.js');
+
+// Configuração específica para São José dos Campos - SAO_JOSE_CAMPOS_SEQUENCIAL
+const SAO_JOSE_CAMPOS_CONFIG = {
+    varasEspeciais: [
+        '2ª Vara do Trabalho de São José dos Campos',
+        '3ª Vara do Trabalho de São José dos Campos',
+        '4ª Vara do Trabalho de São José dos Campos',
+        '5ª Vara do Trabalho de São José dos Campos'
+    ],
+    
+    processamentoSequencial: true,
+    timeoutExtendido: 30000,
+    tentativasMaximas: 3,
+    intervaloTentativas: 5000,
+    
+    // Função para verificar se é vara especial
+    isVaraEspecial(nomeOrgao) {
+        return this.varasEspeciais.includes(nomeOrgao);
+    },
+    
+    // Configurações específicas para processamento
+    getConfiguracao(nomeOrgao) {
+        if (this.isVaraEspecial(nomeOrgao)) {
+            return {
+                sequencial: true,
+                timeout: this.timeoutExtendido,
+                tentativas: this.tentativasMaximas,
+                intervalo: this.intervaloTentativas,
+                aguardarCarregamento: 8000,
+                verificarElementos: true
+            };
+        }
+        return null;
+    }
+};
+
     console.log(`🔄 Chamando vincularOJMelhorado para: ${orgao} com perfil: ${this.config.perfil || 'Não especificado'}`);
     await vincularOJMelhorado(
       this.page, 
@@ -2609,6 +2816,22 @@ Sucessos por Servidor:
     console.log(`🎯 [DEBUG] INICIANDO processOrgaosJulgadoresWithServerTracking para ${servidor.nome}`);
     console.log(`🎯 [DEBUG] CPF: ${servidor.cpf}, Perfil: ${servidor.perfil}, OJs: ${servidor.orgaos?.length || 0}`);
     
+    // Adicionar servidor ao painel de processamento
+    if (this.mainWindow && this.mainWindow.webContents) {
+      this.mainWindow.webContents.executeJavaScript(`
+        if (typeof addProcessingServer === 'function') {
+          addProcessingServer({
+            name: '${servidor.nome.replace(/'/g, "\\'")}',
+            cpf: '${servidor.cpf}',
+            perfil: '${servidor.perfil || this.config.perfil || ''}',
+            totalOJs: ${servidor.orgaos?.length || 0}
+          });
+        }
+      `).catch(err => {
+        console.log('⚠️ Erro ao adicionar servidor ao painel de processamento:', err.message);
+      });
+    }
+    
     // Validar configuração antes de processar
     if (!this.config || !this.config.orgaos || !Array.isArray(this.config.orgaos)) {
       throw new Error('Configuração de órgãos julgadores inválida ou não definida');
@@ -2625,31 +2848,149 @@ Sucessos por Servidor:
     
     this.sendStatus('info', `🔍 Verificando OJs cadastrados para ${servidor.nome}...`, null, 'Otimizando processo');
     
-    // IMPORTANTE: Sempre limpar cache no início de cada servidor
-    console.log(`🗑️ [DEBUG] Limpando cache de OJs antes de processar ${servidor.nome}...`);
-    this.ojCache.clear();
-    console.log('✅ [DEBUG] Cache limpo - começando fresh para este servidor');
+    // VERIFICAÇÃO AUTOMÁTICA DE LOCALIZAÇÕES/VISIBILIDADES ATIVAS
+    console.log(`🎯 [LOCALIZAÇÕES] Iniciando verificação automática de localizações para ${servidor.nome}...`);
+    try {
+      const resultadoLocalizacoes = await verificarEProcessarLocalizacoesFaltantes(this.page);
+      
+      if (resultadoLocalizacoes.sucesso) {
+        console.log(`✅ [LOCALIZAÇÕES] Verificação concluída para ${servidor.nome}:`);
+        console.log(`   📊 Existentes: ${resultadoLocalizacoes.existentes}`);
+        console.log(`   🚀 Processadas: ${resultadoLocalizacoes.processadas}`);
+        console.log(`   📈 Total: ${resultadoLocalizacoes.total}`);
+        
+        this.sendStatus('success', 
+          `🎯 Localizações: ${resultadoLocalizacoes.existentes} existentes + ${resultadoLocalizacoes.processadas} processadas = ${resultadoLocalizacoes.total} total`, 
+          null, 
+          `Verificação automática concluída`, 
+          null, 
+          servidor.nome
+        );
+        
+        // Adicionar ao resultado do servidor
+        serverResult.localizacoes = {
+          existentes: resultadoLocalizacoes.existentes,
+          processadas: resultadoLocalizacoes.processadas,
+          total: resultadoLocalizacoes.total,
+          erros: resultadoLocalizacoes.erros || 0
+        };
+        
+      } else {
+        console.log(`⚠️ [LOCALIZAÇÕES] Erro na verificação para ${servidor.nome}: ${resultadoLocalizacoes.erro}`);
+        this.sendStatus('warning', 
+          `⚠️ Erro na verificação de localizações: ${resultadoLocalizacoes.erro}`, 
+          null, 
+          'Continuando com processamento de OJs', 
+          null, 
+          servidor.nome
+        );
+        
+        // Adicionar erro ao resultado do servidor
+        serverResult.localizacoes = {
+          erro: resultadoLocalizacoes.erro,
+          existentes: 0,
+          processadas: 0,
+          total: 0,
+          erros: 1
+        };
+      }
+    } catch (error) {
+      console.log(`❌ [LOCALIZAÇÕES] Erro inesperado na verificação para ${servidor.nome}: ${error.message}`);
+      this.sendStatus('warning', 
+        `❌ Erro inesperado na verificação de localizações: ${error.message}`, 
+        null, 
+        'Continuando com processamento de OJs', 
+        null, 
+        servidor.nome
+      );
+      
+      // Adicionar erro ao resultado do servidor
+      serverResult.localizacoes = {
+        erro: error.message,
+        existentes: 0,
+        processadas: 0,
+        total: 0,
+        erros: 1
+      };
+    }
     
-    // Verificar OJs já cadastrados em lote (otimização com cache)
-    console.log(`🔍 [DEBUG] Carregando OJs existentes para ${servidor.nome}...`);
-    await this.loadExistingOJs();
-    console.log(`🔍 [DEBUG] Cache de OJs carregado: ${this.ojCache.size} OJs em cache`);
+    // CORRIGIDO: Sempre limpar TODOS os caches no início de cada servidor
+    console.log(`🗑️ [DEBUG] Limpando TODOS os caches antes de processar ${servidor.nome}...`);
+    this.ojCache.clear();
+    this.smartOJCache.limparCache(); // IMPORTANTE: Limpar também o SmartOJCache
+    console.log('✅ [DEBUG] Caches limpos - começando fresh para este servidor');
+    console.log(`🎯 [DEBUG] BYPASS-UNIVERSAL: Garantindo que não há contaminação de cache entre servidores`);
+    
+    // MODO BYPASS UNIVERSAL: Aplicar a TODOS os servidores para garantir processamento completo
+    // PULAR TODA verificação prévia para TODOS os servidores
+    const isUniversalBypass = true; // Ativar para todos os servidores
+    
+    if (isUniversalBypass) {
+      console.log(`🔥 [BYPASS-UNIVERSAL] REMOVENDO TODAS AS VERIFICAÇÕES para ${servidor.nome}`);
+      console.log(`🔥 [BYPASS-UNIVERSAL] Pulando SmartCache, ServidorSkipDetector e TODAS verificações`);
+      console.log(`🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO de todas as OJs configuradas`);
+      // PULAR COMPLETAMENTE loadExistingOJs, verificacoes, etc.
+    } else {
+      // Comportamento normal para outros servidores
+      console.log(`🔍 [DEBUG] Carregando OJs existentes para ${servidor.nome} usando SmartOJCache (cache limpo)...`);
+      await this.loadExistingOJsWithSmartCache();
+      console.log(`🔍 [DEBUG] Cache de OJs carregado: ${this.ojCache.size} OJs em cache`);
+    }
         
     // Normalizar e filtrar OJs que precisam ser processados
     console.log(`🔍 [DEBUG] this.config.orgaos: ${JSON.stringify(this.config.orgaos?.slice(0,3) || [])}${this.config.orgaos?.length > 3 ? '...' : ''}`);
     const ojsNormalizados = this.config.orgaos.map(orgao => this.normalizeOrgaoName(orgao));
     console.log(`🔍 [DEBUG] OJs normalizados: ${JSON.stringify(ojsNormalizados.slice(0,3))}${ojsNormalizados.length > 3 ? '...' : ''}`);
     
-    const ojsToProcess = ojsNormalizados.filter(orgao => !this.ojCache.has(orgao));
-    console.log(`🔍 [DEBUG] OJs a processar (após filtro cache): ${JSON.stringify(ojsToProcess.slice(0,3))}${ojsToProcess.length > 3 ? '...' : ''}`);
+    // ANÁLISE INTELIGENTE: DESABILITADA PARA BYPASS UNIVERSAL
+    if (!isUniversalBypass) {
+      const servidorId = `${servidor.cpf}_${servidor.nome}`;
+      const analiseServidor = this.servidorSkipDetector.analisarServidor(servidorId, ojsNormalizados, this.smartOJCache);
+      
+      if (analiseServidor.deveSerPulado) {
+        console.log(`⏭️ [SKIP] Servidor ${servidor.nome} será PULADO: ${analiseServidor.motivo}`);
+        this.sendStatus('info', `⏭️ PULANDO: ${servidor.nome}`, null, analiseServidor.motivo, null, servidor.nome);
+        
+        // Atualizar estatísticas do servidor
+        serverResult.status = 'Pulado';
+        serverResult.jaIncluidos = analiseServidor.estatisticas.ojsJaVinculados;
+        serverResult.detalhes.push({
+          status: 'Servidor Pulado',
+          motivo: analiseServidor.motivo,
+          estatisticas: analiseServidor.estatisticas,
+          timestamp: new Date().toISOString()
+        });
+        
+        return; // Pular este servidor
+      }
+    } else {
+      console.log(`🔥 [BYPASS-UNIVERSAL] PULANDO análise ServidorSkipDetector para ${servidor.nome}`);
+    }
+    
+    // BYPASS UNIVERSAL: Processamento completamente direto para TODOS os servidores
+    let ojsToProcess;
+    if (isUniversalBypass) {
+      ojsToProcess = this.config.orgaos; // Usar OJs ORIGINAIS, não normalizadas
+      console.log(`🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO - ignorando TUDO`);
+      console.log(`🔥 [BYPASS-UNIVERSAL] OJs originais: ${JSON.stringify(ojsToProcess)}`);
+      console.log(`🔥 [BYPASS-UNIVERSAL] Total: ${ojsToProcess.length} OJs serão processadas OBRIGATORIAMENTE`);
+    } else {
+      ojsToProcess = ojsNormalizados.filter(orgao => !this.ojCache.has(orgao));
+      console.log(`🔍 [DEBUG] OJs a processar (normal): ${JSON.stringify(ojsToProcess.slice(0,3))}${ojsToProcess.length > 3 ? '...' : ''}`);
+    }
     
     // Contador de OJs processadas
-    let ojsProcessadasTotal = 0; // Começar em 0
+    let ojsProcessadasTotal = 0;
     const totalOjs = this.config.orgaos.length;
-        
-    this.sendStatus('info', `⚡ ${ojsToProcess.length} novos OJs | ${this.ojCache.size} já cadastrados`, null, `Processando servidor`, null, servidor.nome, ojsProcessadasTotal, totalOjs);
     
-    if (ojsToProcess.length === 0) {
+    if (isUniversalBypass) {
+      console.log(`🔥 [BYPASS-UNIVERSAL] GARANTINDO processamento de ${ojsToProcess.length} OJs`);
+      this.sendStatus('info', `🔥 ${servidor.nome}: ${ojsToProcess.length} OJs serão processadas (sem verificações)`, null, `Processamento direto`, null, servidor.nome, ojsProcessadasTotal, totalOjs);
+    } else {
+      this.sendStatus('info', `⚡ ${ojsToProcess.length} OJs para processar | ${this.ojCache.size} detectados como já cadastrados`, null, `Processando servidor`, null, servidor.nome, ojsProcessadasTotal, totalOjs);
+    }
+    
+    if (ojsToProcess.length === 0 && !isUniversalBypass) {
       console.log('🔍 [DEBUG] NENHUM OJ para processar - todos já estão em cache');
       return;
     }
@@ -2748,6 +3089,24 @@ Sucessos por Servidor:
     
     // Enviar status final de conclusão
     this.sendStatus('success', `✅ Processamento do servidor ${servidor.nome} finalizado`, null, 'Finalizado', 'Finalizado', servidor.nome, totalOjs, totalOjs);
+    
+    // Adicionar servidor à lista de processados com sucesso
+    if (this.mainWindow && this.mainWindow.webContents) {
+      const processingTime = serverResult.tempoProcessamento || 0;
+      this.mainWindow.webContents.executeJavaScript(`
+        if (typeof addProcessedServer === 'function') {
+          addProcessedServer({
+            name: '${servidor.nome.replace(/'/g, "\\'").replace(/"/g, '\\"')}',
+            cpf: '${servidor.cpf}',
+            perfil: '${servidor.perfil || this.config.perfil || ''}',
+            ojsCount: ${totalOjs || 0},
+            processingTime: ${processingTime}
+          });
+        }
+      `).catch(err => {
+        console.log('⚠️ Erro ao adicionar servidor processado ao modal:', err.message);
+      });
+    }
   }
 
   async quickErrorRecovery() {
@@ -3015,6 +3374,9 @@ Sucessos por Servidor:
     let totalSucessos = 0;
     let totalErros = 0;
     let totalJaIncluidos = 0;
+    let totalLocalizacoesProcessadas = 0;
+    let totalLocalizacoesSucesso = 0;
+    let totalLocalizacoesErro = 0;
     
     // Preparar dados detalhados por servidor
     const servidoresDetalhados = [];
@@ -3024,6 +3386,13 @@ Sucessos por Servidor:
       totalSucessos += server.sucessos;
       totalErros += server.erros;
       totalJaIncluidos += server.jaIncluidos;
+      
+      // Somar estatísticas de localizações
+      if (server.localizacoes) {
+        totalLocalizacoesProcessadas += server.localizacoes.processadas || 0;
+        totalLocalizacoesSucesso += server.localizacoes.sucesso || 0;
+        totalLocalizacoesErro += server.localizacoes.erro || 0;
+      }
       
       servidoresDetalhados.push({
         nome: server.nome,
@@ -3042,7 +3411,13 @@ Sucessos por Servidor:
           erros: server.erros,
           jaIncluidos: server.jaIncluidos,
           percentualSucesso: server.ojsProcessados > 0 ? 
-            parseFloat(((server.sucessos / server.ojsProcessados) * 100).toFixed(1)) : 0
+            parseFloat(((server.sucessos / server.ojsProcessados) * 100).toFixed(1)) : 0,
+          localizacoes: server.localizacoes || {
+            processadas: 0,
+            sucesso: 0,
+            erro: 0,
+            percentualSucesso: 0
+          }
         },
         tempo: {
           inicioProcessamento: server.inicioProcessamento,
@@ -3073,6 +3448,13 @@ Sucessos por Servidor:
         totalJaIncluidos,
         percentualOJsSucesso: totalOJsProcessados > 0 ? 
           parseFloat(((totalSucessos / totalOJsProcessados) * 100).toFixed(1)) : 0,
+        localizacoes: {
+          totalProcessadas: totalLocalizacoesProcessadas,
+          totalSucesso: totalLocalizacoesSucesso,
+          totalErro: totalLocalizacoesErro,
+          percentualSucesso: totalLocalizacoesProcessadas > 0 ? 
+            parseFloat(((totalLocalizacoesSucesso / totalLocalizacoesProcessadas) * 100).toFixed(1)) : 0
+        },
         processamentoSequencial: {
           tentativasTotal: servidoresDetalhados.reduce((acc, s) => acc + (s.tentativas.realizadas || 0), 0),
           recuperacoesTotal: servidoresDetalhados.reduce((acc, s) => acc + s.tentativas.recuperacoes, 0),
@@ -3181,8 +3563,15 @@ Sucessos por Servidor:
     const totalRecuperacoes = servidoresDetalhados.reduce((acc, s) => acc + s.tentativas.recuperacoes, 0);
     const servidoresComRecuperacao = servidoresDetalhados.filter(s => s.tentativas.recuperacoes > 0).length;
     
-    this.sendStatus('success', `🎉 Processamento SEQUENCIAL concluído: ${servidoresBemSucedidos}/${totalServidores} servidores | ${totalSucessos} sucessos`, 100, 
-      `${totalErros} erros | ${totalJaIncluidos} já incluídos | ${totalRecuperacoes} recuperações realizadas em ${servidoresComRecuperacao} servidores`);
+    // Dados corretos para o relatório final
+    console.log(`🔍 [RELATÓRIO FINAL] Servidores processados: ${servidoresBemSucedidos}/${totalServidores}`);
+    console.log(`🔍 [RELATÓRIO FINAL] Total OJs processadas: ${totalOJsProcessados}`);
+    console.log(`🔍 [RELATÓRIO FINAL] Sucessos: ${totalSucessos}`);
+    console.log(`🔍 [RELATÓRIO FINAL] Erros: ${totalErros}`);
+    console.log(`🔍 [RELATÓRIO FINAL] Já incluídos: ${totalJaIncluidos}`);
+    
+    this.sendStatus('success', `🎉 Processamento SEQUENCIAL concluído: ${servidoresBemSucedidos}/${totalServidores} servidores | ${totalOJsProcessados} OJs processadas`, 100, 
+      `${totalSucessos} sucessos | ${totalErros} erros | ${totalJaIncluidos} já incluídos | ${totalRecuperacoes} recuperações realizadas em ${servidoresComRecuperacao} servidores`);
   }
 
   async generateReport() {
@@ -3328,6 +3717,208 @@ Sucessos por Servidor:
       totalOrgaos: this.totalOrgaos,
       processedCount: this.results.length
     };
+  }
+
+  /**
+   * Seleciona perfil com base na similaridade com o perfil configurado
+   * @param {Object} opcoesPapel - Locator das opções disponíveis
+   * @param {string} perfilConfigurado - Perfil configurado pelo usuário
+   * @returns {boolean} True se perfil foi selecionado
+   */
+  async selecionarPerfilComSimilaridade(opcoesPapel, perfilConfigurado) {
+    console.log(`🔍 [SIMILARIDADE] Analisando perfil configurado: "${perfilConfigurado}"`);
+    
+    try {
+      const totalOpcoes = await opcoesPapel.count();
+      let melhorMatch = null;
+      let melhorSimilaridade = 0;
+      let melhorIndice = -1;
+      
+      // Normalizar perfil configurado
+      const perfilNormalizado = this.normalizarTextoParaComparacao(perfilConfigurado);
+      
+      // Analisar todas as opções
+      for (let i = 0; i < totalOpcoes; i++) {
+        try {
+          const textoOpcao = await opcoesPapel.nth(i).textContent();
+          if (!textoOpcao) continue;
+          
+          const opcaoNormalizada = this.normalizarTextoParaComparacao(textoOpcao);
+          const similaridade = this.calcularSimilaridadePerfil(perfilNormalizado, opcaoNormalizada);
+          
+          console.log(`🔍 [COMPARAÇÃO] "${textoOpcao.trim()}" -> similaridade: ${(similaridade * 100).toFixed(1)}%`);
+          
+          if (similaridade > melhorSimilaridade && similaridade >= 0.7) { // 70% de similaridade mínima
+            melhorMatch = textoOpcao.trim();
+            melhorSimilaridade = similaridade;
+            melhorIndice = i;
+          }
+        } catch (error) {
+          console.log(`⚠️ [ERRO] Erro ao analisar opção ${i}: ${error.message}`);
+        }
+      }
+      
+      if (melhorMatch && melhorIndice >= 0) {
+        console.log(`✅ [MATCH] Melhor match encontrado: "${melhorMatch}" (${(melhorSimilaridade * 100).toFixed(1)}%)`);
+        await opcoesPapel.nth(melhorIndice).click({ timeout: 3000 });
+        console.log(`✅ [SELECIONADO] Perfil selecionado com sucesso!`);
+        return true;
+      } else {
+        console.log(`❌ [SEM MATCH] Nenhuma opção atingiu similaridade mínima de 70%`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.log(`❌ [ERRO] Erro na seleção por similaridade: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Seleciona perfil baseado em palavras-chave específicas do perfil configurado
+   * @param {Object} opcoesPapel - Locator das opções disponíveis  
+   * @param {string} perfilConfigurado - Perfil configurado pelo usuário
+   * @returns {boolean} True se perfil foi selecionado
+   */
+  async selecionarPerfilPorPalavrasChave(opcoesPapel, perfilConfigurado) {
+    console.log(`🔑 [PALAVRAS-CHAVE] Analisando palavras-chave do perfil: "${perfilConfigurado}"`);
+    
+    try {
+      // Extrair palavras-chave do perfil configurado
+      const palavrasChaveConfiguracao = this.extrairPalavrasChave(perfilConfigurado);
+      console.log(`🔑 [PALAVRAS] Palavras-chave extraídas: ${palavrasChaveConfiguracao.join(', ')}`);
+      
+      const totalOpcoes = await opcoesPapel.count();
+      let melhorOpcao = null;
+      let maiorNumeroMatches = 0;
+      let melhorIndice = -1;
+      
+      for (let i = 0; i < totalOpcoes; i++) {
+        try {
+          const textoOpcao = await opcoesPapel.nth(i).textContent();
+          if (!textoOpcao) continue;
+          
+          const palavrasOpcao = this.extrairPalavrasChave(textoOpcao);
+          const matches = palavrasChaveConfiguracao.filter(palavra => 
+            palavrasOpcao.some(palavraOpcao => 
+              palavraOpcao.includes(palavra) || palavra.includes(palavraOpcao)
+            )
+          );
+          
+          console.log(`🔑 [ANÁLISE] "${textoOpcao.trim()}" -> matches: ${matches.length} (${matches.join(', ')})`);
+          
+          if (matches.length > maiorNumeroMatches && matches.length >= 1) {
+            melhorOpcao = textoOpcao.trim();
+            maiorNumeroMatches = matches.length;
+            melhorIndice = i;
+          }
+          
+        } catch (error) {
+          console.log(`⚠️ [ERRO] Erro ao analisar opção ${i}: ${error.message}`);
+        }
+      }
+      
+      if (melhorOpcao && melhorIndice >= 0 && maiorNumeroMatches >= 1) {
+        console.log(`✅ [MATCH] Melhor match por palavras-chave: "${melhorOpcao}" (${maiorNumeroMatches} matches)`);
+        await opcoesPapel.nth(melhorIndice).click({ timeout: 3000 });
+        console.log(`✅ [SELECIONADO] Perfil selecionado por palavras-chave!`);
+        return true;
+      } else {
+        console.log(`❌ [SEM MATCH] Nenhuma opção teve palavras-chave suficientes`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.log(`❌ [ERRO] Erro na seleção por palavras-chave: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Normaliza texto para comparação removendo acentos, pontuação e padronizando
+   * @param {string} texto - Texto a ser normalizado
+   * @returns {string} Texto normalizado
+   */
+  normalizarTextoParaComparacao(texto) {
+    if (!texto) return '';
+    
+    return texto
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/[^\w\s]/g, ' ')        // Remove pontuação
+      .replace(/\s+/g, ' ')            // Normaliza espaços
+      .trim();
+  }
+
+  /**
+   * Calcula similaridade entre dois textos usando algoritmo de Levenshtein
+   * @param {string} texto1 - Primeiro texto
+   * @param {string} texto2 - Segundo texto  
+   * @returns {number} Similaridade entre 0 e 1
+   */
+  calcularSimilaridadePerfil(texto1, texto2) {
+    if (!texto1 || !texto2) return 0;
+    if (texto1 === texto2) return 1;
+    
+    const len1 = texto1.length;
+    const len2 = texto2.length;
+    const matrix = Array(len2 + 1).fill().map(() => Array(len1 + 1).fill(0));
+    
+    // Inicializar matriz
+    for (let i = 0; i <= len1; i++) matrix[0][i] = i;
+    for (let j = 0; j <= len2; j++) matrix[j][0] = j;
+    
+    // Calcular distância
+    for (let j = 1; j <= len2; j++) {
+      for (let i = 1; i <= len1; i++) {
+        const cost = texto1[i - 1] === texto2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j - 1][i] + 1,     // deleção
+          matrix[j][i - 1] + 1,     // inserção
+          matrix[j - 1][i - 1] + cost // substituição
+        );
+      }
+    }
+    
+    const distance = matrix[len2][len1];
+    const maxLen = Math.max(len1, len2);
+    return maxLen === 0 ? 1 : (maxLen - distance) / maxLen;
+  }
+
+  /**
+   * Extrai palavras-chave relevantes de um texto de perfil
+   * @param {string} texto - Texto do perfil
+   * @returns {Array} Array de palavras-chave
+   */
+  extrairPalavrasChave(texto) {
+    if (!texto) return [];
+    
+    const textoNormalizado = this.normalizarTextoParaComparacao(texto);
+    const palavras = textoNormalizado.split(' ').filter(p => p.length >= 3);
+    
+    // Palavras-chave específicas do contexto judiciário
+    const palavrasRelevantes = [
+      'secretario', 'secretaria', 'audiencia', 'assessor', 'analista', 
+      'tecnico', 'auxiliar', 'diretor', 'coordenador', 'supervisor',
+      'escrivao', 'oficial', 'chefe', 'gerente', 'judiciario'
+    ];
+    
+    // Filtrar apenas palavras relevantes
+    const palavrasChave = palavras.filter(palavra => 
+      palavrasRelevantes.some(relevante => 
+        palavra.includes(relevante) || relevante.includes(palavra)
+      )
+    );
+    
+    // Adicionar palavras completas se encontradas
+    palavrasRelevantes.forEach(relevante => {
+      if (textoNormalizado.includes(relevante) && !palavrasChave.includes(relevante)) {
+        palavrasChave.push(relevante);
+      }
+    });
+    
+    return [...new Set(palavrasChave)]; // Remove duplicatas
   }
 }
 

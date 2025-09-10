@@ -15,6 +15,11 @@ const ServidorAutomationV2 = require('./servidor-automation-v2');
 
 class ParallelServerManager {
   constructor(maxInstances = 2, eventEmitter = null) {
+    // Validar parâmetros de entrada
+    if (!Number.isInteger(maxInstances) || maxInstances < 1 || maxInstances > 10) {
+      throw new Error(`maxInstances deve ser um número inteiro entre 1 e 10, recebido: ${maxInstances}`);
+    }
+    
     this.maxInstances = maxInstances;
     this.instances = [];
     this.serverQueue = [];
@@ -25,25 +30,76 @@ class ParallelServerManager {
     this.startTime = null;
     this.completedServers = 0;
     this.totalServers = 0;
+    this.isInitialized = false;
+    this.initializationErrors = [];
+    
+    console.log(`🔧 ParallelServerManager criado com ${maxInstances} instâncias máximas`);
   }
 
   /**
    * Inicializa as instâncias paralelas do navegador
    */
   async initialize() {
+    if (this.isInitialized) {
+      console.log(`⚠️ ParallelServerManager já foi inicializado`);
+      return true;
+    }
+    
     console.log(`🚀 Inicializando ${this.maxInstances} instâncias paralelas...`);
+    this.initializationErrors = [];
     
     try {
-      for (let i = 0; i < this.maxInstances; i++) {
-        const instance = await this.createInstance(i);
-        this.instances.push(instance);
-        console.log(`✅ Instância ${i + 1} criada com sucesso`);
+      // Limpar instâncias existentes se houver
+      if (this.instances.length > 0) {
+        console.log(`🧹 Limpando ${this.instances.length} instâncias existentes...`);
+        await this.cleanup();
       }
       
-      console.log(`🎉 ${this.instances.length} instâncias prontas para processamento`);
+      // Criar instâncias uma por vez com tratamento de erro individual
+      for (let i = 0; i < this.maxInstances; i++) {
+        try {
+          console.log(`🔄 Criando instância ${i + 1}/${this.maxInstances}...`);
+          const instance = await this.createInstance(i);
+          
+          // Validar instância criada
+          if (!instance || !instance.browser || !instance.context) {
+            throw new Error(`Instância ${i + 1} criada com dados inválidos`);
+          }
+          
+          this.instances.push(instance);
+          console.log(`✅ Instância ${i + 1} criada com sucesso (ID: ${instance.id})`);
+        } catch (instanceError) {
+          const errorMsg = `Erro criando instância ${i + 1}: ${instanceError.message}`;
+          console.error(`❌ ${errorMsg}`);
+          this.initializationErrors.push(errorMsg);
+          
+          // Se falhar na primeira instância, é crítico
+          if (i === 0) {
+            throw new Error(`Falha crítica: não foi possível criar a primeira instância - ${instanceError.message}`);
+          }
+        }
+      }
+      
+      // Verificar se pelo menos uma instância foi criada
+      if (this.instances.length === 0) {
+        throw new Error('Nenhuma instância foi criada com sucesso');
+      }
+      
+      this.isInitialized = true;
+      
+      console.log(`🎉 ${this.instances.length}/${this.maxInstances} instâncias prontas para processamento`);
+      
+      if (this.initializationErrors.length > 0) {
+        console.log(`⚠️ Avisos durante inicialização:`);
+        this.initializationErrors.forEach((error, index) => {
+          console.log(`   ${index + 1}. ${error}`);
+        });
+      }
+      
       return true;
     } catch (error) {
-      console.error('❌ Erro ao inicializar instâncias:', error);
+      console.error('❌ Erro crítico ao inicializar instâncias:', error.message);
+      this.isInitialized = false;
       await this.cleanup();
       throw error;
     }
@@ -53,44 +109,115 @@ class ParallelServerManager {
    * Cria uma instância individual do navegador
    */
   async createInstance(id) {
-    const userDataDir = path.join(__dirname, '..', '..', 'temp', `pje-parallel-${id}-${Date.now()}`);
-    
-    // Limpar diretório se existir e criar novo
-    if (fs.existsSync(userDataDir)) {
-      fs.rmSync(userDataDir, { recursive: true, force: true });
+    // Validar ID
+    if (!Number.isInteger(id) || id < 0) {
+      throw new Error(`ID da instância deve ser um número inteiro não negativo, recebido: ${id}`);
     }
-    fs.mkdirSync(userDataDir, { recursive: true });
     
-    const context = await chromium.launchPersistentContext(userDataDir, {
-      headless: false,
-      args: [
-        `--window-position=${id * 420},${id * 120}`,
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-        '--no-sandbox',
-        '--disable-dev-shm-usage'
-      ],
-      viewport: { width: 1200, height: 800 }
-    });
+    const timestamp = Date.now();
+    const userDataDir = path.join(__dirname, '..', '..', 'temp', `pje-parallel-${id}-${timestamp}`);
     
-    const page = await context.newPage();
-    
-    // Configurar timeouts
-    page.setDefaultTimeout(30000);
-    page.setDefaultNavigationTimeout(30000);
-    
-    return {
-      id,
-      context,
-      page,
-      busy: false,
-      currentServer: null,
-      automation: null, // Será criado quando necessário
-      results: [],
-      errors: [],
-      startTime: null,
-      endTime: null
-    };
+    try {
+      // Limpar diretório se existir e criar novo
+      if (fs.existsSync(userDataDir)) {
+        console.log(`🧹 Removendo diretório existente: ${userDataDir}`);
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      }
+      
+      console.log(`📁 Criando diretório: ${userDataDir}`);
+      fs.mkdirSync(userDataDir, { recursive: true });
+      
+      // Verificar se o diretório foi criado
+      if (!fs.existsSync(userDataDir)) {
+        throw new Error(`Falha ao criar diretório: ${userDataDir}`);
+      }
+      
+      console.log(`🌐 Iniciando contexto do navegador para instância ${id}...`);
+      const context = await chromium.launchPersistentContext(userDataDir, {
+        headless: false,
+        args: [
+          `--window-position=${id * 420},${id * 120}`,
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-ipc-flooding-protection',
+          '--max_old_space_size=4096',
+          '--disable-extensions',
+          '--disable-plugins'
+        ],
+        viewport: { width: 1200, height: 800 },
+        timeout: 60000 // Timeout de 60 segundos para criação do contexto
+      });
+      
+      // Validar contexto criado
+      if (!context) {
+        throw new Error('Contexto do navegador não foi criado');
+      }
+      
+      console.log(`📄 Criando página para instância ${id}...`);
+      const page = await context.newPage();
+      
+      // Validar página criada
+      if (!page) {
+        throw new Error('Página do navegador não foi criada');
+      }
+      
+      // Configurar timeouts
+      page.setDefaultTimeout(30000);
+      page.setDefaultNavigationTimeout(30000);
+      
+      // Configurar tratamento de erros da página
+      page.on('pageerror', (error) => {
+        console.error(`❌ Erro na página da instância ${id}:`, error.message);
+      });
+      
+      page.on('crash', () => {
+        console.error(`💥 Página da instância ${id} crashou`);
+      });
+      
+      const instance = {
+        id,
+        context,
+        page,
+        browser: context, // Alias para compatibilidade
+        userDataDir,
+        busy: false,
+        currentServer: null,
+        automation: null, // Será criado quando necessário
+        results: [], // Array para armazenar resultados de processamento
+        errors: [], // Array para armazenar erros
+        startTime: null,
+        endTime: null,
+        totalProcessed: 0, // Contador de servidores processados
+        totalSuccesses: 0, // Contador de sucessos
+        totalErrors: 0, // Contador de erros
+        createdAt: timestamp,
+        isValid: true
+      };
+      
+      console.log(`✅ Instância ${id} criada com sucesso`);
+      return instance;
+      
+    } catch (error) {
+      console.error(`❌ Erro criando instância ${id}:`, error.message);
+      
+      // Limpar recursos em caso de erro
+      try {
+        if (fs.existsSync(userDataDir)) {
+          fs.rmSync(userDataDir, { recursive: true, force: true });
+        }
+      } catch (cleanupError) {
+        console.error(`⚠️ Erro limpando recursos da instância ${id}:`, cleanupError.message);
+      }
+      
+      throw new Error(`Falha ao criar instância ${id}: ${error.message}`);
+    }
   }
 
   /**
@@ -117,78 +244,174 @@ class ParallelServerManager {
    * Processa uma lista de servidores em paralelo
    */
   async processServersInParallel(servers, config = {}) {
-    // Verificar se já está em execução
-    if (this.isRunning) {
-      return {
-        success: false,
-        error: 'Processamento paralelo já está em execução'
-      };
-    }
-    
-    this.serverQueue = [...servers];
-    this.totalServers = servers.length;
-    this.completedServers = 0;
-    this.isRunning = true;
-    this.startTime = Date.now();
-    this.keepBrowserOpen = config.keepBrowserOpen !== false; // Default: manter aberto
-    
-    this.sendStatusUpdate({
-      type: 'parallel-start',
-      totalServers: this.totalServers,
-      instances: this.maxInstances,
-      message: `Iniciando processamento paralelo de ${this.totalServers} servidores com ${this.maxInstances} instâncias`
-    });
+    console.log(`[ParallelServerManager] Iniciando processamento paralelo de ${servers?.length || 0} servidores`);
     
     try {
-      // Iniciar processamento em todas as instâncias
-      const promises = this.instances.map(instance => 
-        this.processWithInstance(instance, config)
-      );
+      // Validações de entrada
+      if (!Array.isArray(servers)) {
+        const error = 'Lista de servidores deve ser um array';
+        console.error(`[ParallelServerManager] Erro de validação: ${error}`);
+        return { success: false, error };
+      }
       
+      if (servers.length === 0) {
+        const error = 'Lista de servidores está vazia';
+        console.warn(`[ParallelServerManager] Aviso: ${error}`);
+        return { success: true, results: this.getEmptyResults(), message: 'Nenhum servidor para processar' };
+      }
+      
+      // Verificar se já está em execução
+      if (this.isRunning) {
+        const error = 'Processamento paralelo já está em execução';
+        console.warn(`[ParallelServerManager] ${error}`);
+        return { success: false, error };
+      }
+      
+      // Verificar se está inicializado
+      if (!this.isInitialized) {
+        const error = 'ParallelServerManager não foi inicializado';
+        console.error(`[ParallelServerManager] ${error}`);
+        return { success: false, error };
+      }
+      
+      // Verificar se há instâncias disponíveis
+      if (!this.instances || this.instances.length === 0) {
+        const error = 'Nenhuma instância de navegador disponível';
+        console.error(`[ParallelServerManager] ${error}`);
+        return { success: false, error };
+      }
+      
+      // Inicializar propriedades
+      this.serverQueue = [...servers];
+      this.totalServers = servers.length;
+      this.completedServers = 0;
+      this.isRunning = true;
+      this.startTime = Date.now();
+      this.keepBrowserOpen = config.keepBrowserOpen !== false; // Default: manter aberto
+      
+      // Limpar resultados anteriores
+      this.results = [];
+      this.instances.forEach(instance => {
+        if (instance.errors) instance.errors = [];
+        if (instance.results) instance.results = [];
+      });
+      
+      console.log(`[ParallelServerManager] Configuração: ${this.instances.length} instâncias, keepBrowserOpen: ${this.keepBrowserOpen}`);
+      
+      this.sendStatusUpdate({
+        type: 'parallel-start',
+        totalServers: this.totalServers,
+        instances: this.maxInstances,
+        message: `Iniciando processamento paralelo de ${this.totalServers} servidores com ${this.instances.length} instâncias`
+      });
+      
+      // Iniciar processamento em todas as instâncias
+      const promises = this.instances.map((instance, index) => {
+        console.log(`[ParallelServerManager] Iniciando processamento na instância ${instance.id || index}`);
+        return this.processWithInstance(instance, config).catch(error => {
+          console.error(`[ParallelServerManager] Erro na instância ${instance.id || index}:`, error);
+          // Registrar erro na instância
+          if (!instance.errors) instance.errors = [];
+          instance.errors.push({
+            type: 'instance_processing_error',
+            message: error.message || 'Erro desconhecido no processamento da instância',
+            timestamp: new Date().toISOString(),
+            instanceId: instance.id
+          });
+          return null; // Retorna null para não quebrar Promise.all
+        });
+      });
+      
+      console.log(`[ParallelServerManager] Aguardando conclusão de ${promises.length} instâncias...`);
       await Promise.all(promises);
       
+      console.log(`[ParallelServerManager] Processamento concluído. Consolidando resultados...`);
       const results = this.consolidateResults();
       
       // Verificar se houve erros críticos
       const totalErrors = this.instances.reduce((total, instance) => total + (instance.errors?.length || 0), 0);
       const hasOnlyErrors = totalErrors > 0 && this.completedServers === 0;
       
+      console.log(`[ParallelServerManager] Estatísticas: ${this.completedServers} servidores processados, ${totalErrors} erros`);
+      
       if (hasOnlyErrors) {
-        return {
-          success: false,
-          error: 'Processing failed'
-        };
+        const error = `Processamento falhou: ${totalErrors} erros, 0 servidores processados com sucesso`;
+        console.error(`[ParallelServerManager] ${error}`);
+        return { success: false, error, results };
       }
       
       // Mostrar modal de resultados se configurado para manter navegador aberto
+      // DESABILITADO: Modal de resultados removido conforme solicitação do usuário
+      /*
       if (this.keepBrowserOpen) {
-        await this.showResultsModal(results);
+        console.log(`[ParallelServerManager] Exibindo modal de resultados...`);
+        try {
+          await this.showResultsModal(results);
+        } catch (modalError) {
+          console.error(`[ParallelServerManager] Erro ao exibir modal de resultados:`, modalError);
+          // Não falha o processamento por causa do modal
+        }
       }
+      */
+      
+      const processingTime = ((Date.now() - this.startTime) / 1000).toFixed(1);
+      console.log(`[ParallelServerManager] Processamento paralelo concluído com sucesso em ${processingTime}s`);
       
       this.sendStatusUpdate({
         type: 'parallel-complete',
         results,
-        message: `Processamento paralelo concluído em ${((Date.now() - this.startTime) / 1000).toFixed(1)}s`
+        message: `Processamento paralelo concluído em ${processingTime}s`
       });
       
       return {
         success: true,
-        results
+        results,
+        processingTime: parseFloat(processingTime),
+        serversProcessed: this.completedServers,
+        totalErrors
       };
       
     } catch (error) {
-      console.error('❌ Erro no processamento paralelo:', error);
+      const processingTime = this.startTime ? ((Date.now() - this.startTime) / 1000).toFixed(1) : 0;
+      console.error(`[ParallelServerManager] ❌ Erro crítico no processamento paralelo após ${processingTime}s:`, error);
+      
+      // Tentar consolidar resultados parciais
+      let partialResults = null;
+      try {
+        partialResults = this.consolidateResults();
+        console.log(`[ParallelServerManager] Resultados parciais consolidados: ${this.completedServers} servidores processados`);
+      } catch (consolidateError) {
+        console.error(`[ParallelServerManager] Erro ao consolidar resultados parciais:`, consolidateError);
+      }
+      
       this.sendStatusUpdate({
         type: 'parallel-error',
-        error: error.message
+        error: error.message,
+        partialResults,
+        serversProcessed: this.completedServers || 0,
+        processingTime: parseFloat(processingTime)
       });
       
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        errorType: error.name || 'UnknownError',
+        partialResults,
+        serversProcessed: this.completedServers || 0,
+        processingTime: parseFloat(processingTime)
       };
     } finally {
+      // Limpeza e reset de estado
       this.isRunning = false;
+      
+      // Log de finalização
+      const finalTime = this.startTime ? ((Date.now() - this.startTime) / 1000).toFixed(1) : 0;
+      console.log(`[ParallelServerManager] Finalizando processamento paralelo após ${finalTime}s`);
+      
+      // Reset de propriedades se necessário
+      if (this.serverQueue) {
+        this.serverQueue = [];
+      }
     }
   }
 
@@ -196,64 +419,153 @@ class ParallelServerManager {
    * Processa servidores com uma instância específica
    */
   async processWithInstance(instance, config) {
-    while (this.serverQueue.length > 0 && this.isRunning) {
-      const server = this.serverQueue.shift();
-      if (!server) break;
-      
-      instance.busy = true;
-      instance.currentServer = server;
-      instance.startTime = Date.now();
-      
-      this.sendStatusUpdate({
-        type: 'instance-start',
-        instanceId: instance.id,
-        server: server.nome || server.cpf,
-        remaining: this.serverQueue.length
-      });
-      
-      try {
-        const result = await this.processServerWithInstance(instance, server, config);
-        instance.results.push(result);
-        this.completedServers++;
-        
-        this.sendStatusUpdate({
-          type: 'instance-success',
-          instanceId: instance.id,
-          server: server.nome || server.cpf,
-          result,
-          completed: this.completedServers,
-          total: this.totalServers
-        });
-        
-        // Emitir evento de progresso
-        this.sendProgressUpdate();
-        
-      } catch (error) {
-        console.error(`❌ Erro na instância ${instance.id} processando ${server.nome}:`, error);
-        
-        const errorResult = {
-          servidor: server,
-          erro: error.message,
-          timestamp: new Date().toISOString()
-        };
-        
-        instance.errors.push(errorResult);
-        this.completedServers++;
-        
-        this.sendStatusUpdate({
-          type: 'instance-error',
-          instanceId: instance.id,
-          server: server.nome || server.cpf,
-          error: error.message,
-          completed: this.completedServers,
-          total: this.totalServers
-        });
-      } finally {
-        instance.busy = false;
-        instance.currentServer = null;
-        instance.endTime = Date.now();
-      }
+    console.log(`[ParallelServerManager] Iniciando processamento na instância ${instance.id}`);
+    
+    // Validações de entrada
+    if (!instance) {
+      console.error(`[ParallelServerManager] Instância inválida fornecida`);
+      return;
     }
+    
+    if (!instance.id) {
+      console.warn(`[ParallelServerManager] Instância sem ID definido`);
+    }
+    
+    // Inicializar contadores se não existirem
+    if (!instance.results) instance.results = [];
+    if (typeof instance.totalProcessed !== 'number') instance.totalProcessed = 0;
+    if (typeof instance.totalSuccesses !== 'number') instance.totalSuccesses = 0;
+    if (!instance.errors) instance.errors = [];
+    
+    let serversProcessedByInstance = 0;
+    
+    try {
+      while (this.serverQueue.length > 0 && this.isRunning) {
+        const server = this.serverQueue.shift();
+        if (!server) {
+          console.log(`[ParallelServerManager] Servidor vazio encontrado na fila, continuando...`);
+          break;
+        }
+        
+        // Validar dados do servidor
+        if (!server.nome && !server.cpf) {
+          console.warn(`[ParallelServerManager] Servidor sem nome ou CPF:`, server);
+          const errorResult = {
+            servidor: server,
+            instancia: instance.id,
+            erro: 'Servidor sem nome ou CPF válido',
+            timestamp: new Date().toISOString(),
+            tipo: 'validation_error'
+          };
+          instance.errors.push(errorResult);
+          continue;
+        }
+        
+        const serverIdentifier = server.nome || server.cpf;
+        console.log(`[ParallelServerManager] Instância ${instance.id} processando servidor: ${serverIdentifier}`);
+        
+        instance.busy = true;
+        instance.currentServer = server;
+        instance.startTime = Date.now();
+        
+        this.sendStatusUpdate({
+          type: 'instance-start',
+          instanceId: instance.id,
+          server: serverIdentifier,
+          remaining: this.serverQueue.length
+        });
+        
+        try {
+          const result = await this.processServerWithInstance(instance, server, config);
+          
+          // Validar e processar resultado
+          if (result && typeof result === 'object') {
+            // Adicionar metadados ao resultado
+            result.instanceId = instance.id;
+            result.processedAt = new Date().toISOString();
+            result.processingTime = Date.now() - instance.startTime;
+            
+            instance.results.push(result);
+            instance.totalProcessed++;
+            instance.totalSuccesses += (result.sucessos || 0);
+            serversProcessedByInstance++;
+            
+            console.log(`[ParallelServerManager] Instância ${instance.id} processou ${serverIdentifier} com sucesso (${result.sucessos || 0} sucessos)`);
+          } else {
+            console.warn(`[ParallelServerManager] ⚠️ Resultado inválido para servidor ${serverIdentifier}:`, result);
+            const errorResult = {
+              servidor: server,
+              instancia: instance.id,
+              erro: 'Resultado inválido retornado',
+              timestamp: new Date().toISOString(),
+              tipo: 'invalid_result',
+              result
+            };
+            instance.errors.push(errorResult);
+          }
+          
+          this.completedServers++;
+          
+          this.sendStatusUpdate({
+            type: 'instance-success',
+            instanceId: instance.id,
+            server: serverIdentifier,
+            result,
+            completed: this.completedServers,
+            total: this.totalServers
+          });
+          
+          // Emitir evento de progresso
+          this.sendProgressUpdate();
+          
+        } catch (error) {
+          console.error(`[ParallelServerManager] ❌ Erro na instância ${instance.id} processando ${serverIdentifier}:`, error);
+          
+          const errorResult = {
+             servidor: server,
+             instancia: instance.id,
+             erro: error.message || 'Erro desconhecido',
+             errorType: error.name || 'UnknownError',
+             timestamp: new Date().toISOString(),
+             processingTime: Date.now() - instance.startTime,
+             stack: error.stack,
+             tipo: 'processing_error'
+           };
+           
+           instance.errors.push(errorResult);
+           instance.totalProcessed++;
+           if (typeof instance.totalErrors !== 'number') instance.totalErrors = 0;
+           instance.totalErrors++;
+           this.completedServers++;
+           
+           this.sendStatusUpdate({
+             type: 'instance-error',
+             instanceId: instance.id,
+             server: serverIdentifier,
+             error: error.message,
+             completed: this.completedServers,
+             total: this.totalServers
+           });
+         } finally {
+           instance.busy = false;
+           instance.currentServer = null;
+           instance.endTime = Date.now();
+         }
+       }
+     } catch (instanceError) {
+       console.error(`[ParallelServerManager] Erro crítico na instância ${instance.id}:`, instanceError);
+       if (!instance.errors) instance.errors = [];
+       instance.errors.push({
+         tipo: 'instance_critical_error',
+         erro: instanceError.message || 'Erro crítico na instância',
+         timestamp: new Date().toISOString(),
+         stack: instanceError.stack
+       });
+     } finally {
+       console.log(`[ParallelServerManager] Instância ${instance.id} finalizou processamento. Servidores processados: ${serversProcessedByInstance}`);
+       instance.busy = false;
+       instance.currentServer = null;
+     }
   }
 
   /**
@@ -300,7 +612,8 @@ class ParallelServerManager {
         
         // Configurar OJs para este servidor
         realAutomation.config = { 
-          orgaos: server.orgaos || config.orgaos || [] 
+          orgaos: server.orgaos || config.orgaos || [],
+          perfil: server.perfil || config.perfil || 'Servidor'
         };
         
         // Processar órgãos julgadores
@@ -320,8 +633,24 @@ class ParallelServerManager {
       }
       
     } catch (error) {
-      console.error(`Erro processando servidor ${server.nome} na instância ${instance.id}:`, error);
-      throw error;
+      console.error(`❌ Erro processando servidor ${server.nome || server.cpf || 'DESCONHECIDO'} na instância ${instance.id}:`, error);
+      
+      // Retornar resultado estruturado mesmo em caso de erro
+      return {
+        servidor: server,
+        instancia: instance.id,
+        tempoProcessamento: Date.now() - startTime,
+        sucessos: 0,
+        erros: 1,
+        detalhes: [{
+          status: 'Erro no processamento',
+          erro: error.message,
+          timestamp: new Date().toISOString()
+        }],
+        timestamp: new Date().toISOString(),
+        erro: true,
+        mensagemErro: error.message
+      };
     }
   }
 
@@ -333,30 +662,102 @@ class ParallelServerManager {
     const allErrors = [];
     let totalProcessingTime = 0;
     
+    // Garantir que instances existe e tem dados válidos
+    if (!this.instances || this.instances.length === 0) {
+      console.warn('⚠️ Nenhuma instância encontrada para consolidar resultados');
+      return this.getEmptyResults();
+    }
+    
     for (const instance of this.instances) {
-      allResults.push(...instance.results);
-      allErrors.push(...instance.errors);
+      // Verificar se instance tem as propriedades necessárias
+      if (instance.results && Array.isArray(instance.results)) {
+        // Validar cada resultado antes de adicionar
+        const validResults = instance.results.filter(r => {
+          return r && 
+                 typeof r === 'object' && 
+                 r.servidor && 
+                 typeof r.sucessos === 'number' && 
+                 typeof r.erros === 'number' && 
+                 typeof r.tempoProcessamento === 'number';
+        });
+        
+        const invalidResults = instance.results.filter(r => {
+          return !r || 
+                 typeof r !== 'object' || 
+                 !r.servidor || 
+                 typeof r.sucessos !== 'number' || 
+                 typeof r.erros !== 'number' || 
+                 typeof r.tempoProcessamento !== 'number';
+        });
+        
+        if (invalidResults.length > 0) {
+          console.warn(`⚠️ Instância ${instance.id}: ${invalidResults.length} resultados inválidos encontrados`);
+          invalidResults.forEach((r, index) => {
+            console.warn(`   ${index + 1}. Tipo: ${typeof r}, Conteúdo:`, r);
+          });
+        }
+        
+        allResults.push(...validResults);
+      }
+      
+      if (instance.errors && Array.isArray(instance.errors)) {
+        allErrors.push(...instance.errors);
+      }
       
       if (instance.startTime && instance.endTime) {
         totalProcessingTime += (instance.endTime - instance.startTime);
       }
     }
     
-    const totalTime = Date.now() - this.startTime;
+    // Garantir que startTime existe
+    const totalTime = this.startTime ? (Date.now() - this.startTime) : 0;
     const averageTimePerServer = allResults.length > 0 ? totalTime / allResults.length : 0;
     
+    // Garantir que totalServers e completedServers têm valores válidos
+    const totalServidores = this.totalServers || 0;
+    const servidoresProcessados = this.completedServers || allResults.length;
+    const sucessos = allResults.reduce((total, r) => total + (r.sucessos || 0), 0);
+    const erros = allErrors.length;
+    
+    console.log(`📊 Consolidando resultados: ${servidoresProcessados}/${totalServidores} servidores, ${sucessos} sucessos, ${erros} erros`);
+    console.log(`📊 Resultados válidos: ${allResults.length}, Taxa de validação: ${totalServidores > 0 ? ((allResults.length / totalServidores) * 100).toFixed(1) : 0}%`);
+    
     return {
-      totalServidores: this.totalServers,
-      servidoresProcessados: allResults.length,
-      sucessos: allResults.reduce((total, r) => total + (r.sucessos || 0), 0),
-      erros: allErrors.length,
+      totalServidores,
+      servidoresProcessados,
+      sucessos,
+      erros,
       tempoTotal: totalTime,
       tempoMedioServidor: averageTimePerServer,
       instanciasUtilizadas: this.maxInstances,
       eficienciaParalela: this.calculateParallelEfficiency(totalTime, totalProcessingTime),
       resultados: allResults,
       errosDetalhados: allErrors,
-      estatisticas: this.generateStatistics(allResults)
+      estatisticas: this.generateStatistics(allResults),
+      validacao: {
+        resultadosValidos: allResults.length,
+        percentualValidos: totalServidores > 0 ? ((allResults.length / totalServidores) * 100) : 0,
+        taxaSucesso: (sucessos + erros) > 0 ? ((sucessos / (sucessos + erros)) * 100) : 0
+      }
+    };
+  }
+
+  /**
+   * Retorna estrutura de resultados vazia para casos de erro
+   */
+  getEmptyResults() {
+    return {
+      totalServidores: this.totalServers || 0,
+      servidoresProcessados: 0,
+      sucessos: 0,
+      erros: 0,
+      tempoTotal: 0,
+      tempoMedioServidor: 0,
+      instanciasUtilizadas: this.maxInstances || 0,
+      eficienciaParalela: { speedup: 0, efficiency: 0, timeReduction: 0 },
+      resultados: [],
+      errosDetalhados: [],
+      estatisticas: {}
     };
   }
 
@@ -677,7 +1078,7 @@ class ParallelServerManager {
           
           <div style="text-align: center; margin-top: 30px;">
             <button onclick="document.getElementById('pje-automation-results-modal').remove()" style="
-              background: #007bff;
+              background: #8b7355;
               color: white;
               border: none;
               padding: 12px 30px;

@@ -6,6 +6,7 @@
 const ContextualDelayManager = require('./contextual-delay-manager');
 const SmartRetryManager = require('./smart-retry-manager');
 const TimeoutManager = require('../utils/timeouts.js');
+const { SmartOJCache } = require('../utils/smart-oj-cache.js');
 
 class ParallelOJProcessor {
   constructor(page, timeoutManager, config, domCache = null) {
@@ -16,6 +17,7 @@ class ParallelOJProcessor {
     this.retryManager = new SmartRetryManager(timeoutManager);
     this.domCache = domCache;
     this.ojCache = new Set();
+    this.smartOJCache = new SmartOJCache(); // Usar SmartOJCache para verificação inteligente
     this.results = [];
     this.maxConcurrency = 3; // Máximo de OJs processados simultaneamente
     this.batchSize = 5; // Tamanho do lote para processamento
@@ -65,10 +67,47 @@ class ParallelOJProcessor {
   }
 
   /**
-   * Carrega OJs existentes usando múltiplas estratégias em paralelo
+   * Carrega OJs existentes usando SmartOJCache para verificação inteligente
    */
   async loadExistingOJsParallel() {
-    console.log('🔍 Carregando OJs existentes em paralelo...');
+    console.log('🔍 [PARALLEL] Carregando OJs existentes usando SmartOJCache...');
+    
+    try {
+      // Usar SmartOJCache para carregar OJs vinculados da página
+      const ojsVinculados = await this.smartOJCache.carregarOJsVinculadosDaPagina(this.page);
+      
+      console.log(`🎯 [PARALLEL] SmartOJCache encontrou ${ojsVinculados.length} OJs já vinculados`);
+      
+      if (ojsVinculados.length > 0) {
+        console.log(`📋 [PARALLEL] Primeiros 5 OJs vinculados: ${ojsVinculados.slice(0, 5).join(', ')}`);
+        console.log(`📋 [PARALLEL] TODOS os OJs vinculados encontrados:`);
+        ojsVinculados.forEach((oj, index) => {
+          console.log(`   ${index + 1}. "${oj}"`);
+        });
+      } else {
+        console.log(`⚠️ [PARALLEL] NENHUM OJ vinculado encontrado na página!`);
+      }
+      
+      // Normalizar e adicionar ao cache local
+      ojsVinculados.forEach(oj => {
+        const ojNormalizado = this.normalizeOrgaoName(oj);
+        this.ojCache.add(ojNormalizado);
+      });
+      
+      console.log(`🎯 [PARALLEL] Cache local atualizado: ${this.ojCache.size} OJs já cadastrados`);
+      
+    } catch (error) {
+      console.error(`❌ [PARALLEL] Erro ao carregar OJs existentes:`, error.message);
+      // Fallback para estratégias antigas se SmartOJCache falhar
+      await this.loadExistingOJsParallelFallback();
+    }
+  }
+
+  /**
+   * Fallback para carregamento de OJs usando estratégias antigas
+   */
+  async loadExistingOJsParallelFallback() {
+    console.log('🔄 [PARALLEL] Usando fallback para carregamento de OJs...');
     
     const strategies = [
       this.loadFromTable.bind(this),
@@ -87,15 +126,15 @@ class ParallelOJProcessor {
     results.forEach((result, index) => {
       if (result.status === 'fulfilled' && result.value) {
         result.value.forEach(oj => allOJs.add(oj));
-        console.log(`✅ Estratégia ${index + 1}: ${result.value.size} OJs encontrados`);
+        console.log(`✅ [PARALLEL] Estratégia ${index + 1}: ${result.value.size} OJs encontrados`);
       } else {
-        console.log(`⚠️ Estratégia ${index + 1} falhou: ${result.reason?.message || 'Timeout'}`);
+        console.log(`⚠️ [PARALLEL] Estratégia ${index + 1} falhou: ${result.reason?.message || 'Timeout'}`);
       }
     });
     
     // Atualizar cache
     allOJs.forEach(oj => this.ojCache.add(oj));
-    console.log(`🎯 Total de OJs já cadastrados: ${this.ojCache.size}`);
+    console.log(`🎯 [PARALLEL] Total de OJs já cadastrados (fallback): ${this.ojCache.size}`);
   }
 
   /**
@@ -103,35 +142,84 @@ class ParallelOJProcessor {
    */
   async processBatchWithConcurrency(batch) {
     const semaphore = new Semaphore(this.maxConcurrency);
+    const batchTimeout = 300000; // 5 minutos por lote
     
-    const promises = batch.map(async (oj) => {
+    console.log(`🔄 Processando lote com ${batch.length} OJs (timeout: ${batchTimeout/1000}s)`);
+    
+    const promises = batch.map(async (oj, index) => {
+      console.log(`🔄 [LOTE] Aguardando semáforo para OJ ${index + 1}/${batch.length}: ${oj.original}`);
       await semaphore.acquire();
+      console.log(`🚀 [LOTE] Iniciando processamento do OJ ${index + 1}/${batch.length}: ${oj.original}`);
+      
       try {
-        return await this.processOJWithRetry(oj);
+        // Timeout individual por OJ
+        const result = await Promise.race([
+          this.processOJWithRetry(oj),
+          new Promise((_, reject) => 
+            setTimeout(() => {
+              console.log(`⏰ [LOTE] Timeout de 60s atingido para OJ: ${oj.original}`);
+              reject(new Error(`Timeout no OJ ${oj.original} após 60s`));
+            }, 60000)
+          )
+        ]);
+        
+        console.log(`✅ [LOTE] OJ ${index + 1}/${batch.length} concluído: ${oj.original}`);
+        return result;
+      } catch (error) {
+        console.log(`❌ [LOTE] Erro no OJ ${index + 1}/${batch.length} (${oj.original}): ${error.message}`);
+        return {
+          orgao: oj.original,
+          status: 'Erro',
+          erro: error.message,
+          timestamp: new Date().toISOString()
+        };
       } finally {
+        console.log(`🔓 [LOTE] Liberando semáforo para OJ: ${oj.original}`);
         semaphore.release();
       }
     });
     
-    const results = await Promise.allSettled(promises);
+    // Timeout para o lote inteiro
+    const batchPromise = Promise.allSettled(promises);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error(`Timeout no lote após ${batchTimeout/1000}s`)), batchTimeout)
+    );
+    
+    let results;
+    try {
+      results = await Promise.race([batchPromise, timeoutPromise]);
+    } catch (timeoutError) {
+      console.log(`⏰ ${timeoutError.message} - forçando conclusão`);
+      // Aguardar mais 10s para conclusões pendentes
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      results = await Promise.allSettled(promises);
+    }
     
     // Processar resultados
+    let sucessos = 0;
+    let erros = 0;
+    
     results.forEach((result, index) => {
       const oj = batch[index];
-      if (result.status === 'fulfilled') {
+      if (result.status === 'fulfilled' && result.value?.status !== 'Erro') {
         this.results.push(result.value);
         this.ojCache.add(oj.normalized);
         console.log(`✅ OJ processado: ${oj.original}`);
+        sucessos++;
       } else {
-        console.error(`❌ Erro ao processar OJ ${oj.original}:`, result.reason);
+        const errorMsg = result.status === 'rejected' ? result.reason?.message : result.value?.erro;
+        console.error(`❌ Erro ao processar OJ ${oj.original}:`, errorMsg);
         this.results.push({
           orgao: oj.original,
           status: 'Erro',
-          erro: result.reason.message,
+          erro: errorMsg || 'Erro desconhecido',
           timestamp: new Date().toISOString()
         });
+        erros++;
       }
     });
+    
+    console.log(`📊 Lote concluído: ${sucessos} sucessos, ${erros} erros`);
   }
 
   /**
@@ -139,35 +227,69 @@ class ParallelOJProcessor {
    */
   async processOJWithRetry(oj, maxRetries = 2) {
     let lastError;
+    const startTime = Date.now();
+    
+    console.log(`🎯 [RETRY] Iniciando processamento com retry para OJ: ${oj.original}`);
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const attemptStartTime = Date.now();
       try {
-        console.log(`🎯 Processando OJ ${oj.original} (tentativa ${attempt}/${maxRetries})`);
+        console.log(`🔄 [RETRY] Tentativa ${attempt}/${maxRetries} para OJ ${oj.original}`);
         
+        // Verificar se já passou muito tempo
+        const totalElapsed = Date.now() - startTime;
+        if (totalElapsed > 45000) { // 45s limite por OJ
+          console.log(`⏰ [RETRY] Timeout geral para OJ ${oj.original} após ${totalElapsed/1000}s`);
+          throw new Error(`Timeout geral após ${totalElapsed/1000}s`);
+        }
+        
+        console.log(`🚀 [RETRY] Chamando processOJOptimized para ${oj.original}...`);
         const result = await this.processOJOptimized(oj);
         
+        const attemptDuration = Date.now() - attemptStartTime;
+        const totalDuration = Date.now() - startTime;
+        
         if (attempt > 1) {
-          console.log(`✅ OJ processado com sucesso na tentativa ${attempt}`);
+          console.log(`✅ [RETRY] OJ ${oj.original} processado com sucesso na tentativa ${attempt} (tentativa: ${attemptDuration}ms, total: ${totalDuration}ms)`);
+        } else {
+          console.log(`✅ [RETRY] OJ ${oj.original} processado com sucesso na primeira tentativa (${attemptDuration}ms)`);
         }
         
         return result;
         
       } catch (error) {
         lastError = error;
-        console.log(`⚠️ Tentativa ${attempt} falhou para OJ ${oj.original}: ${error.message}`);
+        const attemptDuration = Date.now() - attemptStartTime;
+        const totalElapsed = Date.now() - startTime;
+        
+        console.log(`⚠️ [RETRY] Tentativa ${attempt}/${maxRetries} falhou para OJ ${oj.original} após ${attemptDuration}ms: ${error.message}`);
+        console.log(`📊 [RETRY] Tempo total decorrido: ${totalElapsed/1000}s`);
+        
+        // Se é erro crítico, não tentar novamente
+        if (error.message.includes('closed') || 
+            error.message.includes('Navigation') ||
+            error.message.includes('Timeout geral') ||
+            totalElapsed > 40000) {
+          console.log(`🚫 [RETRY] Erro crítico detectado para ${oj.original}, parando tentativas`);
+          break;
+        }
         
         if (attempt < maxRetries) {
-          // Backoff exponencial
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-          console.log(`⏳ Aguardando ${delay}ms antes da próxima tentativa...`);
+          // Backoff exponencial reduzido
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 3000); // Max 3s
+          console.log(`⏳ [RETRY] Aguardando ${delay}ms antes da próxima tentativa para ${oj.original}...`);
           await this.delay(delay);
           
           // Tentar recuperação rápida
+          console.log(`🔄 [RETRY] Executando recuperação rápida para ${oj.original}...`);
           await this.quickRecovery();
+          console.log(`✅ [RETRY] Recuperação rápida concluída para ${oj.original}`);
         }
       }
     }
     
+    const duration = Date.now() - startTime;
+    console.log(`❌ [RETRY] OJ ${oj.original} falhou definitivamente após ${duration}ms e ${maxRetries} tentativas`);
     throw lastError;
   }
 
@@ -178,22 +300,43 @@ class ParallelOJProcessor {
     const startTime = Date.now();
     
     try {
-      // Usar timeouts adaptativos
-      const timeout = TimeoutManager.obterTimeout('pje', 'vincularOJ');
+      // Verificar se página ainda está ativa
+      if (this.page && this.page.isClosed()) {
+        throw new Error('Página fechada antes do processamento');
+      }
       
-      // Executar ações em sequência otimizada
+      // Timeout mais agressivo para evitar travamentos
+      const baseTimeout = TimeoutManager.obterTimeout('pje', 'vincularOJ');
+      const timeout = Math.min(baseTimeout, 25000); // Máximo 25s
+      
+      console.log(`⚡ Iniciando processamento otimizado do OJ ${oj.original} (timeout: ${timeout/1000}s)`);
+      
+      // Executar ações em sequência otimizada com logs detalhados
       await this.executeWithTimeout(async () => {
+        console.log(`🔄 [${oj.original}] Etapa 1/5: Clicando no botão adicionar...`);
         await this.clickAddLocationButtonOptimized();
+        
+        console.log(`🔄 [${oj.original}] Etapa 2/5: Selecionando órgão julgador...`);
         await this.selectOrgaoJulgadorOptimized(oj.original);
+        
+        console.log(`🔄 [${oj.original}] Etapa 3/5: Configurando papel e visibilidade...`);
         await this.configurePapelVisibilidadeOptimized();
+        
+        console.log(`🔄 [${oj.original}] Etapa 4/5: Salvando configuração...`);
         await this.saveConfigurationOptimized();
+        
+        console.log(`🔄 [${oj.original}] Etapa 5/5: Verificando sucesso...`);
         await this.verifySuccessOptimized();
+        
+        console.log(`✅ [${oj.original}] Todas as etapas concluídas com sucesso`);
       }, timeout);
       
       const duration = Date.now() - startTime;
       
       // Registrar performance para timeouts adaptativos
       TimeoutManager.registrarPerformance('vincularOJ', startTime, true);
+      
+      console.log(`📊 OJ ${oj.original} processado em ${duration}ms`);
       
       return {
         orgao: oj.original,
@@ -208,6 +351,25 @@ class ParallelOJProcessor {
     } catch (error) {
       const duration = Date.now() - startTime;
       TimeoutManager.registrarPerformance('vincularOJ', startTime, false);
+      
+      console.log(`❌ Erro no processamento otimizado do OJ ${oj.original} após ${duration}ms: ${error.message}`);
+      
+      // Tentar limpeza rápida em caso de erro
+      try {
+        if (this.page && !this.page.isClosed()) {
+          await this.page.evaluate(() => {
+            // Fechar qualquer modal aberto
+            const modals = document.querySelectorAll('mat-dialog-container, .cdk-overlay-container');
+            modals.forEach(modal => {
+              const closeBtn = modal.querySelector('[mat-dialog-close], .mat-dialog-close, .close');
+              if (closeBtn) closeBtn.click();
+            });
+          });
+        }
+      } catch (cleanupError) {
+        console.log(`⚠️ Erro na limpeza: ${cleanupError.message}`);
+      }
+      
       throw error;
     }
   }
@@ -637,8 +799,10 @@ class ParallelOJProcessor {
       // Aguardar modal carregar
       await this.page.waitForTimeout(1500);
       
-      // 1. CONFIGURAR PAPEL (Assessor) com múltiplas tentativas
-      console.log('🎯 Configurando papel: Assessor');
+      // 1. CONFIGURAR PAPEL - SEMPRE SERVIDOR (SEGURANÇA CRÍTICA)
+      const papelConfigurado = 'Servidor'; // FIXO para segurança - nunca alterar
+      console.log(`🔒 SEGURANÇA: Configurando papel fixo: ${papelConfigurado}`);
+      console.log(`⚠️ AVISO: Papel sempre será 'Servidor' por segurança, ignorando config: ${this.config.perfil || 'N/A'}`);
       const seletoresPapel = [
         'mat-dialog-container mat-select[placeholder*="Papel"]',
         'mat-dialog-container mat-select[formcontrolname*="papel"]',
@@ -650,7 +814,7 @@ class ParallelOJProcessor {
         'mat-select[formcontrolname="papel"]',
         'mat-select[ng-reflect-name="papel"]',
         'select[name="papel"]',
-        'mat-select:has(mat-option:has-text("Assessor"))',
+        `mat-select:has(mat-option:has-text("${papelConfigurado}"))`,
         '[placeholder*="Papel"]',
         'mat-select[aria-label*="papel"]',
         'mat-select[placeholder*="papel" i]',
@@ -699,14 +863,14 @@ class ParallelOJProcessor {
         );
         await this.page.waitForTimeout(1000);
         
-        // Procurar opção "Assessor" com múltiplas estratégias
+        // Procurar opção do papel configurado com múltiplas estratégias
         const opcoesPapel = this.page.locator('mat-option');
         const totalOpcoes = await opcoesPapel.count();
         console.log(`📋 ${totalOpcoes} opções de papel disponíveis`);
         
         let perfilSelecionado = false;
         
-        // Estratégia 1: Busca exata por "Assessor"
+        // Estratégia 1: Busca exata pelo papel configurado
         for (let i = 0; i < totalOpcoes; i++) {
           if (this.page.isClosed()) {
             throw new Error('Página fechada durante seleção do papel');
@@ -715,7 +879,7 @@ class ParallelOJProcessor {
           const opcao = opcoesPapel.nth(i);
           const texto = await opcao.textContent();
           
-          if (texto && texto.trim().toLowerCase() === 'assessor') {
+          if (texto && texto.trim().toLowerCase() === papelConfigurado.toLowerCase()) {
             await opcao.click();
             console.log(`✅ Papel selecionado (busca exata): ${texto.trim()}`);
             perfilSelecionado = true;
@@ -723,13 +887,13 @@ class ParallelOJProcessor {
           }
         }
         
-        // Estratégia 2: Busca por inclusão
+        // Estratégia 2: Busca por inclusão do papel configurado
         if (!perfilSelecionado) {
           for (let i = 0; i < totalOpcoes; i++) {
             const opcao = opcoesPapel.nth(i);
             const texto = await opcao.textContent();
             
-            if (texto && texto.toLowerCase().includes('assessor')) {
+            if (texto && texto.toLowerCase().includes(papelConfigurado.toLowerCase())) {
               await opcao.click();
               console.log(`✅ Papel selecionado (busca por inclusão): ${texto.trim()}`);
               perfilSelecionado = true;
@@ -738,30 +902,30 @@ class ParallelOJProcessor {
           }
         }
         
-        // Estratégia 3: Busca por palavras-chave
+        // Estratégia 3: APENAS SERVIDOR (SEGURANÇA CRÍTICA)
         if (!perfilSelecionado) {
-          const palavrasChave = ['assessor', 'servidor', 'funcionario'];
-          for (const palavra of palavrasChave) {
-            for (let i = 0; i < totalOpcoes; i++) {
-              const opcao = opcoesPapel.nth(i);
-              const texto = await opcao.textContent();
-              if (texto && texto.trim().toLowerCase().includes(palavra)) {
-                await opcao.click();
-                console.log(`✅ Papel selecionado (palavra-chave '${palavra}'): ${texto.trim()}`);
-                perfilSelecionado = true;
-                break;
-              }
+          // BUSCAR APENAS POR 'SERVIDOR' - NUNCA ADMINISTRADOR OU OUTROS
+          for (let i = 0; i < totalOpcoes; i++) {
+            const opcao = opcoesPapel.nth(i);
+            const texto = await opcao.textContent();
+            if (texto && texto.trim().toLowerCase().includes('servidor')) {
+              await opcao.click();
+              console.log(`🔒 SEGURANÇA: Papel SERVIDOR selecionado: ${texto.trim()}`);
+              perfilSelecionado = true;
+              break;
             }
-            if (perfilSelecionado) break;
           }
         }
         
-        // Estratégia 4: Selecionar primeira opção como fallback
-        if (!perfilSelecionado && totalOpcoes > 0) {
-          const primeiraOpcao = opcoesPapel.first();
-          await primeiraOpcao.click();
-          const textoSelecionado = await primeiraOpcao.textContent();
-          console.log(`⚠️ Papel específico não encontrado, selecionando primeira opção: "${textoSelecionado?.trim()}"`);
+        // Estratégia 4: BLOQUEAR se não encontrar SERVIDOR
+        if (!perfilSelecionado) {
+          console.log(`🚨 ERRO CRÍTICO: Papel 'Servidor' não encontrado! Listando opções disponíveis:`);
+          for (let i = 0; i < totalOpcoes; i++) {
+            const opcao = opcoesPapel.nth(i);
+            const texto = await opcao.textContent();
+            console.log(`   - Opção ${i + 1}: "${texto?.trim()}"`);
+          }
+          throw new Error('SEGURANÇA: Papel \'Servidor\' não encontrado. Processo interrompido para evitar seleção de papel inadequado.');
         }
       } else {
         console.log('⚠️ Campo Papel não encontrado após múltiplas tentativas');
@@ -769,112 +933,15 @@ class ParallelOJProcessor {
       
       await this.page.waitForTimeout(1000);
       
-      // 2. VERIFICAR VISIBILIDADE (otimizado - pula se já for "TODOS")
-      console.log('🎯 Verificando se visibilidade precisa ser configurada...');
+      // 2. VERIFICAR VISIBILIDADE ATUAL ANTES DE CLICAR (OTIMIZAÇÃO)
+      console.log('🔍 Verificando estado atual da visibilidade...');
+      const visibilidadeAtual = await this.verificarVisibilidadeAtual();
       
-      // Verificar se campo de visibilidade existe e qual seu valor
-      const seletoresVisibilidade = [
-        'mat-dialog-container mat-select[placeholder*="Localização"]',
-        'mat-dialog-container mat-select[placeholder*="Visibilidade"]',
-        '[role="dialog"] mat-select[placeholder*="Localização"]',
-        '[role="dialog"] mat-select[placeholder*="Visibilidade"]',
-        'mat-dialog-container mat-select[name*="visibilidade"]',
-        'mat-dialog-container mat-select[name*="localizacao"]',
-        'mat-select[formcontrolname="visibilidade"]',
-        'mat-select[formcontrolname="localizacao"]'
-      ];
-      
-      let precisaConfigurarVisibilidade = false;
-      
-      // Busca rápida pelo campo de visibilidade
-      for (const seletor of seletoresVisibilidade) {
-        try {
-          if (this.page.isClosed()) {
-            throw new Error('Página fechada durante verificação da visibilidade');
-          }
-          
-          const elemento = await this.page.waitForSelector(seletor, { timeout: 1500 });
-          if (elemento && await elemento.isVisible()) {
-            const valorAtual = await elemento.textContent();
-            console.log(`🔍 Valor atual da visibilidade: "${valorAtual?.trim()}"`);
-            
-            // Se já está como "TODOS" ou "Todos", não precisa configurar
-            if (valorAtual && (valorAtual.trim().toLowerCase() === 'todos' || valorAtual.trim().toLowerCase().includes('todos'))) {
-              console.log('✅ Visibilidade já configurada como "TODOS" - pulando configuração');
-              precisaConfigurarVisibilidade = false;
-            } else {
-              console.log('🔧 Visibilidade precisa ser configurada');
-              precisaConfigurarVisibilidade = true;
-            }
-            break;
-          }
-        } catch (error) {
-          // Continua tentando outros seletores
-          continue;
-        }
-      }
-      
-      // Só configura visibilidade se necessário
-      if (precisaConfigurarVisibilidade) {
-        console.log('🔧 Configurando visibilidade...');
-        
-        let matSelectVisibilidade = null;
-        
-        // Encontrar campo de visibilidade para configurar
-        for (const seletor of seletoresVisibilidade) {
-          try {
-            const elemento = await this.page.waitForSelector(seletor, { timeout: 2000 });
-            if (elemento && await elemento.isVisible() && await elemento.isEnabled()) {
-              matSelectVisibilidade = elemento;
-              console.log(`✅ Campo Visibilidade encontrado para configuração: ${seletor}`);
-              break;
-            }
-          } catch (error) {
-            continue;
-          }
-        }
-        
-        if (matSelectVisibilidade) {
-          try {
-            // Clicar no mat-select
-            await this.retryManager.retryClick(
-              async () => {
-                await matSelectVisibilidade.click({ timeout: 8000 });
-              },
-              'campo de visibilidade'
-            );
-            await this.page.waitForTimeout(800);
-            
-            // Selecionar "Público" ou "Todos" ou primeira opção disponível
-            const opcoesVisibilidade = this.page.locator('mat-option');
-            const totalOpcoesVis = await opcoesVisibilidade.count();
-            let visibilidadeSelecionada = false;
-            
-            // Tentar encontrar "Público" ou "Todos"
-            for (let i = 0; i < totalOpcoesVis; i++) {
-              const opcao = opcoesVisibilidade.nth(i);
-              const texto = await opcao.textContent();
-              if (texto && (texto.trim().toLowerCase().includes('público') || texto.trim().toLowerCase().includes('todos'))) {
-                await opcao.click();
-                console.log(`✅ Visibilidade selecionada: ${texto.trim()}`);
-                visibilidadeSelecionada = true;
-                break;
-              }
-            }
-            
-            // Fallback: selecionar primeira opção
-            if (!visibilidadeSelecionada && totalOpcoesVis > 0) {
-              const primeiraOpcaoVis = opcoesVisibilidade.first();
-              await primeiraOpcaoVis.click();
-              const textoVis = await primeiraOpcaoVis.textContent();
-              console.log(`⚠️ "Público/Todos" não encontrado, selecionando primeira opção: ${textoVis?.trim()}`);
-            }
-          } catch (error) {
-            console.log(`⚠️ Erro ao configurar visibilidade: ${error.message}`);
-          }
-        } else {
-          console.log('⚠️ Campo Visibilidade não encontrado para configuração');
-        }
+      if (visibilidadeAtual === 'TODOS' || visibilidadeAtual === 'Público') {
+        console.log(`✅ Visibilidade já está correta: ${visibilidadeAtual}. Pulando configuração desnecessária.`);
+      } else {
+        console.log(`🎯 Configurando visibilidade de '${visibilidadeAtual}' para 'Público'...`);
+        await this.configurarVisibilidade('Público');
       }
       
       await this.page.waitForTimeout(1000);
@@ -885,6 +952,171 @@ class ParallelOJProcessor {
     }
   }
   
+  async verificarVisibilidadeAtual() {
+    const seletoresVisibilidade = [
+      '#mat-dialog-2 mat-select[placeholder="Localização"]',
+      'pje-modal-localizacao-visibilidade mat-select[placeholder="Localização"]',
+      '#mat-select-44',
+      'mat-select[aria-labelledby*="mat-form-field-label-99"]',
+      'mat-select[id="mat-select-44"]',
+      'mat-dialog-container mat-select[placeholder="Localização"]',
+      '[role="dialog"] mat-select[placeholder="Localização"]',
+      '.mat-dialog-container mat-select[placeholder="Localização"]',
+      '.campo-localizacao mat-select',
+      'mat-select[placeholder="Localização"]',
+      '.mat-form-field.campo-localizacao mat-select',
+      'mat-select[placeholder*="Visibilidade"]',
+      'mat-select[placeholder*="Localização"]'
+    ];
+    
+    try {
+      for (const seletor of seletoresVisibilidade) {
+        try {
+          const elemento = await this.page.locator(seletor).first();
+          if (await elemento.isVisible({ timeout: 1000 })) {
+            const textoAtual = await elemento.textContent();
+            if (textoAtual && textoAtual.trim()) {
+              console.log(`🔍 Visibilidade atual detectada: "${textoAtual.trim()}"`);
+              return textoAtual.trim();
+            }
+          }
+        } catch (e) {
+          // Continua para próximo seletor
+        }
+      }
+      console.log(`⚠️ Não foi possível detectar visibilidade atual`);
+      return 'DESCONHECIDO';
+    } catch (error) {
+      console.log(`❌ Erro ao verificar visibilidade atual: ${error.message}`);
+      return 'ERRO';
+    }
+  }
+
+  async configurarVisibilidade(visibilidade) {
+    console.log(`DEBUG: Iniciando configuração da visibilidade: ${visibilidade}`);
+    
+    // Aguardar um pouco para garantir que a modal carregou
+    await this.page.waitForTimeout(1000);
+    
+    // Timeout geral para evitar loop infinito
+    const startTime = Date.now();
+    const maxTimeout = 30000; // 30 segundos
+    
+    const seletoresVisibilidade = [
+      // Seletores específicos para modal de Localização/Visibilidade
+      '#mat-dialog-2 mat-select[placeholder="Localização"]',
+      'pje-modal-localizacao-visibilidade mat-select[placeholder="Localização"]',
+      '#mat-select-44',
+      'mat-select[aria-labelledby*="mat-form-field-label-99"]',
+      'mat-select[id="mat-select-44"]',
+      // Seletores genéricos mais amplos
+      'mat-dialog-container mat-select[placeholder="Localização"]',
+      '[role="dialog"] mat-select[placeholder="Localização"]',
+      '.mat-dialog-container mat-select[placeholder="Localização"]',
+      '.campo-localizacao mat-select',
+      'mat-select[placeholder="Localização"]',
+      '.mat-form-field.campo-localizacao mat-select',
+      'mat-select[placeholder*="Visibilidade"]',
+      'mat-select[placeholder*="Localização"]',
+      'select[name*="visibilidade"]',
+      'select[name*="localizacao"]',
+      'label:has-text("Visibilidade") + * mat-select',
+      'label:has-text("Localização") + * mat-select',
+      'label:has-text("Visibilidade") ~ * mat-select',
+      'label:has-text("Localização") ~ * mat-select',
+      '.mat-form-field:has(label:has-text("Visibilidade")) mat-select',
+      '.mat-form-field:has(label:has-text("Localização")) mat-select'
+    ];
+    
+    for (const seletor of seletoresVisibilidade) {
+      // Verificar timeout
+      if (Date.now() - startTime > maxTimeout) {
+        console.log(`DEBUG: Timeout atingido (${maxTimeout}ms), interrompendo configuração de visibilidade`);
+        break;
+      }
+      
+      try {
+        console.log(`DEBUG: Tentando configurar visibilidade com seletor: ${seletor}`);
+        
+        // Verificar se o elemento existe antes de tentar clicar
+        const elemento = await this.page.$(seletor);
+        if (!elemento) {
+          console.log(`DEBUG: Elemento não encontrado para seletor: ${seletor}`);
+          continue;
+        }
+        
+        console.log(`DEBUG: Elemento encontrado, tentando clicar...`);
+        
+        // Verificar se é um mat-select
+        if (seletor.includes('mat-select')) {
+          // Tentar diferentes estratégias de clique
+          try {
+            // Estratégia 1: Clique direto
+            await this.page.click(seletor, { force: true });
+            console.log(`DEBUG: Clique direto realizado`);
+          } catch (e1) {
+            try {
+              // Estratégia 2: Clique no trigger
+              await this.page.click(`${seletor} .mat-select-trigger`, { force: true });
+              console.log(`DEBUG: Clique no trigger realizado`);
+            } catch (e2) {
+              console.log(`DEBUG: Falha ao clicar no mat-select: ${e2.message}`);
+              continue;
+            }
+          }
+        } else {
+          // Para selects normais
+          await this.page.click(seletor);
+        }
+        
+        // Aguardar as opções aparecerem
+        await this.page.waitForTimeout(500);
+        
+        // Buscar pelas opções
+        const opcoes = await this.page.$$('mat-option');
+        console.log(`DEBUG: ${opcoes.length} opções encontradas`);
+        
+        if (opcoes.length === 0) {
+          console.log(`DEBUG: Nenhuma opção encontrada, tentando próximo seletor`);
+          continue;
+        }
+        
+        // Procurar pela opção desejada
+        let opcaoEncontrada = false;
+        for (const opcao of opcoes) {
+          try {
+            const texto = await opcao.textContent();
+            console.log(`DEBUG: Verificando opção: "${texto}"`);
+            
+            if (texto && texto.trim().toLowerCase().includes(visibilidade.toLowerCase())) {
+              console.log(`DEBUG: Opção encontrada: "${texto}", clicando...`);
+              await opcao.click();
+              opcaoEncontrada = true;
+              break;
+            }
+          } catch (e) {
+            console.log(`DEBUG: Erro ao verificar opção: ${e.message}`);
+            continue;
+          }
+        }
+        
+        if (opcaoEncontrada) {
+          console.log(`DEBUG: Visibilidade configurada com sucesso: ${visibilidade}`);
+          return true;
+        } else {
+          console.log(`DEBUG: Opção "${visibilidade}" não encontrada, tentando próximo seletor`);
+        }
+        
+      } catch (error) {
+        console.log(`DEBUG: Erro ao tentar seletor ${seletor}: ${error.message}`);
+        continue;
+      }
+    }
+    
+    console.log(`DEBUG: Não foi possível configurar a visibilidade: ${visibilidade}`);
+    return false;
+  }
+
   async saveConfigurationOptimized() {
     console.log('🎯 ASSERTIVO: Salvamento direto...');
     
@@ -893,91 +1125,139 @@ class ParallelOJProcessor {
         throw new Error('Página fechada durante salvamento');
       }
       
-      // 1. DIRETO: Botão Gravar com estrutura HTML específica
-      console.log('🎯 Procurando botão Gravar com estrutura específica...');
-      const botaoGravar = 'mat-dialog-container button:has(.mat-button-wrapper:has-text("Gravar")):not([disabled])';
+      // Usar a mesma estratégia da versão sequencial
+      const seletoresBotaoGravar = [
+        // PRIMEIRO: Botão específico para peritos (PRIORIDADE MÁXIMA)
+        'mat-dialog-container button:has-text("Vincular Órgão Julgador ao Perito")',
+        '[role="dialog"] button:has-text("Vincular Órgão Julgador ao Perito")',
+        '.mat-dialog-container button:has-text("Vincular Órgão Julgador ao Perito")',
+        
+        // SEGUNDO: Botões de vincular genéricos
+        'mat-dialog-container button:has-text("Vincular")',
+        '[role="dialog"] button:has-text("Vincular")',
+        
+        // TERCEIRO: Botões de gravar/salvar para servidores  
+        'mat-dialog-container button:has-text("Gravar")',
+        '[role="dialog"] button:has-text("Gravar")',
+        '.mat-dialog-container button:has-text("Gravar")',
+        'mat-dialog-container button:has-text("Salvar")',
+        '[role="dialog"] button:has-text("Salvar")',
+        'mat-dialog-container button:has-text("Confirmar")',
+        
+        // Fallbacks globais (última opção)
+        'button:has-text("Vincular Órgão Julgador ao Perito")',
+        'button:has-text("Vincular")',
+        'button:has-text("Gravar")',
+        'button:has-text("Salvar")',
+        'button:has-text("Confirmar")',
+        'input[type="submit"]',
+        'input[type="button"][value*="Gravar"]',
+        'input[type="button"][value*="Salvar"]'
+      ];
       
-      // Debug: listar todos os botões disponíveis
-      const todosBotoes = await this.page.locator('mat-dialog-container button').all();
-      console.log(`🔍 [DEBUG] Total de botões no modal: ${todosBotoes.length}`);
-      
-      for (let i = 0; i < todosBotoes.length; i++) {
-        const botaoTexto = await todosBotoes[i].textContent();
-        const botaoDisabled = await todosBotoes[i].isDisabled();
-        console.log(`🔍 [DEBUG] Botão ${i + 1}: "${botaoTexto?.trim()}" (disabled: ${botaoDisabled})`);
+      let botaoEncontrado = false;
+      for (const seletor of seletoresBotaoGravar) {
+        try {
+          console.log(`🔍 Testando botão: ${seletor}`);
+          const botao = this.page.locator(seletor);
+          if (await botao.count() > 0 && await botao.first().isVisible({ timeout: 2000 })) {
+            console.log(`✅ Botão encontrado: ${seletor}`);
+            await botao.first().click({ force: true });
+            botaoEncontrado = true;
+            console.log('✅ Clique no botão Gravar realizado');
+            break;
+          } else {
+            console.log(`❌ Botão ${seletor} não visível ou não encontrado`);
+          }
+        } catch (e) {
+          console.log(`❌ Seletor ${seletor} falhou: ${e.message}`);
+        }
       }
       
-      console.log(`🔍 [DEBUG] Aguardando seletor: ${botaoGravar}`);
-      await this.page.waitForSelector(botaoGravar, { timeout: 3000 });
-      console.log('🔍 [DEBUG] Seletor encontrado, executando clique...');
-      
-      // Usar retryManager como na versão sequencial
-      await this.retryManager.retryPJEOperation(
-        async () => {
-          const element = await this.page.$(botaoGravar);
-          if (element) {
-            console.log('🔍 [DEBUG] Elemento encontrado, clicando...');
-            await element.click();
-            console.log('🔍 [DEBUG] Clique executado com sucesso');
-          } else {
-            throw new Error('Save button not found');
+      if (!botaoEncontrado) {
+        // Tentar buscar por role no modal
+        try {
+          console.log('🔍 Tentando buscar botão por role no modal...');
+          const botaoRole = this.page.getByRole('button', { name: /Gravar|Salvar|Confirmar|Vincular/i });
+          if (await botaoRole.count() > 0 && await botaoRole.first().isVisible({ timeout: 2000 })) {
+            await botaoRole.first().click({ force: true });
+            botaoEncontrado = true;
+            console.log('✅ Botão encontrado por role e clicado');
           }
-        },
-        'saveConfiguration'
-      );
+        } catch (e) {
+          console.log('❌ Busca por role também falhou:', e.message);
+        }
+      }
       
-      console.log('✅ CLIQUE no botão Gravar realizado');
+      if (!botaoEncontrado) {
+        // Debug: listar todos os botões no modal
+        try {
+          console.log('🔍 DEBUG: Listando botões no modal...');
+          const botoesModal = await this.page.locator('mat-dialog-container button, [role="dialog"] button').all();
+          for (let i = 0; i < botoesModal.length; i++) {
+            try {
+              const texto = await botoesModal[i].textContent();
+              const isVisible = await botoesModal[i].isVisible();
+              console.log(`  Botão ${i + 1}: "${texto}" (visível: ${isVisible})`);
+            } catch (e) {
+              console.log(`  Botão ${i + 1}: Erro ao obter informações`);
+            }
+          }
+        } catch (debugError) {
+          console.log(`⚠️ Erro no debug de botões: ${debugError.message}`);
+        }
+        
+        throw new Error('Botão Gravar/Salvar não encontrado no modal');
+      }
       
-      // 2. AGUARDAR: Modal fechar ou sucesso
-      console.log('🎯 Aguardando processamento...');
+      // Aguardar processamento e verificar resultado
+      console.log('Aguardando processamento da vinculação...');
+      await this.page.waitForTimeout(2000);
       
-      // Aguardar uma das condições: modal fechar OU mensagem de sucesso
-      await Promise.race([
-        this.page.waitForSelector('mat-dialog-container', { state: 'detached', timeout: 5000 }),
-        this.page.waitForSelector(':has-text("sucesso"), :has-text("salvo"), :has-text("cadastrado")', { timeout: 5000 })
-      ]);
+      // Verificar se apareceu modal de confirmação
+      try {
+        const modalConfirmacao = await this.page.locator('text=/certeza.*vincular.*Órgão Julgador.*Perito/i').first().isVisible({ timeout: 3000 });
+        if (modalConfirmacao) {
+          console.log('✓ Modal de confirmação detectado, clicando em "Sim"...');
+          
+          // Procurar botão "Sim"
+          const seletoresSim = [
+            'button:has-text("Sim")',
+            'button:has-text("OK")',
+            'button:has-text("Confirmar")',
+            'button[class*="confirm"]',
+            '.btn-success:has-text("Sim")',
+            '.btn-primary:has-text("Sim")'
+          ];
+          
+          let simClicado = false;
+          for (const seletor of seletoresSim) {
+            try {
+              const botaoSim = this.page.locator(seletor);
+              if (await botaoSim.first().isVisible({ timeout: 2000 })) {
+                await botaoSim.first().click({ force: true });
+                simClicado = true;
+                console.log('✓ Confirmação realizada');
+                break;
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+          
+          if (!simClicado) {
+            console.log('⚠️ Botão Sim não encontrado no modal de confirmação');
+          }
+        }
+      } catch (error) {
+        console.log('Modal de confirmação não detectado ou erro:', error.message);
+      }
       
       console.log('✅ Salvamento confirmado');
       
     } catch (error) {
-      console.log(`⚠️ Erro no salvamento assertivo: ${error.message}`);
-      console.log(`🔍 [DEBUG] Stack trace:`, error.stack);
-      
-      // Fallback: tentar outros botões com estruturas específicas
-      const fallbackSelectors = [
-        'button:has(.mat-button-wrapper:has-text("Gravar"))',
-        '[role="dialog"] button:has(.mat-button-wrapper:has-text("Gravar"))',
-        'button:has(.mat-button-wrapper:has-text("Salvar"))',
-        'button:has(.mat-button-wrapper:has-text("Confirmar"))',
-        '[role="dialog"] button:has-text("Gravar")',
-        'button:has-text("Salvar")',
-        'button:has-text("Confirmar")',
-        'mat-dialog-container button[type="submit"]',
-        'mat-dialog-container button:not([disabled])'
-      ];
-      
-      console.log('🔍 [DEBUG] Tentando fallback selectors...');
-      for (const selector of fallbackSelectors) {
-        try {
-          console.log(`🔍 [DEBUG] Testando selector: ${selector}`);
-          const botao = this.page.locator(selector);
-          const count = await botao.count();
-          console.log(`🔍 [DEBUG] Elementos encontrados para "${selector}": ${count}`);
-          
-          if (count > 0) {
-            const textoFallback = await botao.first().textContent();
-            console.log(`🔍 [DEBUG] Texto do botão fallback: "${textoFallback?.trim()}"`);
-            await botao.first().click();
-            console.log(`✅ Fallback: ${selector} clicado`);
-            return;
-          }
-        } catch (fallbackError) {
-          console.log(`🔍 [DEBUG] Erro no fallback "${selector}": ${fallbackError.message}`);
-          continue;
-        }
-      }
-      
-      throw new Error('Nenhum botão de salvamento encontrado');
+      console.log(`⚠️ Erro no salvamento: ${error.message}`);
+      throw error;
     }
   }
   
@@ -1067,12 +1347,34 @@ class ParallelOJProcessor {
   
   async executeWithTimeout(fn, timeout) {
     return new Promise((resolve, reject) => {
+      let completed = false;
+      const startTime = Date.now();
+      
       const timer = setTimeout(() => {
-        reject(new Error(`Operação excedeu timeout de ${timeout}ms`));
+        if (!completed) {
+          completed = true;
+          const elapsed = Date.now() - startTime;
+          console.log(`⏰ Timeout de ${timeout}ms atingido após ${elapsed}ms - operação cancelada`);
+          reject(new Error(`Operação excedeu timeout de ${timeout}ms`));
+        }
       }, timeout);
       
-      fn().then(resolve).catch(reject).finally(() => {
-        clearTimeout(timer);
+      fn().then(result => {
+        if (!completed) {
+          completed = true;
+          clearTimeout(timer);
+          const elapsed = Date.now() - startTime;
+          console.log(`✅ Operação concluída em ${elapsed}ms (timeout: ${timeout}ms)`);
+          resolve(result);
+        }
+      }).catch(error => {
+        if (!completed) {
+          completed = true;
+          clearTimeout(timer);
+          const elapsed = Date.now() - startTime;
+          console.log(`❌ Operação falhou após ${elapsed}ms: ${error.message}`);
+          reject(error);
+        }
       });
     });
   }
@@ -1083,23 +1385,45 @@ class ParallelOJProcessor {
   
   async quickRecovery() {
     try {
-      // Fechar modais abertos
-      const modalSelectors = [
-        '.modal-backdrop',
-        '.mat-dialog-container',
-        '.overlay'
-      ];
-      
-      for (const selector of modalSelectors) {
-        const element = await this.page.$(selector);
-        if (element) {
-          await this.page.keyboard.press('Escape');
-          await this.delayManager.smartDelay('recovery', { priority: 'low' });
-          break;
-        }
+      if (this.page && !this.page.isClosed()) {
+        console.log('🔄 Iniciando recuperação rápida...');
+        
+        // Fechar qualquer modal aberto
+        await this.page.evaluate(() => {
+          const modals = document.querySelectorAll('mat-dialog-container, .cdk-overlay-container, .modal-backdrop');
+          modals.forEach(modal => {
+            const closeBtn = modal.querySelector('[mat-dialog-close], .mat-dialog-close, .close, .btn-close');
+            if (closeBtn) {
+              closeBtn.click();
+            }
+          });
+          
+          // Limpar qualquer overlay ou backdrop
+          const overlays = document.querySelectorAll('.cdk-overlay-backdrop, .mat-dialog-backdrop, .modal-backdrop');
+          overlays.forEach(overlay => overlay.remove());
+        });
+        
+        // Pressionar ESC para fechar modais
+        await this.page.keyboard.press('Escape');
+        
+        // Aguardar um pouco para a página se estabilizar
+        await this.delay(200);
+        
+        // Verificar se ainda há elementos de loading com timeout reduzido
+        await this.page.waitForFunction(
+          () => {
+            const loadingElements = document.querySelectorAll('.loading, .spinner, [class*="loading"]');
+            return loadingElements.length === 0;
+          },
+          { timeout: 1500 }
+        ).catch(() => {
+          console.log('⚠️ Elementos de loading ainda presentes após recovery');
+        });
+        
+        console.log('✅ Recuperação rápida concluída');
       }
     } catch (error) {
-      // Ignorar erros de recuperação
+      console.log(`⚠️ Erro durante quick recovery: ${error.message}`);
     }
   }
   

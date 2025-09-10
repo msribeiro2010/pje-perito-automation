@@ -1,0 +1,170 @@
+{
+  "timestamp": "2025-09-09T20:06:22.886Z",
+  "problema_analisado": {
+    "seletores_falhando": [
+      "button:has-text(\"Adicionar Órgão Julgador ao Perito\")",
+      "button:has-text(\"Adicionar Órgão Julgador\")",
+      "button:has-text(\"Adicionar\")"
+    ],
+    "causas_possiveis": [
+      "Mudança na estrutura DOM do Angular Material",
+      "Botão sendo renderizado dinamicamente",
+      "Painel não expandido completamente",
+      "Overlay ou modal bloqueando o elemento",
+      "Timing de carregamento inadequado",
+      "Seletores muito genéricos causando conflitos"
+    ],
+    "varas_afetadas": [
+      "2ª Vara do Trabalho de São José dos Campos",
+      "3ª Vara do Trabalho de São José dos Campos",
+      "4ª Vara do Trabalho de São José dos Campos",
+      "5ª Vara do Trabalho de São José dos Campos"
+    ]
+  },
+  "seletores_melhorados": {
+    "contextuais": [
+      "mat-expansion-panel[aria-expanded=\"true\"] mat-expansion-panel-content button:has-text(\"Adicionar\")",
+      "mat-expansion-panel:has(mat-panel-title:has-text(\"Órgãos Julgadores\")) button",
+      ".mat-expansion-panel-content .mat-button-wrapper:has-text(\"Adicionar\")",
+      ".mat-expansion-panel-body button[class*=\"mat-button\"]",
+      "mat-accordion > mat-expansion-panel:nth-child(n) button:has-text(\"Adicionar\")",
+      "#cdk-accordion-child-8 > div > div > button"
+    ],
+    "atributos": [
+      "button[ng-reflect-router-link*=\"adicionar\"]",
+      "button[ng-reflect-disabled=\"false\"]:has-text(\"Adicionar\")",
+      "button[tabindex=\"0\"]:has-text(\"Adicionar\")",
+      "button[type=\"button\"]:has-text(\"Adicionar Órgão\")"
+    ],
+    "textoFlexivel": [
+      "button:contains(\"Adicionar\"):contains(\"Órgão\")",
+      "button:contains(\"Adicionar\"):contains(\"Julgador\")",
+      "button[title*=\"Adicionar\"]",
+      "*[role=\"button\"]:contains(\"Adicionar\")",
+      "a:contains(\"Adicionar Órgão\")"
+    ],
+    "hierarquia": [
+      "mat-expansion-panel mat-expansion-panel-content > div > button",
+      "mat-accordion mat-expansion-panel div[class*=\"content\"] button",
+      ".mat-expansion-panel .mat-expansion-panel-content .mat-button"
+    ]
+  },
+  "estrategias_fallback": {
+    "expandirPainel": {
+      "descricao": "Garantir que o painel esteja expandido antes de buscar o botão",
+      "passos": [
+        "Localizar header do painel \"Órgãos Julgadores\"",
+        "Verificar se aria-expanded=\"true\"",
+        "Se não, clicar para expandir",
+        "Aguardar animação de expansão",
+        "Buscar botão dentro do conteúdo expandido"
+      ]
+    },
+    "limparOverlays": {
+      "descricao": "Remover possíveis overlays que bloqueiam o botão",
+      "passos": [
+        "Fechar dropdowns abertos (mat-select)",
+        "Fechar tooltips (mat-tooltip)",
+        "Fechar modais (mat-dialog)",
+        "Pressionar ESC para limpar estado"
+      ]
+    },
+    "ajustarViewport": {
+      "descricao": "Garantir que o botão esteja visível no viewport",
+      "passos": [
+        "Scroll até o painel de Órgãos Julgadores",
+        "Aguardar estabilização",
+        "Verificar se botão está no viewport",
+        "Ajustar zoom se necessário"
+      ]
+    },
+    "simularEventos": {
+      "descricao": "Usar eventos JavaScript diretos se seletores falharem",
+      "passos": [
+        "Localizar elemento por querySelector",
+        "Disparar evento click programaticamente",
+        "Verificar mudança de estado",
+        "Confirmar abertura de modal"
+      ]
+    }
+  },
+  "codigo_correcao": "\n// Função melhorada para encontrar botão \"Adicionar Órgão Julgador\"\nasync function encontrarBotaoAdicionarMelhorado(page, tentativa = 1) {\n    console.log(`🔍 Tentativa ${tentativa} - Procurando botão \"Adicionar Órgão Julgador\"...`);\n    \n    // Estratégia 1: Garantir painel expandido\n    await garantirPainelExpandido(page);\n    \n    // Estratégia 2: Limpar overlays\n    await limparOverlaysAngular(page);\n    \n    // Estratégia 3: Seletores melhorados em ordem de prioridade\n    const seletoresPrioritarios = [\n        'mat-expansion-panel[aria-expanded=\"true\"] button:has-text(\"Adicionar\")',\n        'mat-expansion-panel-content button:has-text(\"Adicionar Órgão Julgador\")',\n        '#cdk-accordion-child-8 button:has-text(\"Adicionar\")',\n        'button[mat-button]:has-text(\"Adicionar\")',\n        '.mat-expansion-panel-content .mat-button:has-text(\"Adicionar\")'\n    ];\n    \n    for (const seletor of seletoresPrioritarios) {\n        try {\n            console.log(`   Testando: ${seletor}`);\n            const botao = page.locator(seletor).first();\n            \n            // Aguardar elemento aparecer\n            await botao.waitFor({ timeout: 3000 });\n            \n            // Verificar se está visível\n            if (await botao.isVisible()) {\n                console.log(`✅ Botão encontrado com: ${seletor}`);\n                return botao;\n            }\n        } catch (error) {\n            console.log(`   ❌ Falhou: ${error.message}`);\n        }\n    }\n    \n    // Estratégia 4: Fallback com JavaScript\n    try {\n        const botaoJS = await page.evaluate(() => {\n            const botoes = Array.from(document.querySelectorAll('button'));\n            return botoes.find(btn => \n                btn.textContent.includes('Adicionar') && \n                (btn.textContent.includes('Órgão') || btn.textContent.includes('Julgador'))\n            );\n        });\n        \n        if (botaoJS) {\n            console.log('✅ Botão encontrado via JavaScript');\n            return page.locator('button').filter({ hasText: /Adicionar.*Órgão|Adicionar.*Julgador/ }).first();\n        }\n    } catch (error) {\n        console.log(`❌ Fallback JavaScript falhou: ${error.message}`);\n    }\n    \n    // Se chegou aqui, não encontrou\n    if (tentativa < 3) {\n        console.log(`⏳ Aguardando ${SAO_JOSE_CONFIG.tentativas.intervalo}ms antes da próxima tentativa...`);\n        await page.waitForTimeout(SAO_JOSE_CONFIG.tentativas.intervalo);\n        return encontrarBotaoAdicionarMelhorado(page, tentativa + 1);\n    }\n    \n    throw new Error('Botão \"Adicionar Órgão Julgador\" não encontrado após todas as tentativas');\n}\n\n// Função auxiliar para garantir painel expandido\nasync function garantirPainelExpandido(page) {\n    try {\n        const painelHeader = page.locator('mat-expansion-panel-header:has-text(\"Órgãos Julgadores\")');\n        await painelHeader.waitFor({ timeout: 5000 });\n        \n        const isExpanded = await painelHeader.getAttribute('aria-expanded');\n        if (isExpanded !== 'true') {\n            console.log('🔄 Expandindo painel de Órgãos Julgadores...');\n            await painelHeader.click();\n            await page.waitForTimeout(2000); // Aguardar animação\n        }\n    } catch (error) {\n        console.log(`⚠️ Erro ao expandir painel: ${error.message}`);\n    }\n}\n\n// Função auxiliar para limpar overlays\nasync function limparOverlaysAngular(page) {\n    try {\n        // Fechar mat-select abertos\n        await page.keyboard.press('Escape');\n        await page.waitForTimeout(500);\n        \n        // Fechar tooltips\n        await page.mouse.click(10, 10); // Click em área neutra\n        await page.waitForTimeout(500);\n    } catch (error) {\n        console.log(`⚠️ Erro ao limpar overlays: ${error.message}`);\n    }\n}\n",
+  "configuracao": {
+    "nome": "SAO_JOSE_CAMPOS_BOTAO_ADICIONAR_FIX",
+    "versao": "1.0.0",
+    "data": "2025-09-09T20:06:22.886Z",
+    "problema": {
+      "descricao": "Botão \"Adicionar Órgão Julgador\" não encontrado nas varas de São José dos Campos",
+      "terminal_referencia": "Terminal#1039-1060",
+      "varas_afetadas": [
+        "2ª Vara do Trabalho de São José dos Campos",
+        "3ª Vara do Trabalho de São José dos Campos",
+        "4ª Vara do Trabalho de São José dos Campos",
+        "5ª Vara do Trabalho de São José dos Campos"
+      ]
+    },
+    "solucao": {
+      "seletores_melhorados": [
+        "mat-expansion-panel[aria-expanded=\"true\"] button:has-text(\"Adicionar\")",
+        "mat-expansion-panel-content button:has-text(\"Adicionar Órgão Julgador\")",
+        "div[class*=\"mat-expansion-panel-content\"] button[class*=\"mat-button\"]",
+        "button[mat-button]:has-text(\"Adicionar\")",
+        "button[mat-raised-button]:has-text(\"Adicionar\")",
+        "button[mat-flat-button]:has-text(\"Adicionar\")",
+        "#cdk-accordion-child-8 button",
+        "[id*=\"cdk-accordion\"] button:has-text(\"Adicionar\")",
+        "mat-accordion mat-expansion-panel button",
+        "button[aria-label*=\"Adicionar\"]",
+        "button[aria-label*=\"Órgão\"]",
+        "button[aria-label*=\"Julgador\"]",
+        "button[data-action=\"adicionar\"]",
+        "button[data-target*=\"orgao\"]",
+        ".mat-expansion-panel-content .mat-button",
+        ".panel-content button",
+        ".accordion-content button",
+        "button:contains(\"Adicionar\")",
+        "input[type=\"button\"][value*=\"Adicionar\"]",
+        "a[role=\"button\"]:contains(\"Adicionar\")"
+      ],
+      "timeouts": {
+        "aguardarPainel": 5000,
+        "aguardarBotao": 8000,
+        "entreCliques": 2000,
+        "verificacao": 1000
+      },
+      "tentativas": {
+        "maximas": 5,
+        "intervalo": 3000
+      },
+      "estrategias_fallback": [
+        "expandir_painel_primeiro",
+        "limpar_overlays_angular",
+        "usar_seletores_contextuais",
+        "fallback_javascript"
+      ]
+    },
+    "implementacao": {
+      "arquivos_modificar": [
+        "src/vincularOJ.js",
+        "src/utils/seletores.js",
+        "src/main/servidor-automation-v2.js"
+      ],
+      "funcoes_criar": [
+        "encontrarBotaoAdicionarMelhorado",
+        "garantirPainelExpandido",
+        "limparOverlaysAngular"
+      ]
+    }
+  },
+  "proximos_passos": [
+    "1. Implementar seletores melhorados no vincularOJ.js",
+    "2. Adicionar estratégias de fallback",
+    "3. Testar com as 4 varas de São José dos Campos",
+    "4. Monitorar logs para verificar eficácia",
+    "5. Ajustar timeouts se necessário"
+  ],
+  "arquivos_gerados": [
+    "ANALISE-BOTAO-ADICIONAR-SAO-JOSE-2025-09-09.json",
+    "codigo-correcao-botao-adicionar.js"
+  ]
+}

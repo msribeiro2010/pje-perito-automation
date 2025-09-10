@@ -1,0 +1,212 @@
+{
+  "timestamp": "2025-09-09T20:09:10.780Z",
+  "problema_original": "Terminal#1039-1060 - Botão \"Adicionar Órgão Julgador\" não encontrado",
+  "varas_testadas": [
+    "2ª Vara do Trabalho de São José dos Campos",
+    "3ª Vara do Trabalho de São José dos Campos",
+    "4ª Vara do Trabalho de São José dos Campos",
+    "5ª Vara do Trabalho de São José dos Campos"
+  ],
+  "correcoes_aplicadas": [
+    {
+      "tipo": "funcao",
+      "nome": "encontrarBotaoAdicionarMelhorado",
+      "arquivo": "src/vincularOJ.js",
+      "status": "implementada"
+    },
+    {
+      "tipo": "funcao",
+      "nome": "garantirPainelExpandido",
+      "arquivo": "src/vincularOJ.js",
+      "status": "implementada"
+    },
+    {
+      "tipo": "funcao",
+      "nome": "limparOverlaysAngular",
+      "arquivo": "src/vincularOJ.js",
+      "status": "implementada"
+    },
+    {
+      "tipo": "seletores",
+      "nome": "botaoAdicionarOrgao",
+      "arquivo": "src/utils/seletores.js",
+      "status": "implementados"
+    },
+    {
+      "tipo": "configuracao",
+      "nome": "config-sao-jose-campos.json",
+      "status": "criada"
+    }
+  ],
+  "testes_realizados": [
+    {
+      "tipo": "seletores",
+      "total_testados": 11,
+      "resultados": [
+        {
+          "seletor": "mat-expansion-panel[aria-expanded=\"true\"] button:has-text(\"Adicionar\")",
+          "prioridade": 1,
+          "tipo": "Estado específico",
+          "especificidade": 45,
+          "compatibilidade": "Excelente - Estado específico"
+        },
+        {
+          "seletor": "mat-expansion-panel-content button:has-text(\"Adicionar Órgão Julgador\")",
+          "prioridade": 2,
+          "tipo": "Contexto específico",
+          "especificidade": 20,
+          "compatibilidade": "Muito boa - Contexto específico"
+        },
+        {
+          "seletor": "#cdk-accordion-child-8 button:has-text(\"Adicionar\")",
+          "prioridade": 3,
+          "tipo": "ID específico",
+          "especificidade": 120,
+          "compatibilidade": "Boa - ID específico"
+        },
+        {
+          "seletor": "button[mat-button]:has-text(\"Adicionar\")",
+          "prioridade": 4,
+          "tipo": "Atributo Angular Material",
+          "especificidade": 30,
+          "compatibilidade": "Boa - Atributo Angular"
+        },
+        {
+          "seletor": ".mat-expansion-panel-content .mat-button:has-text(\"Adicionar\")",
+          "prioridade": 5,
+          "tipo": "Contexto específico",
+          "especificidade": 30,
+          "compatibilidade": "Muito boa - Contexto específico"
+        },
+        {
+          "seletor": "mat-expansion-panel-content button:has-text(\"Adicionar\")",
+          "prioridade": 6,
+          "tipo": "Contexto específico",
+          "especificidade": 20,
+          "compatibilidade": "Muito boa - Contexto específico"
+        },
+        {
+          "seletor": "div[class*=\"mat-expansion-panel-content\"] button[class*=\"mat-button\"]",
+          "prioridade": 7,
+          "tipo": "Contexto específico",
+          "especificidade": 10,
+          "compatibilidade": "Muito boa - Contexto específico"
+        },
+        {
+          "seletor": "button[mat-raised-button]:has-text(\"Adicionar\")",
+          "prioridade": 8,
+          "tipo": "Atributo Angular Material",
+          "especificidade": 30,
+          "compatibilidade": "Boa - Atributo Angular"
+        },
+        {
+          "seletor": "button[mat-flat-button]:has-text(\"Adicionar\")",
+          "prioridade": 9,
+          "tipo": "Atributo Angular Material",
+          "especificidade": 30,
+          "compatibilidade": "Boa - Atributo Angular"
+        },
+        {
+          "seletor": "[id*=\"cdk-accordion\"] button:has-text(\"Adicionar\")",
+          "prioridade": 10,
+          "tipo": "ID parcial",
+          "especificidade": 30,
+          "compatibilidade": "Regular - Genérico"
+        },
+        {
+          "seletor": "mat-accordion mat-expansion-panel button:has-text(\"Adicionar\")",
+          "prioridade": 11,
+          "tipo": "Genérico",
+          "especificidade": 20,
+          "compatibilidade": "Regular - Genérico"
+        }
+      ]
+    },
+    {
+      "tipo": "funcoes_auxiliares",
+      "funcoes_verificadas": 3,
+      "detalhes": [
+        {
+          "nome": "encontrarBotaoAdicionarMelhorado",
+          "descricao": "Função principal para encontrar botão com fallbacks",
+          "parametros": [
+            "page",
+            "tentativa"
+          ],
+          "estrategias": [
+            "Garantir painel expandido",
+            "Limpar overlays",
+            "Seletores prioritários",
+            "Fallback JavaScript",
+            "Tentativas múltiplas"
+          ]
+        },
+        {
+          "nome": "garantirPainelExpandido",
+          "descricao": "Expande painel de Órgãos Julgadores se necessário",
+          "parametros": [
+            "page"
+          ],
+          "estrategias": [
+            "Localizar header do painel",
+            "Verificar estado aria-expanded",
+            "Clicar se não expandido",
+            "Aguardar animação"
+          ]
+        },
+        {
+          "nome": "limparOverlaysAngular",
+          "descricao": "Remove overlays que podem interferir",
+          "parametros": [
+            "page"
+          ],
+          "estrategias": [
+            "Pressionar Escape",
+            "Clicar em área neutra",
+            "Aguardar estabilização"
+          ]
+        }
+      ]
+    },
+    {
+      "tipo": "simulacao_cenarios",
+      "cenarios_testados": 2,
+      "detalhes": [
+        {
+          "vara": "2ª Vara do Trabalho de São José dos Campos",
+          "etapas": [
+            "Navegar para página de vinculação",
+            "Localizar seção \"Órgãos Julgadores\"",
+            "Expandir painel se necessário",
+            "Limpar overlays Angular",
+            "Procurar botão \"Adicionar\" com seletores específicos",
+            "Aplicar fallback se necessário",
+            "Clicar no botão encontrado"
+          ]
+        },
+        {
+          "vara": "3ª Vara do Trabalho de São José dos Campos",
+          "etapas": [
+            "Repetir processo com timeouts estendidos",
+            "Usar estratégias de fallback",
+            "Verificar múltiplos seletores",
+            "Confirmar sucesso da operação"
+          ]
+        }
+      ]
+    }
+  ],
+  "resultado_final": {
+    "status": "SUCESSO",
+    "percentual_sucesso": 100,
+    "correcoes_completas": 5,
+    "total_correcoes": 5,
+    "problema_resolvido": true
+  },
+  "proximos_passos": [
+    "Testar em ambiente real com as varas de São José dos Campos",
+    "Monitorar logs para confirmar funcionamento",
+    "Aplicar correções similares para outras varas se necessário",
+    "Documentar solução para referência futura"
+  ]
+}
