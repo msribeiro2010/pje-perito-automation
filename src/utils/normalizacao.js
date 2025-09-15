@@ -13,20 +13,10 @@ class NormalizadorTexto {
     // Preposições
     'de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no', 'nas', 'nos',
     'para', 'por', 'com', 'sem', 'sobre', 'sob', 'entre', 'ante',
-    'após', 'até', 'desde', 'contra', 'perante',
-    // Conjunções
-    'e', 'ou', 'mas', 'que', 'se', 'como', 'quando', 'onde',
-    // Palavras comuns em nomes de órgãos
-    'tribunal', 'vara', 'juizado', 'comarca', 'foro', 'secao', 'seção',
-    'regional', 'federal', 'estadual', 'municipal', 'civil', 'criminal',
-    'trabalhista', 'eleitoral', 'militar', 'especial', 'especializada',
-    'civel', 'fazenda', 'publica', 'pública', 'familia', 'família',
-    'sucessoes', 'sucessões', 'orfaos', 'órfãos', 'execucao', 'execução',
-    'execucoes', 'execuções', 'divisao', 'divisão', 'divex', 'falencia', 'falência', 'recuperacao',
-    'recuperação', 'empresarial', 'consumidor', 'ambiental', 'agraria',
-    'agrária', 'previdenciaria', 'previdenciária', 'acidente', 'trabalho',
-    'violencia', 'violência', 'domestica', 'doméstica', 'familiar',
-    'infancia', 'infância', 'juventude', 'idoso', 'criminal', 'penal'
+    'apos', 'após', 'ate', 'até', 'desde', 'contra', 'perante',
+    // Conjunções e conectivos
+    'e', 'ou', 'mas', 'que', 'se', 'como', 'quando', 'onde'
+    // Importante: NÃO incluir termos de categoria (vara, juizado, tribunal, divex, execucao, cejusc, etc.)
   ]);
 
   /**

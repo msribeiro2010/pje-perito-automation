@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data:;">
     <title>PJE Automation - Peritos e Servidores</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -70,7 +71,7 @@
                 </div>
             </div>
         </div>
-
+        
         <!-- Aba Peritos -->
         <div id="peritos" class="tab-content active">
             <div class="section-header">
@@ -138,6 +139,7 @@
                     </table>
                 </div>
             </div>
+
         </div>
 
         <!-- Aba Servidores -->
@@ -188,26 +190,454 @@
                 <h2>Configurações do Sistema</h2>
             </div>
 
-            <form id="config-form" class="config-form">
-                <div class="form-group">
-                    <label for="pje-url">URL do PJE:</label>
-                    <input type="url" id="pje-url" name="PJE_URL" placeholder="https://pje.exemplo.com.br" required>
+            <div class="config-tabs">
+                <button class="config-tab-button active" data-config-tab="pje">PJE</button>
+                <button class="config-tab-button" data-config-tab="database">Banco de Dados</button>
+                <button class="config-tab-button" data-config-tab="ojs1grau">OJs 1º Grau</button>
+                <button class="config-tab-button" data-config-tab="ojs2grau">OJs 2º Grau</button>
+                <button class="config-tab-button" data-config-tab="servidores">Servidores</button>
+                <button class="config-tab-button" data-config-tab="processos">Processos</button>
+            </div>
+            
+            <!-- Configurações PJE -->
+            <div id="pje-config" class="config-section active">
+                <form id="config-form" class="config-form">
+                    <div class="form-group">
+                        <label for="pje-url">URL do PJE:</label>
+                        <input type="url" id="pje-url" name="PJE_URL" placeholder="https://pje.exemplo.com.br" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="login">Login:</label>
+                        <input type="text" id="login" name="LOGIN" placeholder="Seu login" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Senha:</label>
+                        <input type="password" id="password" name="PASSWORD" placeholder="Sua senha" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Salvar Configurações PJE
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Configurações Banco de Dados -->
+            <div id="database-config" class="config-section">
+                <div class="database-info">
+                    <p><i class="fas fa-info-circle"></i> Configure as credenciais do banco para ativar a verificação inteligente de OJs já cadastrados.</p>
+                </div>
+                
+                <form id="database-config-form" class="config-form">
+                    <div class="form-group">
+                        <label for="dbHost">Host do Banco:</label>
+                        <input type="text" id="dbHost" placeholder="pje-db-bugfix-a1" value="pje-db-bugfix-a1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dbPort">Porta:</label>
+                        <input type="number" id="dbPort" placeholder="5432" value="5432">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dbUser">Usuário:</label>
+                        <input type="text" id="dbUser" placeholder="Seu usuário do banco">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dbPassword">Senha:</label>
+                        <input type="password" id="dbPassword" placeholder="Sua senha do banco">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dbDatabase1Grau">Banco 1º Grau:</label>
+                        <input type="text" id="dbDatabase1Grau" placeholder="pje_1grau_bugfix" value="pje_1grau_bugfix">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dbDatabase2Grau">Banco 2º Grau:</label>
+                        <input type="text" id="dbDatabase2Grau" placeholder="pje_2grau_bugfix" value="pje_2grau_bugfix">
+                    </div>
+                    
+                    <div class="database-actions">
+                        <button type="button" id="testDbConnection" class="btn btn-secondary">
+                            <i class="fas fa-plug"></i> Testar Conexão
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Salvar Credenciais
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="dbStatus" class="database-status hidden">
+                    <div class="status-message">
+                        <i class="fas fa-check-circle"></i>
+                        <span id="dbStatusText">Conexão estabelecida com sucesso!</span>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="login">Login:</label>
-                    <input type="text" id="login" name="LOGIN" placeholder="Seu login" required>
+                <!-- Seção de Controle de Cache -->
+                <div class="config-separator"></div>
+                <div class="cache-control-section">
+                    <h3><i class="fas fa-memory"></i> Controle de Cache</h3>
+                    <p class="config-help">
+                        <i class="fas fa-info-circle"></i>
+                        Gerencie o cache de verificação de OJs para otimizar o desempenho.
+                    </p>
+
+                    <div class="cache-buttons">
+                        <button type="button" id="limparCacheOJs" class="btn btn-warning">
+                            <i class="fas fa-trash-alt"></i> Limpar Cache de Verificação
+                        </button>
+                    </div>
+
+                    <div class="config-help">
+                        <small>
+                            <i class="fas fa-lightbulb"></i>
+                            <strong>Quando usar:</strong> Se o sistema não reconhecer OJs já cadastrados ou apresentar comportamento inconsistente.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processos -->
+            <div id="processos-config" class="config-section">
+                <div class="section-info">
+                    <p><i class="fas fa-folder-open"></i> Consulte histórico, tarefa atual e partes de um processo pelo número.</p>
                 </div>
 
-                <div class="form-group">
-                    <label for="password">Senha:</label>
-                    <input type="password" id="password" name="PASSWORD" placeholder="Sua senha" required>
+                <div class="search-filters">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="nrProcessoInput">Número do Processo:</label>
+                        <div class="input-group">
+                            <span class="input-group-icon">
+                                <i class="fas fa-hashtag"></i>
+                            </span>
+                            <input type="text" id="nrProcessoInput" placeholder="Ex.: 0127500-72.2003.5.15.0011" class="form-control">
+                        </div>
+                        <small class="config-help"><i class="fas fa-info-circle"></i> Aceita busca parcial com ILIKE.</small>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="grauProcessoSelect">Grau do Banco:</label>
+                        <select id="grauProcessoSelect" class="form-control">
+                            <option value="1" selected>1º Grau</option>
+                            <option value="2">2º Grau</option>
+                        </select>
+                    </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save"></i> Salvar Configurações
-                </button>
-            </form>
+                <div class="config-actions">
+                    <button type="button" id="buscarProcessoBtn" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                </div>
+
+                <div id="statusProcessos" class="loading-status hidden">
+                    <div class="loader"></div>
+                    <span>Consultando banco de dados...</span>
+                </div>
+
+                <div id="resultadoProcessos" class="results-container hidden">
+                    <div class="results-header">
+                        <h4>Detalhes do Processo</h4>
+                        <div class="results-stats">
+                            <span class="database-info">
+                                <i class="fas fa-database"></i> Consulta em tempo real
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-tasks"></i> Tarefa Atual</h5>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="tabelaTarefaAtual">
+                                    <thead>
+                                        <tr>
+                                            <th>Tarefa</th>
+                                            <th>Usuário</th>
+                                            <th>Órgão Julgador</th>
+                                            <th>Colegiado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Linhas dinâmicas -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="empty-hint" id="tarefaAtualVazia" style="display:none">Nenhuma tarefa aberta encontrada.</div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-users"></i> Partes</h5>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table" id="tabelaPartes">
+                                    <thead>
+                                        <tr>
+                                            <th>Nome</th>
+                                            <th>Login</th>
+                                            <th>Tipo</th>
+                                            <th>Principal</th>
+                                            <th>Participação</th>
+                                            <th>Situação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Linhas dinâmicas -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="empty-hint" id="partesVazia" style="display:none">Nenhuma parte encontrada.</div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top:16px;">
+                        <div class="card-header">
+                            <h5><i class="fas fa-route"></i> Histórico</h5>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table" id="tabelaHistorico">
+                                <thead>
+                                    <tr>
+                                        <th>Criação</th>
+                                        <th>Abertura</th>
+                                        <th>Saída</th>
+                                        <th>Tarefa</th>
+                                        <th>Fluxo</th>
+                                        <th>Task ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Linhas dinâmicas -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="empty-hint" id="historicoVazio" style="display:none">Sem histórico para este processo.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- OJs 1º Grau -->
+            <div id="ojs1grau-config" class="config-section">
+                <div class="section-info">
+                    <p><i class="fas fa-database"></i> Consulta direta no banco de dados PJE - Órgãos julgadores de 1º grau ativos.</p>
+                </div>
+
+                <div class="search-filters">
+                    <div class="form-group">
+                        <label for="filtroOjs1Grau">Filtrar por nome:</label>
+                        <div class="input-group">
+                            <span class="input-group-icon">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            <input type="text" id="filtroOjs1Grau" placeholder="Digite parte do nome do órgão..." class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="limiteOjs1Grau">Limite de resultados:</label>
+                        <select id="limiteOjs1Grau" class="form-control">
+                            <option value="100">100</option>
+                            <option value="500">500</option>
+                            <option value="1000" selected>1000</option>
+                            <option value="2000">2000</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="config-actions">
+                    <button type="button" id="carregarOjs1Grau" class="btn btn-primary" style="display: none;">
+                        <i class="fas fa-database"></i> Buscar no Banco 1º Grau
+                    </button>
+                    <button type="button" id="buscarTodasOjs1Grau" class="btn btn-success">
+                        <i class="fas fa-list"></i> Buscar Todas
+                    </button>
+                    <button type="button" id="exportarOjs1Grau" class="btn btn-secondary" disabled>
+                        <i class="fas fa-download"></i> Exportar Lista
+                    </button>
+                    <button type="button" id="testarConexao1Grau" class="btn btn-info">
+                        <i class="fas fa-plug"></i> Testar Conexão
+                    </button>
+                </div>
+
+                <div id="statusOjs1Grau" class="loading-status hidden">
+                    <div class="loader"></div>
+                    <span>Consultando banco de dados...</span>
+                </div>
+
+                <div id="resultadoOjs1Grau" class="results-container hidden">
+                    <div class="results-header">
+                        <h4>Órgãos Julgadores 1º Grau</h4>
+                        <div class="results-stats">
+                            <span class="results-count" style="display: none;">
+                                <span id="countOjs1Grau">0</span> órgãos encontrados
+                            </span>
+                            <span class="database-info">
+                                <i class="fas fa-database"></i> Consulta realizada em tempo real
+                            </span>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome do Órgão</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabelaOjs1Grau">
+                                <!-- Dados serão inseridos via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- OJs 2º Grau -->
+            <div id="ojs2grau-config" class="config-section">
+                <div class="section-info">
+                    <p><i class="fas fa-database"></i> Consulta direta no banco de dados PJE - Órgãos julgadores de 2º grau ativos.</p>
+                </div>
+
+                <div class="search-filters">
+                    <div class="form-group">
+                        <label for="filtroOjs2Grau">Filtrar por nome:</label>
+                        <div class="input-group">
+                            <span class="input-group-icon">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            <input type="text" id="filtroOjs2Grau" placeholder="Digite parte do nome do órgão..." class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="limiteOjs2Grau">Limite de resultados:</label>
+                        <select id="limiteOjs2Grau" class="form-control">
+                            <option value="100">100</option>
+                            <option value="500">500</option>
+                            <option value="1000" selected>1000</option>
+                            <option value="2000">2000</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="config-actions">
+                    <button type="button" id="carregarOjs2Grau" class="btn btn-primary" style="display: none;">
+                        <i class="fas fa-database"></i> Buscar no Banco 2º Grau
+                    </button>
+                    <button type="button" id="buscarTodasOjs2Grau" class="btn btn-success">
+                        <i class="fas fa-list"></i> Buscar Todas
+                    </button>
+                    <button type="button" id="exportarOjs2Grau" class="btn btn-secondary" disabled>
+                        <i class="fas fa-download"></i> Exportar Lista
+                    </button>
+                    <button type="button" id="testarConexao2Grau" class="btn btn-info">
+                        <i class="fas fa-plug"></i> Testar Conexão
+                    </button>
+                </div>
+
+                <div id="statusOjs2Grau" class="loading-status hidden">
+                    <div class="loader"></div>
+                    <span>Consultando banco de dados...</span>
+                </div>
+
+                <div id="resultadoOjs2Grau" class="results-container hidden">
+                    <div class="results-header">
+                        <h4>Órgãos Julgadores 2º Grau</h4>
+                        <div class="results-stats">
+                            <span class="results-count">
+                                <span id="countOjs2Grau">0</span> órgãos encontrados
+                            </span>
+                            <span class="database-info">
+                                <i class="fas fa-database"></i> Consulta realizada em tempo real
+                            </span>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome do Órgão</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabelaOjs2Grau">
+                                <!-- Dados serão inseridos via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Servidores -->
+            <div id="servidores-config" class="config-section">
+                <div class="section-info">
+                    <p><i class="fas fa-users"></i> Consulta de servidores do sistema PJE com filtros por CPF ou nome.</p>
+                </div>
+
+                <div class="filter-controls">
+                    <div class="form-group">
+                        <label>Grau:</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="grauServidor" value="1" checked>
+                                <span>1º Grau</span>
+                            </label>
+                            <label>
+                                <input type="radio" name="grauServidor" value="2">
+                                <span>2º Grau</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="filtroNomeServidor">Filtrar por CPF ou Nome:</label>
+                        <input type="text" id="filtroNomeServidor" placeholder="Digite CPF ou parte do nome do servidor">
+                    </div>
+                </div>
+                
+                <div class="config-actions">
+                    <button type="button" id="buscarServidores" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Buscar Servidores
+                    </button>
+                    <button type="button" id="limparFiltrosServidores" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Limpar Filtros
+                    </button>
+                    <button type="button" id="exportarServidores" class="btn btn-secondary" disabled>
+                        <i class="fas fa-download"></i> Exportar Lista
+                    </button>
+                </div>
+                
+                <div id="statusServidores" class="loading-status hidden">
+                    <div class="loader"></div>
+                    <span>Buscando servidores...</span>
+                </div>
+                
+                <div id="resultadoServidores" class="results-container hidden">
+                    <div class="results-header">
+                        <h4>Servidores Encontrados</h4>
+                        <div class="results-count">
+                            <span id="countServidores">0</span> servidores encontrados
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>CPF</th>
+                                    <th>Perfil</th>
+                                    <th>Órgão</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabelaServidores">
+                                <!-- Dados serão inseridos via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Aba Automação -->
@@ -311,52 +741,15 @@
                         <button id="stop-servidor-automation" class="btn btn-danger" disabled>
                             <i class="fas fa-stop"></i> Parar Automação
                         </button>
-                        <button id="show-processed-servers" class="btn btn-info">
-                            <i class="fas fa-check-circle"></i> Ver Processados
+                        <button id="resume-servidor-automation" class="btn btn-primary" style="display:none">
+                            <i class="fas fa-play"></i> Prosseguir
                         </button>
                     </div>
                 </div>
             </div>
 
             <div class="status-panel">
-                <h3>Status da Automação:</h3>
-                
-                <!-- Status visual detalhado -->
-                <div id="detailed-status" class="detailed-status-container">
-                    <div id="current-server-status" class="status-section">
-                        <div class="status-icon">👤</div>
-                        <div class="status-content">
-                            <div class="status-label">Servidor Atual:</div>
-                            <div id="current-server-name" class="status-value">Aguardando início...</div>
-                        </div>
-                    </div>
-                    
-                    <div id="current-oj-status" class="status-section">
-                        <div class="status-icon">🏛️</div>
-                        <div class="status-content">
-                            <div class="status-label">OJ sendo processado:</div>
-                            <div id="current-oj-name" class="status-value">-</div>
-                        </div>
-                    </div>
-                    
-                    <div id="processing-time-status" class="status-section">
-                        <div class="status-icon timer-icon">⏱️</div>
-                        <div class="status-content">
-                            <div class="status-label">Tempo de processamento:</div>
-                            <div id="processing-time" class="status-value timer">00:00:00</div>
-                        </div>
-                    </div>
-                    
-                    <div id="current-result-status" class="status-section">
-                        <div id="result-icon" class="status-icon">⏳</div>
-                        <div class="status-content">
-                            <div class="status-label">Status atual:</div>
-                            <div id="current-result" class="status-value">Aguardando...</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Log de status tradicional -->
+                <!-- Log de status -->
                 <div id="status-log" class="status-log">
                     <!-- Status messages will be added dynamically -->
                 </div>
@@ -364,100 +757,7 @@
         </div>
     </div>
 
-    <!-- Modal de Servidores Processados -->
-    <div id="processed-servers-modal" class="modal">
-        <div class="modal-content" style="max-width: 1200px;">
-            <div class="modal-header">
-                <h3>📊 Status dos Servidores</h3>
-                <span class="close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <!-- Abas para alternar entre painéis -->
-                <div class="server-tabs">
-                    <button class="tab-button active" onclick="app.switchServerTab('processing')">
-                        <i class="fas fa-spinner"></i> Em Processamento
-                    </button>
-                    <button class="tab-button" onclick="app.switchServerTab('completed')">
-                        <i class="fas fa-check-circle"></i> Processados com Sucesso
-                    </button>
-                </div>
-
-                <!-- Painel de Servidores Em Processamento -->
-                <div id="processing-servers-panel" class="server-panel active">
-                    <div class="processing-servers-summary">
-                        <div class="summary-stats">
-                            <div class="stat-card">
-                                <div class="stat-number" id="total-processing-count">0</div>
-                                <div class="stat-label">Em Processamento</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number" id="current-processing-time">--:--:--</div>
-                                <div class="stat-label">Tempo Atual</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number" id="processing-progress">0%</div>
-                                <div class="stat-label">Progresso</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="processing-servers-list">
-                        <div class="list-header">
-                            <h4>Servidores Sendo Processados</h4>
-                            <div class="search-box">
-                                <input type="text" id="processing-server-search" placeholder="Buscar servidor..." class="form-control">
-                            </div>
-                        </div>
-                        
-                        <div id="processing-servers-container" class="servers-container">
-                            <!-- Servidores em processamento serão adicionados dinamicamente -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Painel de Servidores Processados com Sucesso -->
-                <div id="completed-servers-panel" class="server-panel">
-                    <div class="processed-servers-summary">
-                        <div class="summary-stats">
-                            <div class="stat-card">
-                                <div class="stat-number" id="total-processed-count">0</div>
-                                <div class="stat-label">Total Processados</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number" id="total-ojs-processed">0</div>
-                                <div class="stat-label">OJs Vinculadas</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number" id="processing-time">--:--:--</div>
-                                <div class="stat-label">Tempo Total</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="processed-servers-list">
-                        <div class="list-header">
-                            <h4>Lista de Servidores Processados</h4>
-                            <div class="search-box">
-                                <input type="text" id="server-search" placeholder="Buscar servidor..." class="form-control">
-                            </div>
-                        </div>
-                        
-                        <div id="processed-servers-container" class="servers-container">
-                            <!-- Servidores processados serão adicionados dinamicamente -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary" onclick="app.exportProcessedServers()">
-                    <i class="fas fa-download"></i> Exportar Lista
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="app.closeProcessedServersModal()">
-                    Fechar
-                </button>
-            </div>
-        </div>
-    </div>
+    
 
     <!-- Modal para exemplo de importação -->
     <div id="import-example-modal" class="modal">
@@ -611,6 +911,15 @@
                 <h3 id="servidor-modal-title">Adicionar Servidor</h3>
                 <span class="close">&times;</span>
             </div>
+            <!-- Indicador de Status do Banco -->
+            <div class="database-status-indicator" id="database-status-indicator">
+                <div class="status-item">
+                    <i class="fas fa-database"></i>
+                    <span id="database-status-text">Verificando conexão...</span>
+                    <div class="status-dot" id="database-status-dot"></div>
+                </div>
+            </div>
+            
             <form id="servidor-form">
                 <div class="form-group">
                     <label for="servidor-nome">Nome:</label>
@@ -621,6 +930,9 @@
                     <div class="autocomplete-container">
                         <input type="text" id="servidor-cpf" placeholder="000.000.000-00" required autocomplete="off">
                         <div class="autocomplete-suggestions" id="servidor-cpf-suggestions"></div>
+                    </div>
+                    <div class="cpf-verification-loader" id="cpf-verification-loader" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i> Verificando OJs cadastrados...
                     </div>
                 </div>
                 <div class="form-group">
@@ -638,6 +950,42 @@
                         <option value="Perito Judicial">Perito Judicial</option>
                     </select>
                 </div>
+                
+                <!-- Painel de Verificação de OJs -->
+                <div class="ojs-verification-panel" id="ojs-verification-panel" style="display: none;">
+                    <div class="verification-header">
+                        <h4><i class="fas fa-search"></i> Verificação Inteligente</h4>
+                        <span class="server-info" id="server-info-display"></span>
+                    </div>
+                    
+                    <div class="verification-summary" id="verification-summary">
+                        <!-- Resumo será inserido aqui -->
+                    </div>
+                    
+                    <div class="verification-details">
+                        <div class="ojs-tabs">
+                            <button class="tab-btn active" data-tab="cadastrados">
+                                <span class="tab-count" id="cadastrados-count">0</span> Já Cadastrados
+                            </button>
+                            <button class="tab-btn" data-tab="faltantes">
+                                <span class="tab-count" id="faltantes-count">0</span> Para Processar
+                            </button>
+                        </div>
+                        
+                        <div class="tab-content active" id="cadastrados-content">
+                            <div class="ojs-list" id="ojs-cadastrados-list">
+                                <!-- OJs já cadastrados serão listados aqui -->
+                            </div>
+                        </div>
+                        
+                        <div class="tab-content" id="faltantes-content">
+                            <div class="ojs-list" id="ojs-faltantes-list">
+                                <!-- OJs para processar serão listados aqui -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="form-group">
                     <label for="servidor-ojs">Órgãos Julgadores (um por linha):</label>
                     <textarea id="servidor-ojs" rows="5" placeholder="Vara do Trabalho de Atibaia&#10;1ª Vara do Trabalho de Campinas"></textarea>
@@ -832,7 +1180,41 @@
         </div>
     </div>
 
-
+    <!-- Modal de Confirmação da Verificação Inteligente -->
+    <div id="confirmation-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3 id="confirmation-title">🧠 Verificação Inteligente</h3>
+                <span class="close" onclick="document.getElementById('confirmation-modal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="confirmation-content">
+                    <div id="confirmation-message" class="confirmation-message">
+                        <!-- Mensagem principal será inserida aqui -->
+                    </div>
+                    
+                    <div class="confirmation-details">
+                        <pre id="confirmation-details-text"></pre>
+                    </div>
+                    
+                    <div class="confirmation-question">
+                        <h4 id="confirmation-question-text">Continuar?</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" id="confirm-yes">
+                    <i class="fas fa-check"></i> Sim, Continuar
+                </button>
+                <button type="button" class="btn btn-danger" id="confirm-no">
+                    <i class="fas fa-times"></i> Não, Cancelar
+                </button>
+                <button type="button" class="btn btn-secondary" id="confirm-force">
+                    <i class="fas fa-forward"></i> Forçar Processamento
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer class="footer">

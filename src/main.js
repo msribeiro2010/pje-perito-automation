@@ -2,6 +2,16 @@
 // Sistema de automação para vinculação de peritos e servidores no PJE
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+// Ajuste de limite de listeners para evitar MaxListenersExceededWarning
+try {
+  if (process && typeof process.setMaxListeners === 'function') {
+    process.setMaxListeners(50);
+  }
+  const events = require('events');
+  if (events && typeof events.defaultMaxListeners === 'number') {
+    events.defaultMaxListeners = 50;
+  }
+} catch (_) {}
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright');
@@ -12,6 +22,7 @@ const { verificarOJJaVinculado, listarOJsVinculados } = require('./verificarOJVi
 const { SmartOJCache } = require('./utils/smart-oj-cache.js');
 const { ServidorSkipDetector } = require('./utils/servidor-skip-detector.js');
 const { VerificacaoDuplaOJ } = require('./utils/verificacao-dupla-oj.js');
+const SmartDatabaseVerifier = require('./utils/smart-database-verifier.js');
 const SmartLocationSkipper = require('./utils/smart-location-skipper');
 const LocationProgressTracker = require('./utils/location-progress-tracker');
 const LocationErrorRecovery = require('./utils/location-error-recovery');
@@ -34,6 +45,7 @@ let smartLocationSkipper = new SmartLocationSkipper();
 let locationProgressTracker = new LocationProgressTracker();
 let locationErrorRecovery = new LocationErrorRecovery();
 let locationEfficiencyReporter = new LocationEfficiencyReporter();
+let smartDatabaseVerifier = new SmartDatabaseVerifier();
 // let servidorAutomation = null; // Removido V1
 let servidorAutomationV2 = null;
 function sendStatus(type, message, progress = null, subtitle = null, ojData = null) {
@@ -199,6 +211,15 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
     await locationErrorRecovery.initialize();
     await locationEfficiencyReporter.initialize();
     
+    // Inicializar sistema de verificação de banco de dados
+    sendStatus('info', 'Inicializando verificação de banco...', currentStep, 'Conectando ao banco de dados');
+    const dbInitialized = await smartDatabaseVerifier.initialize();
+    if (dbInitialized) {
+      sendStatus('success', 'Conexão com banco estabelecida', currentStep, 'Sistema de otimização ativo');
+    } else {
+      sendStatus('warning', 'Banco não disponível - processamento normal', currentStep, 'Sistema funcionará sem otimização');
+    }
+    
     // Capturar logs do console para debug
     page.on('console', msg => {
       const logMessage = msg.text();
@@ -273,9 +294,38 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
         // 🚀 VERIFICAÇÃO INTELIGENTE EM LOTE - Nova funcionalidade!
         sendStatus('info', 'Iniciando verificação inteligente de OJs...', currentStep, 'Analisando vínculos existentes');
         
+        // Verificação prévia no banco de dados (se disponível)
+        let verificacaoBanco = null;
+        if (dbInitialized) {
+          try {
+            sendStatus('info', 'Verificando OJs no banco de dados...', currentStep, 'Consulta otimizada');
+            // Usar CPF para verificação no banco (mais confiável que idUsuario aqui)
+            verificacaoBanco = await smartDatabaseVerifier.verificarOJsServidorPorCPF(
+              perito.cpf,
+              perito.ojs
+            );
+            
+            if (verificacaoBanco.estatisticas.jaCadastrados > 0) {
+              sendStatus('success', 
+                `Banco: ${verificacaoBanco.estatisticas.jaCadastrados} OJs já cadastrados encontrados`, 
+                currentStep, 
+                `Economia estimada: ${verificacaoBanco.estatisticas.economiaEstimada}s`
+              );
+            }
+          } catch (error) {
+            console.warn('⚠️ Erro na verificação de banco:', error.message);
+            verificacaoBanco = null;
+          }
+        }
+        
+        // Determinar lista de OJs a processar com base no resultado do banco (quando disponível)
+        const ojsParaProcessar = (verificacaoBanco && Array.isArray(verificacaoBanco.ojsParaProcessar) && verificacaoBanco.ojsParaProcessar.length > 0)
+          ? verificacaoBanco.ojsParaProcessar
+          : perito.ojs;
+
         const verificacaoEmLote = await smartOJCache.verificarOJsEmLote(
           page, 
-          perito.ojs,
+          ojsParaProcessar,
           (mensagem, progresso) => {
             sendStatus('info', mensagem, currentStep, `Verificação prévia (${progresso}%)`, {
               progress: progresso
@@ -353,11 +403,11 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
         console.log(`   - Tempo de verificação: ${estatisticas.tempoProcessamento}ms`);
         console.log(`   - Economia estimada: ${estatisticas.jaVinculados * 5}s`);
         
-        relatorio.totalOJs += perito.ojs.length;
+        relatorio.totalOJs += ojsParaProcessar.length;
         relatorio.ojsJaVinculados += estatisticas.jaVinculados;
         
-        for (let j = 0; j < perito.ojs.length; j++) {
-          const oj = perito.ojs[j];
+        for (let j = 0; j < ojsParaProcessar.length; j++) {
+          const oj = ojsParaProcessar[j];
           resultadoPerito.ojsProcessados++;
           ojsProcessadasTotal++;
           
@@ -380,7 +430,7 @@ ipcMain.handle('start-automation', async (event, selectedPeritos) => {
               continue;
             }
             
-            sendStatus('info', `Processando OJ ${j + 1}/${perito.ojs.length}: ${oj}`, currentStep++, 'Analisando órgão julgador', {
+            sendStatus('info', `Processando OJ ${j + 1}/${ojsParaProcessar.length}: ${oj}`, currentStep++, 'Analisando órgão julgador', {
               ojProcessed: ojsProcessadasTotal,
               totalOjs: relatorio.totalOJs,
               orgaoJulgador: oj
@@ -657,11 +707,67 @@ ipcMain.handle('start-servidor-automation-v2', async (_, config) => {
 
     automationInProgress = true;
     
+    // Inicializar verificação de banco se não estiver ativa
+    if (!smartDatabaseVerifier.isInitialized) {
+      sendStatus('info', 'Inicializando verificação de banco...', 0, 'Conectando ao banco de dados');
+      await smartDatabaseVerifier.initialize();
+    }
+    
     if (!servidorAutomationV2) {
       servidorAutomationV2 = new ServidorAutomationV2();
       servidorAutomationV2.setMainWindow(mainWindow);
     }
     
+    // Processar servidores com verificação de banco
+    if (smartDatabaseVerifier.isInitialized && config.servidores) {
+      sendStatus('info', 'Verificando servidores no banco de dados...', 0, 'Otimizando processamento');
+      const resultadoVerificacao = await smartDatabaseVerifier.processarServidoresComVerificacao(config.servidores);
+      
+      // Atualizar configuração com OJs filtrados
+      config.servidores = config.servidores.map(servidor => {
+        const detalhe = resultadoVerificacao.detalhes.find(d => d.servidor === servidor.nome || d.servidor === servidor.cpf);
+        if (detalhe && detalhe.ojsParaProcessar) {
+          return {
+            ...servidor,
+            orgaos: detalhe.ojsParaProcessar,
+            ojsJaCadastrados: detalhe.ojsJaCadastrados || [],
+            ojsInativos: detalhe.ojsInativos || [],
+            tempoEconomizado: detalhe.tempoEconomizado || 0
+          };
+        }
+        return servidor;
+      });
+      
+      sendStatus('success',
+        `Verificação concluída: ${resultadoVerificacao.totalOjsPulados} OJs pulados, ${resultadoVerificacao.totalOjsParaProcessar} para processar`,
+        0,
+        `Economia estimada: ${Math.round(resultadoVerificacao.tempoEconomizadoTotal / 60)}min`
+      );
+
+      // VALIDAÇÃO: Verificar se há OJs para processar antes de iniciar automação
+      if (resultadoVerificacao.totalOjsParaProcessar === 0) {
+        sendStatus('success',
+          '🎉 Todos os OJs já foram cadastrados!',
+          100,
+          'Automação desnecessária - nenhum OJ pendente de cadastro'
+        );
+
+        automationInProgress = false;
+
+        return {
+          success: true,
+          nothingToDo: true,
+          message: 'Todos os órgãos julgadores selecionados já foram cadastrados. Não há necessidade de executar a automação.',
+          relatorio: {
+            totalServidores: config.servidores?.length || 0,
+            ojsJaCadastrados: resultadoVerificacao.totalOjsPulados,
+            ojsParaProcessar: 0,
+            tempoEconomizado: resultadoVerificacao.tempoEconomizadoTotal
+          }
+        };
+      }
+    }
+
     await servidorAutomationV2.startAutomation(config);
     return { success: true, relatorio: servidorAutomationV2.getRelatorio() };
     
@@ -742,6 +848,61 @@ ipcMain.handle('get-servidor-automation-v2-report', async () => {
   }
 });
 
+// Handler para resetar caches/estado de automação
+ipcMain.handle('reset-automation-caches', async () => {
+  try {
+    try { if (smartOJCache && typeof smartOJCache.limparCache === 'function') smartOJCache.limparCache(); } catch (e) {}
+    try { if (smartDatabaseVerifier && smartDatabaseVerifier.cache && typeof smartDatabaseVerifier.cache.clear === 'function') smartDatabaseVerifier.cache.clear(); } catch (e) {}
+    try { if (smartDatabaseVerifier && smartDatabaseVerifier.dbConnection) { await smartDatabaseVerifier.dbConnection.close(); smartDatabaseVerifier.isInitialized = false; } } catch (e) {}
+    try { if (servidorAutomationV2 && servidorAutomationV2.ojCache) servidorAutomationV2.ojCache.clear(); } catch (e) {}
+    try { if (servidorAutomationV2) servidorAutomationV2.forcedOJsNormalized = null; } catch (e) {}
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para limpar cache de verificação de OJs
+ipcMain.handle('limpar-cache-verificacao', async () => {
+  try {
+    console.log('🧹 Iniciando limpeza do cache de verificação de OJs...');
+
+    // Limpar cache em memória se existir
+    try {
+      if (servidorAutomationV2 && servidorAutomationV2.smartOJCache && typeof servidorAutomationV2.smartOJCache.limparCacheCompleto === 'function') {
+        await servidorAutomationV2.smartOJCache.limparCacheCompleto();
+        console.log('✅ Cache em memória limpo');
+      }
+    } catch (e) {
+      console.warn('⚠️ Erro ao limpar cache em memória:', e.message);
+    }
+
+    // Limpar arquivo de cache persistente
+    try {
+      const cacheFile = path.join(__dirname, '../data/smart-oj-cache.json');
+
+      try {
+        await fs.promises.unlink(cacheFile);
+        console.log('✅ Arquivo de cache persistente removido');
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+        console.log('ℹ️ Arquivo de cache não existia');
+      }
+    } catch (e) {
+      console.warn('⚠️ Erro ao remover arquivo de cache:', e.message);
+    }
+
+    console.log('✅ Limpeza de cache de verificação concluída com sucesso');
+    return { success: true, message: 'Cache de verificação limpo com sucesso' };
+
+  } catch (error) {
+    console.error('❌ Erro ao limpar cache de verificação:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Handler para carregar órgãos PJE
 ipcMain.handle('load-orgaos-pje', async () => {
   try {
@@ -791,6 +952,733 @@ ipcMain.handle('validate-servidor-config-v2', async (_, config) => {
     return { success: true, message: 'Configuração válida' };
   } catch (error) {
     return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para testar conexão com banco de dados
+ipcMain.handle('test-database-connection', async () => {
+  try {
+    if (!smartDatabaseVerifier.isInitialized) {
+      const initialized = await smartDatabaseVerifier.initialize();
+      if (!initialized) {
+        return { success: false, error: 'Falha ao conectar com banco de dados' };
+      }
+    }
+    
+    const isHealthy = await smartDatabaseVerifier.dbConnection.isHealthy();
+    if (isHealthy) {
+      return { success: true, message: 'Conexão com banco de dados ativa' };
+    } else {
+      return { success: false, error: 'Conexão com banco de dados inativa' };
+    }
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para obter relatório de otimização do banco
+ipcMain.handle('get-database-optimization-report', async () => {
+  try {
+    if (!smartDatabaseVerifier.isInitialized) {
+      return { success: false, error: 'Sistema de banco não inicializado' };
+    }
+    
+    const relatorio = smartDatabaseVerifier.gerarRelatorioOtimizacao();
+    return { success: true, relatorio: relatorio };
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para verificar OJs de um servidor específico
+ipcMain.handle('check-servidor-ojs', async (_, idUsuario, ojs) => {
+  try {
+    if (!smartDatabaseVerifier.isInitialized) {
+      const initialized = await smartDatabaseVerifier.initialize();
+      if (!initialized) {
+        return { success: false, error: 'Falha ao conectar com banco de dados' };
+      }
+    }
+    
+    const resultado = await smartDatabaseVerifier.verificarOJsServidor(idUsuario, ojs);
+    return { success: true, resultado: resultado };
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para normalizar nome de OJ
+ipcMain.handle('normalize-oj-name', async (_, nomeOJ) => {
+  try {
+    if (!smartDatabaseVerifier.isInitialized) {
+      const initialized = await smartDatabaseVerifier.initialize();
+      if (!initialized) {
+        return { success: false, error: 'Falha ao conectar com banco de dados' };
+      }
+    }
+    
+    const ojsEncontrados = await smartDatabaseVerifier.normalizarOJ(nomeOJ);
+    return { success: true, ojs: ojsEncontrados };
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para salvar credenciais do banco
+ipcMain.handle('save-database-credentials', async (_, credentials) => {
+  try {
+    // Validar credenciais obrigatórias
+    if (!credentials.user || !credentials.password) {
+      return { success: false, error: 'Usuário e senha são obrigatórios' };
+    }
+
+    // Atualizar credenciais no verificador
+    const updated = await smartDatabaseVerifier.updateCredentials(credentials);
+    
+    if (updated) {
+      // Salvar credenciais no arquivo de configuração (opcional)
+      const configPath = path.join(__dirname, '../database-credentials.json');
+      fs.writeFileSync(configPath, JSON.stringify(credentials, null, 2));
+      // Atualizar credenciais também no serviço de processos
+      try {
+        if (processDatabaseService && processDatabaseService.dbConnection) {
+          await processDatabaseService.dbConnection.updateCredentials(credentials);
+        }
+      } catch (e) {
+        console.warn('⚠️ Falha ao atualizar credenciais no serviço de processos:', e.message);
+      }
+      
+      return { success: true, message: 'Credenciais salvas e conexão estabelecida' };
+    } else {
+      return { success: false, error: 'Falha ao conectar com as credenciais fornecidas' };
+    }
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para carregar credenciais do banco
+ipcMain.handle('load-database-credentials', async () => {
+  try {
+    const configPath = path.join(__dirname, '../database-credentials.json');
+    
+    if (fs.existsSync(configPath)) {
+      const credentials = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return { success: true, credentials: credentials };
+    } else {
+      return { success: false, credentials: null };
+    }
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// Handler para testar credenciais do banco
+ipcMain.handle('test-database-credentials', async (_, credentials) => {
+  try {
+    // Criar verificador temporário para teste
+    const tempVerifier = new SmartDatabaseVerifier(credentials);
+    const initialized = await tempVerifier.initialize();
+    
+    if (initialized) {
+      // Testar consulta simples
+      const isHealthy = await tempVerifier.dbConnection.isHealthy();
+      await tempVerifier.cleanup();
+      
+      return { success: isHealthy, message: isHealthy ? 'Credenciais válidas' : 'Conexão inativa' };
+    } else {
+      return { success: false, error: 'Falha ao conectar com as credenciais fornecidas' };
+    }
+  } catch (error) {
+    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+  }
+});
+
+// ===== SISTEMA DE VERIFICAÇÃO EM TEMPO REAL =====
+
+/**
+ * Verifica status da conexão com banco em tempo real
+ */
+ipcMain.handle('get-database-status', async () => {
+  try {
+    if (!smartDatabaseVerifier) {
+      return { connected: false, message: 'Sistema de banco não inicializado' };
+    }
+
+    // Inicialização preguiçosa: se não estiver inicializado, tentar agora
+    if (!smartDatabaseVerifier.isInitialized) {
+      try {
+        const initialized = await smartDatabaseVerifier.initialize();
+        if (!initialized) {
+          return { connected: false, message: 'Falha ao inicializar conexão com o banco' };
+        }
+      } catch (e) {
+        return { connected: false, message: `Erro ao inicializar banco: ${e.message}` };
+      }
+    }
+
+    const isHealthy = await (smartDatabaseVerifier?.dbConnection?.isHealthy?.() || false);
+    
+    return {
+      connected: isHealthy,
+      message: isHealthy ? 'Banco conectado e funcionando' : 'Banco desconectado ou com problemas',
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    return { 
+      connected: false, 
+      message: `Erro na verificação: ${error.message}`,
+      timestamp: new Date().toISOString()
+    };
+  }
+});
+
+/**
+ * Verifica OJs já cadastrados para um servidor em tempo real
+ */
+ipcMain.handle('verify-servidor-ojs-realtime', async (_, cpf, perfil, ojsDesejados) => {
+  try {
+    console.log(`🔍 Verificação em tempo real: CPF=${cpf}, Perfil=${perfil}, OJs=${ojsDesejados?.length || 0}`);
+    sendStatus('info', `🧠 Verificação BD: CPF ${cpf}, ${ojsDesejados?.length || 0} OJs`, 0, 'Consultando banco de dados');
+
+    // Verificar se CPF é válido
+    if (!cpf || cpf.length < 11) {
+      return {
+        success: false,
+        error: 'CPF inválido ou incompleto',
+        databaseConnected: true
+      };
+    }
+
+    // Limpar CPF
+    const cpfLimpo = cpf.replace(/\D/g, '');
+
+    // CORREÇÃO: Verificar cache persistente primeiro (SmartOJCache)
+    try {
+      const smartOJCache = new SmartOJCache();
+
+      console.log(`📦 [CACHE] Verificando cache persistente para CPF ${cpfLimpo}...`);
+      sendStatus('info', '📦 Verificando cache persistente...', 0, 'Cache inteligente ativo');
+
+      const cacheCarregado = await smartOJCache.carregarCachePersistente(cpfLimpo);
+
+      if (cacheCarregado && cacheCarregado.ojsJaVinculados && cacheCarregado.ojsJaVinculados.length > 0) {
+        console.log(`📦 [CACHE] Cache encontrado! ${cacheCarregado.ojsJaVinculados.length} OJs já vinculadas`);
+
+        // 🧠 ANÁLISE INTELIGENTE COM PERFIL
+        sendStatus('info', '🧠 Fazendo análise inteligente de perfis...', 0, 'Sistema inteligente ativo');
+
+        const ojsJaVinculadasDoCache = cacheCarregado.ojsJaVinculados.map(item => item.oj);
+
+        // Usar o novo sistema inteligente que considera perfis
+        const verificacaoInteligente = smartOJCache.verificarOJsComPerfilEmLote(
+          ojsDesejados || [],
+          ojsJaVinculadasDoCache,
+          perfil, // Usar o perfil desejado do servidor
+          (mensagem, progresso) => {
+            sendStatus('info', mensagem, 0, `Análise inteligente (${progresso}%)`);
+          }
+        );
+
+        const { estatisticas } = verificacaoInteligente;
+        const totalParaProcessar = estatisticas.totalParaProcessar;
+
+        // Mensagens detalhadas baseadas no resultado inteligente
+        console.log(`🎯 [ANÁLISE INTELIGENTE] Resultado detalhado:`);
+        console.log(`   - ✅ ${estatisticas.jaVinculadosPerfilCorreto} OJs com perfil correto (pularão automação)`);
+        console.log(`   - 🔄 ${estatisticas.vinculadosPerfilDiferente} OJs com perfil diferente (${perfil})`);
+        console.log(`   - ❓ ${estatisticas.vinculadosPerfilDesconhecido} OJs com perfil desconhecido`);
+        console.log(`   - 🆕 ${estatisticas.paraVincular} OJs novos para vincular`);
+        console.log(`   - 🎯 TOTAL para processar: ${totalParaProcessar} OJs`);
+
+        // Status inteligente para o usuário
+        if (totalParaProcessar === 0) {
+          sendStatus('success',
+            `🎉 Todos os ${estatisticas.totalOJs} OJs já possuem o perfil "${perfil}"!`,
+            100,
+            'Nenhuma automação necessária'
+          );
+        } else if (estatisticas.vinculadosPerfilDiferente > 0) {
+          sendStatus('info',
+            `🔄 ${estatisticas.vinculadosPerfilDiferente} OJs precisam atualizar perfil para "${perfil}"`,
+            0,
+            `${totalParaProcessar} OJs totais para processar`
+          );
+        } else {
+          sendStatus('info',
+            `🎯 ${totalParaProcessar} OJs precisam automação com perfil "${perfil}"`,
+            0,
+            `Economia: ${estatisticas.jaVinculadosPerfilCorreto} OJs já corretos`
+          );
+        }
+
+        // Combinar todos os OJs que precisam de processamento
+        const ojsParaProcessarFinal = [
+          ...verificacaoInteligente.ojsVinculadosPerfilDiferente.map(item => item.oj),
+          ...verificacaoInteligente.ojsVinculadosPerfilDesconhecido.map(item => item.oj),
+          ...verificacaoInteligente.ojsParaVincular
+        ];
+
+        return {
+          success: true,
+          databaseConnected: true,
+          servidorExiste: true,
+          fonte: 'cache_persistente_inteligente',
+          servidor: { cpf: cpfLimpo, perfil: perfil },
+
+          // Dados inteligentes por categoria
+          ojsJaCadastrados: verificacaoInteligente.ojsJaVinculadosPerfilCorreto,
+          ojsComPerfilDiferente: verificacaoInteligente.ojsVinculadosPerfilDiferente,
+          ojsComPerfilDesconhecido: verificacaoInteligente.ojsVinculadosPerfilDesconhecido,
+          ojsNovosParaVincular: verificacaoInteligente.ojsParaVincular,
+
+          ojsInativos: [],
+          ojsParaProcessar: ojsParaProcessarFinal,
+
+          // Estatísticas detalhadas
+          totalOriginal: ojsDesejados?.length || 0,
+          totalJaCadastrados: estatisticas.jaVinculadosPerfilCorreto,
+          totalComPerfilDiferente: estatisticas.vinculadosPerfilDiferente,
+          totalComPerfilDesconhecido: estatisticas.vinculadosPerfilDesconhecido,
+          totalNovos: estatisticas.paraVincular,
+          totalParaProcessar: totalParaProcessar,
+
+          economiaEstimada: {
+            tempo: Math.round(estatisticas.economiaEstimada / 1000),
+            cliques: estatisticas.jaVinculadosPerfilCorreto * 3,
+            ojsEvitados: estatisticas.jaVinculadosPerfilCorreto
+          },
+
+          message: totalParaProcessar === 0
+            ? `✅ Todos os ${estatisticas.totalOJs} OJs já possuem o perfil "${perfil}"`
+            : `🎯 ${totalParaProcessar}/${ojsDesejados?.length || 0} OJs precisam automação (${estatisticas.jaVinculadosPerfilCorreto} já corretos)`
+        };
+      } else {
+        console.log(`📦 [CACHE] Cache não encontrado ou vazio para CPF ${cpfLimpo}`);
+      }
+    } catch (cacheError) {
+      console.log(`⚠️ [CACHE] Erro ao verificar cache: ${cacheError.message}`);
+    }
+
+    // FALLBACK: Verificar banco de dados se cache não disponível
+    console.log(`🔍 [BD] Fallback para verificação do banco de dados...`);
+
+    // Verificar se banco está conectado
+    if (!smartDatabaseVerifier || !smartDatabaseVerifier.isInitialized) {
+      sendStatus('warning', '⚠️ Banco não inicializado - Tentando inicializar agora...', 0, 'Conectando ao banco');
+
+      try {
+        const initialized = await smartDatabaseVerifier.initialize();
+        if (initialized) {
+          sendStatus('success', '✅ Banco inicializado com sucesso!', 0, 'Continuando verificação');
+        } else {
+          sendStatus('error', '❌ Falha ao inicializar banco de dados', 0, 'Verifique configurações');
+          return {
+            success: false,
+            error: 'Falha ao inicializar sistema de banco',
+            databaseConnected: false
+          };
+        }
+      } catch (initError) {
+        sendStatus('error', `❌ Erro na inicialização: ${initError.message}`, 0, 'Problema de conexão');
+        return {
+          success: false,
+          error: `Erro na inicialização do banco: ${initError.message}`,
+          databaseConnected: false
+        };
+      }
+    }
+
+    sendStatus('info', '✅ Banco conectado - Buscando servidor por CPF', 0, 'Consultando dados');
+
+    // Buscar servidor no banco
+    const dbConnection = smartDatabaseVerifier.dbConnection;
+    const resultadoServidor = await dbConnection.buscarServidorPorCPF(cpfLimpo);
+
+    if (!resultadoServidor.existe) {
+      sendStatus('warning', `⚠️ Servidor CPF ${cpf} não encontrado no BD`, 0, 'Será processado normalmente');
+      return {
+        success: true,
+        databaseConnected: true,
+        servidorExiste: false,
+        message: `Servidor com CPF ${cpf} não encontrado no sistema PJE`,
+        ojsJaCadastrados: [],
+        ojsParaProcessar: ojsDesejados || [],
+        totalOriginal: ojsDesejados?.length || 0,
+        totalJaCadastrados: 0,
+        totalParaProcessar: ojsDesejados?.length || 0
+      };
+    }
+
+    const nomeServidor = resultadoServidor.servidor.nome || `CPF: ${cpfLimpo}`;
+    sendStatus('info', `✅ Servidor encontrado: ${nomeServidor}`, 0, 'Verificando OJs cadastrados');
+
+    // Verificar OJs cadastrados
+    const verificacao = await dbConnection.verificarOJsCadastrados(
+      resultadoServidor.servidor.idUsuario,
+      ojsDesejados || []
+    );
+
+    sendStatus('success', `🎯 Verificação concluída: ${verificacao.ojsParaProcessar.length} para processar, ${verificacao.ojsJaCadastrados.length} já cadastrados`, 0, 'Análise finalizada');
+
+    const resultado = {
+      success: true,
+      databaseConnected: true,
+      servidorExiste: true,
+      fonte: 'banco_dados',
+      servidor: {
+        idUsuario: resultadoServidor.servidor.idUsuario,
+        cpf: resultadoServidor.servidor.cpf,
+        totalOjsCadastrados: resultadoServidor.servidor.totalOjsCadastrados
+      },
+      ojsJaCadastrados: verificacao.ojsJaCadastrados,
+      ojsInativos: verificacao.ojsInativos || [],
+      ojsParaProcessar: verificacao.ojsParaProcessar,
+      totalOriginal: verificacao.totalVerificados,
+      totalJaCadastrados: verificacao.ojsJaCadastrados.length,
+      totalParaProcessar: verificacao.ojsParaProcessar.length,
+      economiaEstimada: {
+        tempo: verificacao.ojsJaCadastrados.length * 5,
+        cliques: verificacao.ojsJaCadastrados.length * 3,
+        ojsEvitados: verificacao.ojsJaCadastrados.length
+      },
+      message: `Encontrados ${verificacao.ojsJaCadastrados.length} OJs já cadastrados de ${verificacao.totalVerificados} solicitados`
+    };
+
+    console.log(`✅ Verificação concluída: ${resultado.totalJaCadastrados} já cadastrados, ${resultado.totalParaProcessar} para processar`);
+    return resultado;
+
+  } catch (error) {
+    console.error('❌ Erro na verificação em tempo real:', error);
+    return {
+      success: false,
+      error: error.message,
+      databaseConnected: smartDatabaseVerifier?.isInitialized || false
+    };
+  }
+});
+
+/**
+ * Buscar órgãos julgadores por grau (1º ou 2º)
+ */
+ipcMain.handle('buscar-orgaos-julgadores', async (_, grau) => {
+  try {
+    console.log(`🔍 Buscando órgãos julgadores ${grau}º grau`);
+    
+    // Verificar se banco está conectado
+    if (!smartDatabaseVerifier || !smartDatabaseVerifier.isInitialized) {
+      const initialized = await smartDatabaseVerifier.initialize();
+      if (!initialized) {
+        return { success: false, error: 'Falha ao conectar com banco de dados' };
+      }
+    }
+    
+    const dbConnection = smartDatabaseVerifier.dbConnection;
+    const ojs = await dbConnection.buscarOrgaosJulgadores(grau);
+    
+    console.log(`✅ Encontrados ${ojs.length} órgãos julgadores ${grau}º grau`);
+    
+    return {
+      success: true,
+      data: ojs,
+      grau: grau
+    };
+    
+  } catch (error) {
+    console.error(`❌ Erro ao buscar órgãos julgadores ${grau}º grau:`, error);
+    return {
+      success: false,
+      error: error.message || 'Erro desconhecido'
+    };
+  }
+});
+
+/**
+ * Buscar servidores por grau com filtros
+ */
+ipcMain.handle('buscar-servidores', async (_, grau, filtroNome, filtroPerfil) => {
+  try {
+    console.log(`🔍 Buscando servidores ${grau}º grau - Nome: "${filtroNome}", Perfil: "${filtroPerfil}"`);
+    
+    // Verificar se banco está conectado
+    if (!smartDatabaseVerifier || !smartDatabaseVerifier.isInitialized) {
+      const initialized = await smartDatabaseVerifier.initialize();
+      if (!initialized) {
+        return { success: false, error: 'Falha ao conectar com banco de dados' };
+      }
+    }
+    
+    const dbConnection = smartDatabaseVerifier.dbConnection;
+    const servidores = await dbConnection.buscarServidores(grau, filtroNome, filtroPerfil);
+    
+    console.log(`✅ Encontrados ${servidores.length} servidores ${grau}º grau`);
+    
+    return {
+      success: true,
+      data: servidores,
+      grau: grau,
+      filtros: {
+        nome: filtroNome,
+        perfil: filtroPerfil
+      }
+    };
+    
+  } catch (error) {
+    console.error(`❌ Erro ao buscar servidores ${grau}º grau:`, error);
+    return {
+      success: false,
+      error: error.message || 'Erro desconhecido'
+    };
+  }
+});
+
+// ===== HANDLERS PARA CONSULTA DE OJs DO BANCO =====
+
+const OJDatabaseService = require('./utils/oj-database-service');
+let ojDatabaseService = new OJDatabaseService();
+const ProcessDatabaseService = require('./utils/process-database-service');
+let processDatabaseService = new ProcessDatabaseService();
+
+/**
+ * Buscar OJs do 1º grau diretamente do banco de dados
+ */
+ipcMain.handle('buscar-ojs-1grau', async (_, filtro, limite) => {
+  try {
+    console.log(`🔍 Buscando OJs 1º grau${filtro ? ` com filtro: "${filtro}"` : ''}`);
+
+    const ojs = await ojDatabaseService.buscarOJs1Grau(filtro, limite);
+
+    console.log(`✅ Encontrados ${ojs.length} órgãos julgadores do 1º grau`);
+
+    return {
+      success: true,
+      data: ojs,
+      grau: '1',
+      total: ojs.length,
+      filtro: filtro || ''
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar OJs 1º grau:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      data: []
+    };
+  }
+});
+
+/**
+ * Buscar OJs do 2º grau diretamente do banco de dados
+ */
+ipcMain.handle('buscar-ojs-2grau', async (_, filtro, limite) => {
+  try {
+    console.log(`🔍 Buscando OJs 2º grau${filtro ? ` com filtro: "${filtro}"` : ''}`);
+
+    const ojs = await ojDatabaseService.buscarOJs2Grau(filtro, limite);
+
+    console.log(`✅ Encontrados ${ojs.length} órgãos julgadores do 2º grau`);
+
+    return {
+      success: true,
+      data: ojs,
+      grau: '2',
+      total: ojs.length,
+      filtro: filtro || ''
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar OJs 2º grau:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      data: []
+    };
+  }
+});
+
+/**
+ * Buscar OJs de ambos os graus
+ */
+ipcMain.handle('buscar-ojs-ambos-graus', async (_, filtro, limite) => {
+  try {
+    console.log(`🔍 Buscando OJs de ambos os graus${filtro ? ` com filtro: "${filtro}"` : ''}`);
+
+    const resultado = await ojDatabaseService.buscarOJsAmbosGraus(filtro, limite);
+
+    console.log(`✅ Busca concluída: ${resultado.total} órgãos encontrados`);
+
+    return {
+      success: true,
+      data: resultado,
+      filtro: filtro || ''
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar OJs de ambos os graus:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      data: null
+    };
+  }
+});
+
+// ===== HANDLERS PARA CONSULTA DE PROCESSOS =====
+
+/**
+ * Buscar histórico do processo
+ */
+ipcMain.handle('buscar-processo-historico', async (_, numeroProcesso, grau = '1') => {
+  try {
+    if (!numeroProcesso || typeof numeroProcesso !== 'string') {
+      return { success: false, error: 'Número do processo inválido' };
+    }
+    const data = await processDatabaseService.buscarHistoricoProcesso(numeroProcesso, grau);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico do processo:', error);
+    return { success: false, error: error.message || 'Erro desconhecido' };
+  }
+});
+
+/**
+ * Buscar tarefa atual do processo
+ */
+ipcMain.handle('buscar-processo-tarefa-atual', async (_, numeroProcesso, grau = '1') => {
+  try {
+    if (!numeroProcesso || typeof numeroProcesso !== 'string') {
+      return { success: false, error: 'Número do processo inválido' };
+    }
+    const data = await processDatabaseService.buscarTarefaAtual(numeroProcesso, grau);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ Erro ao buscar tarefa atual do processo:', error);
+    return { success: false, error: error.message || 'Erro desconhecido' };
+  }
+});
+
+/**
+ * Buscar partes do processo
+ */
+ipcMain.handle('buscar-processo-partes', async (_, numeroProcesso, grau = '1') => {
+  try {
+    if (!numeroProcesso || typeof numeroProcesso !== 'string') {
+      return { success: false, error: 'Número do processo inválido' };
+    }
+    const data = await processDatabaseService.buscarPartesProcesso(numeroProcesso, grau);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ Erro ao buscar partes do processo:', error);
+    return { success: false, error: error.message || 'Erro desconhecido' };
+  }
+});
+
+/**
+ * Buscar pacote completo (tarefa atual, histórico, partes)
+ */
+ipcMain.handle('buscar-processo-info', async (_, numeroProcesso, grau = '1') => {
+  try {
+    if (!numeroProcesso || typeof numeroProcesso !== 'string') {
+      return { success: false, error: 'Número do processo inválido' };
+    }
+    const [tarefaAtual, historico, partes] = await Promise.all([
+      processDatabaseService.buscarTarefaAtual(numeroProcesso, grau).catch(e => { throw new Error('Erro na tarefa atual: ' + e.message); }),
+      processDatabaseService.buscarHistoricoProcesso(numeroProcesso, grau).catch(e => { throw new Error('Erro no histórico: ' + e.message); }),
+      processDatabaseService.buscarPartesProcesso(numeroProcesso, grau).catch(e => { throw new Error('Erro nas partes: ' + e.message); })
+    ]);
+    return { success: true, data: { tarefaAtual, historico, partes } };
+  } catch (error) {
+    console.error('❌ Erro ao buscar informações do processo:', error);
+    return { success: false, error: error.message || 'Erro desconhecido' };
+  }
+});
+
+/**
+ * Exportar lista de OJs para arquivo JSON
+ */
+ipcMain.handle('exportar-ojs-json', async (_, ojs, grau, filename) => {
+  try {
+    const exportData = ojDatabaseService.exportarParaJSON(ojs, grau);
+
+    // Mostrar dialog para salvar arquivo
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: filename || `ojs-${grau}-${new Date().toISOString().split('T')[0]}.json`,
+      filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    });
+
+    if (!result.canceled && result.filePath) {
+      fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf8');
+
+      console.log(`✅ OJs exportados para: ${result.filePath}`);
+
+      return {
+        success: true,
+        filePath: result.filePath,
+        totalExportados: exportData.metadata.totalRegistros
+      };
+    }
+
+    return { success: false, canceled: true };
+
+  } catch (error) {
+    console.error('❌ Erro ao exportar OJs:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+/**
+ * Testar conectividade com bancos de dados PJE
+ */
+ipcMain.handle('testar-conectividade-pje', async () => {
+  try {
+    console.log('🔍 Testando conectividade com bancos PJE...');
+
+    const resultado = await ojDatabaseService.testarConectividade();
+
+    console.log('✅ Teste de conectividade concluído');
+
+    return {
+      success: true,
+      conectividade: resultado
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao testar conectividade:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      conectividade: null
+    };
+  }
+});
+
+/**
+ * Obter estatísticas dos órgãos julgadores
+ */
+ipcMain.handle('obter-estatisticas-ojs', async () => {
+  try {
+    console.log('📊 Obtendo estatísticas dos OJs...');
+
+    const stats = await ojDatabaseService.obterEstatisticas();
+
+    console.log('✅ Estatísticas obtidas com sucesso');
+
+    return {
+      success: true,
+      estatisticas: stats
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao obter estatísticas:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      estatisticas: null
+    };
   }
 });
 

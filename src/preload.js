@@ -35,6 +35,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Órgãos PJE
   loadOrgaosPje: () => ipcRenderer.invoke('load-orgaos-pje'),
   
+  // Banco de Dados
+  testDatabaseConnection: () => ipcRenderer.invoke('test-database-connection'),
+  getDatabaseOptimizationReport: () => ipcRenderer.invoke('get-database-optimization-report'),
+  checkServidorOjs: (idUsuario, ojs) => ipcRenderer.invoke('check-servidor-ojs', idUsuario, ojs),
+  normalizeOjName: (nomeOJ) => ipcRenderer.invoke('normalize-oj-name', nomeOJ),
+  saveDatabaseCredentials: (credentials) => ipcRenderer.invoke('save-database-credentials', credentials),
+  loadDatabaseCredentials: () => ipcRenderer.invoke('load-database-credentials'),
+  testDatabaseCredentials: (credentials) => ipcRenderer.invoke('test-database-credentials', credentials),
+  
+  // Sistema de Confirmação
+  sendConfirmationResult: (confirmado, forcado) => ipcRenderer.send('confirmacao-resultado', confirmado, forcado),
+  
+  // Sistema de Verificação em Tempo Real
+  getDatabaseStatus: () => ipcRenderer.invoke('get-database-status'),
+  verifyServidorOjsRealtime: (cpf, perfil, ojsDesejados) => ipcRenderer.invoke('verify-servidor-ojs-realtime', cpf, perfil, ojsDesejados),
+  
+  // Consultas de Configuração
+  buscarOrgaosJulgadores: (grau) => ipcRenderer.invoke('buscar-orgaos-julgadores', grau),
+  buscarServidores: (grau, filtroNome, filtroPerfil) => ipcRenderer.invoke('buscar-servidores', grau, filtroNome, filtroPerfil),
+
+  // Consulta de OJs do Banco de Dados PJE
+  buscarOJs1Grau: (filtro, limite) => ipcRenderer.invoke('buscar-ojs-1grau', filtro, limite),
+  buscarOJs2Grau: (filtro, limite) => ipcRenderer.invoke('buscar-ojs-2grau', filtro, limite),
+  buscarOJsAmbosGraus: (filtro, limite) => ipcRenderer.invoke('buscar-ojs-ambos-graus', filtro, limite),
+  exportarOJsJSON: (ojs, grau, filename) => ipcRenderer.invoke('exportar-ojs-json', ojs, grau, filename),
+  testarConectividadePJE: () => ipcRenderer.invoke('testar-conectividade-pje'),
+  obterEstatisticasOJs: () => ipcRenderer.invoke('obter-estatisticas-ojs'),
+  
+  // Processos
+  buscarProcessoHistorico: (numero, grau) => ipcRenderer.invoke('buscar-processo-historico', numero, grau),
+  buscarProcessoTarefaAtual: (numero, grau) => ipcRenderer.invoke('buscar-processo-tarefa-atual', numero, grau),
+  buscarProcessoPartes: (numero, grau) => ipcRenderer.invoke('buscar-processo-partes', numero, grau),
+  buscarProcessoInfo: (numero, grau) => ipcRenderer.invoke('buscar-processo-info', numero, grau),
+  
   // Eventos
   onAutomationStatus: (callback) => {
     ipcRenderer.on('automation-status', (event, data) => callback(data));

@@ -1,0 +1,102 @@
+{
+  "timestamp": "2025-09-13T11:15:38.070Z",
+  "summary": {
+    "totalTests": 10,
+    "passedTests": 4,
+    "failedTests": 6,
+    "successRate": 40,
+    "totalDuration": 10532
+  },
+  "results": [
+    {
+      "test": "Delay hyperFastBetweenOJs",
+      "passed": false,
+      "error": "delayManager.contextualDelay is not a function"
+    },
+    {
+      "test": "Delay pageLoad",
+      "passed": false,
+      "error": "delayManager.contextualDelay is not a function"
+    },
+    {
+      "test": "Delay betweenOJs",
+      "passed": false,
+      "error": "delayManager.contextualDelay is not a function"
+    },
+    {
+      "test": "Delay interaction",
+      "passed": false,
+      "error": "delayManager.contextualDelay is not a function"
+    },
+    {
+      "test": "Navigation Timeout",
+      "passed": true,
+      "expected": "< 8000ms",
+      "actual": "4002ms",
+      "performance": "OTIMIZADO"
+    },
+    {
+      "test": "Default Timeout",
+      "passed": true,
+      "expected": "< 8000ms",
+      "actual": "4001ms",
+      "performance": "OTIMIZADO"
+    },
+    {
+      "test": "Interaction Timeout",
+      "passed": true,
+      "expected": "< 5000ms",
+      "actual": "2503ms",
+      "performance": "OTIMIZADO"
+    },
+    {
+      "test": "Intelligent Cache",
+      "passed": false,
+      "error": "cache.set is not a function"
+    },
+    {
+      "test": "Turbo Mode",
+      "passed": false,
+      "error": "this.intelligentCache.configure is not a function"
+    },
+    {
+      "test": "System Initialization",
+      "passed": true,
+      "expected": "< 500ms",
+      "actual": "0ms",
+      "performance": "OTIMIZADO"
+    }
+  ],
+  "metrics": {
+    "delayOptimizations": [],
+    "timeoutOptimizations": [
+      {
+        "type": "navigation",
+        "time": 4002,
+        "limit": 8000,
+        "optimized": true
+      },
+      {
+        "type": "default",
+        "time": 4001,
+        "limit": 8000,
+        "optimized": true
+      },
+      {
+        "type": "interaction",
+        "time": 2503,
+        "limit": 5000,
+        "optimized": true
+      }
+    ],
+    "cachePerformance": [],
+    "turboModeTests": [],
+    "overallPerformance": {
+      "totalTests": 10,
+      "passedTests": 4,
+      "successRate": 40,
+      "initTime": 0,
+      "optimizationLevel": "PRECISA MELHORIAS"
+    }
+  }
+}

@@ -210,6 +210,7 @@
     "Piracicaba": [
         "1ª Vara do Trabalho de Piracicaba",
         "2ª Vara do Trabalho de Piracicaba",
+        "3ª Vara do Trabalho de Piracicaba",
         "CEJUSC PIRACICABA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho",
         "Divisão de Execução de Piracicaba",
         "DIVEX - Piracicaba"
@@ -282,7 +283,8 @@
         "LIQ2 – São José do Rio Preto",
         "DIVEX - São José do Rio Preto",
         "Divisão de Execução de São José do Rio Preto",
-        "CEJUSC – São José do Rio Preto"
+        "CEJUSC – São José do Rio Preto",
+        "CEJUSC SÃO JOSÉ DO RIO PRETO - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho"
     ],
     "São José dos Campos": [
         "1ª Vara do Trabalho de São José dos Campos",
@@ -295,7 +297,8 @@
         "Vara do Trabalho de Cruzeiro",
         "Vara do Trabalho de Guaratinguetá",
         "Vara do Trabalho de Lorena",
-        "CON1 - São José dos Campos"
+        "CON1 - São José dos Campos",
+        "CEJUSC SÃO JOSÉ DOS CAMPOS - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho"
     ],
     "São Paulo": [
         "1ª Vara do Trabalho de São Paulo",

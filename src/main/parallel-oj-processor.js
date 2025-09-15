@@ -4,6 +4,7 @@
  */
 
 const ContextualDelayManager = require('./contextual-delay-manager');
+const UltraFastDelayManager = require('../utils/ultra-fast-delay-manager');
 const SmartRetryManager = require('./smart-retry-manager');
 const TimeoutManager = require('../utils/timeouts.js');
 const { SmartOJCache } = require('../utils/smart-oj-cache.js');
@@ -15,6 +16,7 @@ class ParallelOJProcessor {
     this.timeoutManager = timeoutManager;
     this.config = config;
     this.delayManager = new ContextualDelayManager(timeoutManager);
+    this.ultraFastDelayManager = new UltraFastDelayManager({ mode: 'ultra_fast', adaptive: true });
     this.retryManager = new SmartRetryManager(timeoutManager);
     this.domCache = domCache;
     this.ojCache = new Set();
@@ -70,7 +72,7 @@ class ParallelOJProcessor {
         
         // Pausa entre lotes para não sobrecarregar o sistema
         if (i < batches.length - 1) {
-          await this.delayManager.smartDelay('betweenOJs', { priority: 'high' });
+          await this.ultraFastDelayManager.batchDelay({ priority: 'critical' });
         }
       }
       
@@ -222,7 +224,7 @@ class ParallelOJProcessor {
     } catch (timeoutError) {
       console.log(`⏰ ${timeoutError.message} - forçando conclusão`);
       // Aguardar mais 10s para conclusões pendentes
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      await this.ultraFastDelayManager.networkDelay({ priority: 'critical' });
       results = await Promise.allSettled(promises);
     }
     
@@ -450,9 +452,9 @@ class ParallelOJProcessor {
         throw new Error('Página fechada antes do processamento');
       }
       
-      // Timeout mais agressivo para evitar travamentos
+      // Timeout ULTRA-OTIMIZADO para máxima velocidade
       const baseTimeout = TimeoutManager.obterTimeout('pje', 'vincularOJ');
-      const timeout = Math.min(baseTimeout, 25000); // Máximo 25s
+      const timeout = Math.min(baseTimeout, 10000); // Máximo 10s (reduzido de 25s)
       
       console.log(`⚡ Iniciando processamento otimizado do OJ ${oj.original} (timeout: ${timeout/1000}s)`);
       
@@ -923,7 +925,7 @@ class ParallelOJProcessor {
       }
       
       // 4. AGUARDAR: Processamento da seleção com delay contextual
-      await this.delay(1000); // Delay simples para processamento da seleção
+      await this.ultraFastDelayManager.formFillDelay({ priority: 'critical' }); // Otimizado
       console.log('✅ Seleção de OJ concluída');
       
     } catch (error) {
@@ -942,7 +944,7 @@ class ParallelOJProcessor {
     
     try {
       // Aguardar modal carregar
-      await this.page.waitForTimeout(1500);
+      await this.ultraFastDelayManager.pageLoadDelay({ priority: 'critical' });
       
       // 1. CONFIGURAR PAPEL - SEMPRE SERVIDOR (SEGURANÇA CRÍTICA)
       const papelConfigurado = 'Servidor'; // FIXO para segurança - nunca alterar
@@ -1006,7 +1008,7 @@ class ParallelOJProcessor {
           },
           'campo de papel'
         );
-        await this.page.waitForTimeout(1000);
+        await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
         
         // Procurar opção do papel configurado com múltiplas estratégias
         const opcoesPapel = this.page.locator('mat-option');
@@ -1076,7 +1078,7 @@ class ParallelOJProcessor {
         console.log('⚠️ Campo Papel não encontrado após múltiplas tentativas');
       }
       
-      await this.page.waitForTimeout(1000);
+      await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
       
       // 2. VERIFICAR VISIBILIDADE ATUAL ANTES DE CLICAR (OTIMIZAÇÃO)
       console.log('🔍 Verificando estado atual da visibilidade...');
@@ -1089,7 +1091,7 @@ class ParallelOJProcessor {
         await this.configurarVisibilidade('Público');
       }
       
-      await this.page.waitForTimeout(1000);
+      await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
       console.log('✅ Configuração de papel e visibilidade concluída');
       
     } catch (error) {
@@ -1141,7 +1143,7 @@ class ParallelOJProcessor {
     console.log(`DEBUG: Iniciando configuração da visibilidade: ${visibilidade}`);
     
     // Aguardar um pouco para garantir que a modal carregou
-    await this.page.waitForTimeout(1000);
+    await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
     
     // Timeout geral para evitar loop infinito
     const startTime = Date.now();
@@ -1215,7 +1217,7 @@ class ParallelOJProcessor {
         }
         
         // Aguardar as opções aparecerem
-        await this.page.waitForTimeout(500);
+        await this.ultraFastDelayManager.clickDelay({ priority: 'critical' });
         
         // Buscar pelas opções
         const opcoes = await this.page.$$('mat-option');
@@ -1357,7 +1359,7 @@ class ParallelOJProcessor {
       
       // Aguardar processamento e verificar resultado
       console.log('Aguardando processamento da vinculação...');
-      await this.page.waitForTimeout(2000);
+      await this.ultraFastDelayManager.pageLoadDelay({ priority: 'critical' });
       
       // Verificar se apareceu modal de confirmação
       try {
@@ -1552,7 +1554,7 @@ class ParallelOJProcessor {
         await page.keyboard.press('Escape');
         
         // Aguardar um pouco para a página se estabilizar
-        await this.delay(200);
+        await this.ultraFastDelayManager.criticalDelay({ priority: 'critical' });
         
         // Verificar se ainda há elementos de loading com timeout reduzido
         await page.waitForFunction(
@@ -1588,7 +1590,7 @@ class ParallelOJProcessor {
       
       // Primeiro clicar no mat-select para abrir
       await this.page.click('mat-select');
-      await this.page.waitForTimeout(1000);
+      await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
       
       // Procurar pela opção com o valor
       const option = this.page.locator(`mat-option:has-text("${orgao}")`);
@@ -1607,7 +1609,7 @@ class ParallelOJProcessor {
       // Primeiro clicar no mat-select para abrir
       const matSelect = this.page.locator('mat-select').first();
       await matSelect.click();
-      await this.page.waitForTimeout(1000);
+      await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
       
       // Procurar pela opção com o texto exato
       const option = this.page.locator(`mat-option:has-text("${orgao}")`);
@@ -1625,7 +1627,7 @@ class ParallelOJProcessor {
       // Primeiro clicar no mat-select para abrir
       const matSelect = this.page.locator('mat-select').first();
       await matSelect.click();
-      await this.page.waitForTimeout(1000);
+      await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
       
       // Procurar por todas as opções
       const options = await this.page.locator('mat-option').all();
@@ -1693,7 +1695,7 @@ class ParallelOJProcessor {
       console.log('✅ Mat-select está habilitado e pronto para interação');
       
       // Aguardar um pouco mais para garantir estabilidade
-      await this.page.waitForTimeout(1000);
+      await this.ultraFastDelayManager.elementWaitDelay({ priority: 'critical' });
       
     } catch (error) {
       console.log('⚠️ Timeout aguardando mat-select ficar habilitado, verificando estado atual...');
@@ -1719,7 +1721,7 @@ class ParallelOJProcessor {
       console.log('Estado atual do mat-select:', currentState);
       
       // Aguardar um pouco mais e tentar prosseguir
-      await this.page.waitForTimeout(3000);
+      await this.ultraFastDelayManager.pageLoadDelay({ priority: 'critical' });
     }
   }
 }

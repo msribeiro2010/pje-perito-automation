@@ -25,23 +25,23 @@ class ContextualDelayManager {
    */
   initializeContextualDelays() {
     return {
-      // Navegação e carregamento
-      pageLoad: { base: 1000, min: 200, max: 5000, adaptive: true },
-      navigation: { base: 800, min: 100, max: 3000, adaptive: true },
-      modalOpen: { base: 300, min: 50, max: 1000, adaptive: true },
-      modalClose: { base: 200, min: 30, max: 800, adaptive: true },
+      // Navegação e carregamento HIPER-OTIMIZADOS
+      pageLoad: { base: 250, min: 50, max: 1250, adaptive: true }, // Reduzido 75%
+      navigation: { base: 200, min: 25, max: 750, adaptive: true }, // Reduzido 75%
+      modalOpen: { base: 75, min: 10, max: 250, adaptive: true }, // Reduzido 75%
+      modalClose: { base: 50, min: 8, max: 200, adaptive: true }, // Reduzido 75%
       
-      // Interações com elementos
-      click: { base: 100, min: 10, max: 500, adaptive: true },
-      doubleClick: { base: 150, min: 20, max: 600, adaptive: true },
-      hover: { base: 50, min: 5, max: 200, adaptive: true },
-      focus: { base: 30, min: 5, max: 150, adaptive: true },
+      // Interações com elementos HIPER-OTIMIZADAS
+      click: { base: 50, min: 5, max: 250, adaptive: true }, // Reduzido 50%
+      doubleClick: { base: 75, min: 10, max: 300, adaptive: true }, // Reduzido 50%
+      hover: { base: 25, min: 3, max: 100, adaptive: true }, // Reduzido 50%
+      focus: { base: 15, min: 3, max: 75, adaptive: true }, // Reduzido 50%
       
-      // Preenchimento de formulários
-      typing: { base: 50, min: 10, max: 200, adaptive: true },
-      formFill: { base: 100, min: 20, max: 400, adaptive: true },
-      dropdown: { base: 200, min: 50, max: 800, adaptive: true },
-      select: { base: 150, min: 30, max: 600, adaptive: true },
+      // Preenchimento de formulários HIPER-OTIMIZADO
+      typing: { base: 25, min: 5, max: 100, adaptive: true }, // Reduzido 50%
+      formFill: { base: 50, min: 10, max: 200, adaptive: true }, // Reduzido 50%
+      dropdown: { base: 100, min: 25, max: 400, adaptive: true }, // Reduzido 50%
+      select: { base: 75, min: 15, max: 300, adaptive: true }, // Reduzido 50%
       
       // Operações específicas do PJE
       searchPJE: { base: 2000, min: 500, max: 8000, adaptive: true },
@@ -49,15 +49,16 @@ class ContextualDelayManager {
       ojSelection: { base: 800, min: 200, max: 3000, adaptive: true },
       saveOperation: { base: 1000, min: 250, max: 4000, adaptive: true },
       
-      // Verificações e validações
-      elementWait: { base: 500, min: 100, max: 2000, adaptive: true },
-      validation: { base: 300, min: 50, max: 1200, adaptive: true },
-      errorCheck: { base: 200, min: 40, max: 800, adaptive: true },
+      // Verificações e validações HIPER-OTIMIZADAS
+      elementWait: { base: 125, min: 25, max: 500, adaptive: true }, // Reduzido 75%
+      validation: { base: 75, min: 12, max: 300, adaptive: true }, // Reduzido 75%
+      errorCheck: { base: 50, min: 10, max: 200, adaptive: true }, // Reduzido 75%
       
-      // Operações em lote
-      betweenOJs: { base: 25, min: 10, max: 100, adaptive: true },
-      betweenServers: { base: 100, min: 20, max: 500, adaptive: true },
-      batchOperation: { base: 50, min: 15, max: 200, adaptive: true },
+      // Operações em lote HIPER-OTIMIZADAS
+      betweenOJs: { base: 1, min: 1, max: 25, adaptive: true }, // Reduzido para 1ms
+      betweenServers: { base: 25, min: 5, max: 125, adaptive: true }, // Reduzido 75%
+      batchOperation: { base: 12, min: 4, max: 50, adaptive: true }, // Reduzido 75%
+      hyperFastBetweenOJs: { base: 1, min: 1, max: 5, adaptive: true }, // Novo contexto ultra-rápido
       
       // Recuperação de erros
       errorRecovery: { base: 1000, min: 200, max: 5000, adaptive: true },

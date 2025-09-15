@@ -228,7 +228,7 @@ class SmartRetryManager {
     
     console.log(`⏱️ Delay inteligente: ${adjustedDelay}ms (original: ${ms}ms, contexto: ${context})`);
     
-    if (this.timeoutManager) {
+    if (this.timeoutManager && typeof this.timeoutManager.setTimeout === 'function') {
       await this.timeoutManager.setTimeout(adjustedDelay);
     } else {
       await new Promise(resolve => setTimeout(resolve, adjustedDelay));

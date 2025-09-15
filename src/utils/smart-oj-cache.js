@@ -3,6 +3,8 @@
 
 const { NormalizadorTexto } = require('./normalizacao');
 const { Logger } = require('./Logger');
+const fs = require('fs').promises;
+const path = require('path');
 
 class SmartOJCache {
   constructor() {
@@ -10,6 +12,137 @@ class SmartOJCache {
     this.cacheValido = false;
     this.ultimaAtualizacao = null;
     this.logger = new Logger('SmartOJCache');
+    this.cacheFile = path.join(__dirname, '../../data/smart-oj-cache.json');
+    this.serverCacheMap = new Map(); // Map<cpfServidor, cacheData>
+  }
+
+  /**
+   * 🎯 NOVO: Verifica em lote quais OJs já estão vinculados considerando perfis
+   * @param {Array} ojsParaVerificar - Lista de OJs para verificar
+   * @param {Array} ojsVinculados - Lista de OJs já vinculados obtidos do sistema
+   * @param {string} perfilDesejado - Perfil que se deseja para o servidor
+   * @param {Function} progressCallback - Callback para feedback de progresso
+   * @returns {Object} Resultado da verificação em lote com análise de perfis
+   */
+  verificarOJsComPerfilEmLote(ojsParaVerificar, ojsVinculados, perfilDesejado, progressCallback = null) {
+    const startTime = Date.now();
+
+    const resultado = {
+      ojsJaVinculadosPerfilCorreto: [], // OJ + perfil correto (pular)
+      ojsVinculadosPerfilDiferente: [], // OJ vinculado mas perfil diferente (atualizar)
+      ojsVinculadosPerfilDesconhecido: [], // OJ vinculado mas perfil desconhecido (verificar)
+      ojsParaVincular: [], // OJ não vinculado (vincular novo)
+
+      estatisticas: {
+        jaVinculadosPerfilCorreto: 0,
+        vinculadosPerfilDiferente: 0,
+        vinculadosPerfilDesconhecido: 0,
+        paraVincular: 0,
+        tempoProcessamento: 0,
+        economiaEstimada: 0,
+        totalOJs: ojsParaVerificar.length,
+        totalParaProcessar: 0
+      }
+    };
+
+    // Normalizar lista de OJs vinculados
+    const ojsVinculadosNormalizados = new Map();
+    ojsVinculados.forEach(oj => {
+      const normalizado = this._normalizarTexto(oj);
+      ojsVinculadosNormalizados.set(normalizado, oj);
+    });
+
+    this.logger.info(`🧠 Iniciando verificação INTELIGENTE de ${ojsParaVerificar.length} OJs com perfil: "${perfilDesejado}"`);
+
+    for (let i = 0; i < ojsParaVerificar.length; i++) {
+      const oj = ojsParaVerificar[i];
+
+      if (progressCallback) {
+        const progresso = Math.round(((i + 1) / ojsParaVerificar.length) * 100);
+        progressCallback(
+          `🧠 Análise inteligente ${i + 1}/${ojsParaVerificar.length}: ${oj.substring(0, 35)}${oj.length > 35 ? '...' : ''}`,
+          progresso
+        );
+      }
+
+      const verificacao = this.verificarOJComPerfil(oj, ojsVinculadosNormalizados, perfilDesejado);
+
+      switch (verificacao.acao) {
+        case 'pular':
+          resultado.ojsJaVinculadosPerfilCorreto.push({
+            oj,
+            textoEncontrado: verificacao.textoEncontrado,
+            perfilEncontrado: verificacao.perfilEncontrado,
+            tipoCorrespondencia: verificacao.tipoCorrespondencia
+          });
+          resultado.estatisticas.jaVinculadosPerfilCorreto++;
+          this.logger.info(`✅ OJ + Perfil correto: "${oj}" → "${verificacao.textoEncontrado}" (${verificacao.perfilEncontrado})`);
+          break;
+
+        case 'atualizar_perfil':
+          resultado.ojsVinculadosPerfilDiferente.push({
+            oj,
+            textoEncontrado: verificacao.textoEncontrado,
+            perfilEncontrado: verificacao.perfilEncontrado,
+            perfilDesejado: verificacao.perfilDesejado,
+            tipoCorrespondencia: verificacao.tipoCorrespondencia
+          });
+          resultado.estatisticas.vinculadosPerfilDiferente++;
+          this.logger.info(`🔄 Perfil diferente: "${oj}" → "${verificacao.perfilEncontrado}" ≠ "${verificacao.perfilDesejado}"`);
+          break;
+
+        case 'verificar_perfil':
+          resultado.ojsVinculadosPerfilDesconhecido.push({
+            oj,
+            textoEncontrado: verificacao.textoEncontrado,
+            perfilDesejado: verificacao.perfilDesejado,
+            tipoCorrespondencia: verificacao.tipoCorrespondencia
+          });
+          resultado.estatisticas.vinculadosPerfilDesconhecido++;
+          this.logger.info(`❓ Perfil desconhecido: "${oj}" → Verificar perfil atual`);
+          break;
+
+        case 'vincular_novo':
+          resultado.ojsParaVincular.push(oj);
+          resultado.estatisticas.paraVincular++;
+          this.logger.info(`🆕 Novo para vincular: "${oj}" com perfil "${perfilDesejado}"`);
+          break;
+      }
+
+      // Atualizar cache
+      this.atualizarCache(oj, verificacao, perfilDesejado);
+
+      if (progressCallback && i % 5 === 0) {
+        const totalParaProcessar = resultado.estatisticas.vinculadosPerfilDiferente +
+                                  resultado.estatisticas.vinculadosPerfilDesconhecido +
+                                  resultado.estatisticas.paraVincular;
+        progressCallback(
+          `📊 ${resultado.estatisticas.jaVinculadosPerfilCorreto} corretos, ${totalParaProcessar} precisam automação`,
+          Math.round(((i + 1) / ojsParaVerificar.length) * 100)
+        );
+      }
+    }
+
+    const tempoTotal = Date.now() - startTime;
+    resultado.estatisticas.tempoProcessamento = tempoTotal;
+
+    // Calcular estatísticas finais
+    resultado.estatisticas.totalParaProcessar = resultado.estatisticas.vinculadosPerfilDiferente +
+                                               resultado.estatisticas.vinculadosPerfilDesconhecido +
+                                               resultado.estatisticas.paraVincular;
+
+    const ojsParaPular = resultado.estatisticas.jaVinculadosPerfilCorreto;
+    resultado.estatisticas.economiaEstimada = ojsParaPular * 15000; // ~15s por OJ
+
+    this.logger.info(`🎯 Análise INTELIGENTE concluída em ${tempoTotal}ms:`);
+    this.logger.info(`   - ✅ ${resultado.estatisticas.jaVinculadosPerfilCorreto} OJs com perfil correto (pularão automação)`);
+    this.logger.info(`   - 🔄 ${resultado.estatisticas.vinculadosPerfilDiferente} OJs com perfil diferente (atualizar)`);
+    this.logger.info(`   - ❓ ${resultado.estatisticas.vinculadosPerfilDesconhecido} OJs com perfil desconhecido (verificar)`);
+    this.logger.info(`   - 🆕 ${resultado.estatisticas.paraVincular} OJs novos (vincular)`);
+    this.logger.info(`   - 🎯 TOTAL para processar: ${resultado.estatisticas.totalParaProcessar} OJs`);
+    this.logger.info(`   - 💰 Economia estimada: ${Math.round(resultado.estatisticas.economiaEstimada/1000)}s`);
+
+    return resultado;
   }
 
   /**
@@ -17,13 +150,44 @@ class SmartOJCache {
    * @param {Object} page - Página do Playwright
    * @param {Array<string>} ojsParaVerificar - Lista de OJs para verificar
    * @param {Function} progressCallback - Callback para reportar progresso
+   * @param {string} cpfServidor - CPF do servidor para cache persistente
    * @returns {Object} Resultado da verificação em lote
    */
-  async verificarOJsEmLote(page, ojsParaVerificar, progressCallback = null) {
+  async verificarOJsEmLote(page, ojsParaVerificar, progressCallback = null, cpfServidor = null) {
     this.logger.info(`🚀 Iniciando verificação em lote de ${ojsParaVerificar.length} OJs...`);
     const startTime = Date.now();
 
     try {
+      // 0. Tentar carregar cache persistente primeiro
+      if (cpfServidor) {
+        const cacheExistente = await this.carregarCachePersistente(cpfServidor);
+        if (cacheExistente) {
+          this.logger.info(`🎯 Usando cache persistente para ${cpfServidor} - evitando verificação desnecessária`);
+
+          // Reconstruir o cache em memória preservando perfis
+          if (cacheExistente.ojsJaVinculados) {
+            cacheExistente.ojsJaVinculados.forEach(item => {
+              // CORREÇÃO: Preservar perfil do cache ou marcar como desconhecido para análise inteligente
+              const perfilExistente = item.perfil || null; // null indica perfil desconhecido
+              this.atualizarCache(item.oj, {
+                jaVinculado: true,
+                textoEncontrado: item.textoEncontrado,
+                tipoCorrespondencia: item.tipoCorrespondencia
+              }, perfilExistente);
+            });
+          }
+
+          this.cacheValido = true;
+          this.ultimaAtualizacao = new Date(cacheExistente.timestamp);
+
+          if (progressCallback) {
+            progressCallback(`Cache carregado: ${cacheExistente.estatisticas?.jaVinculados || 0} OJs já cadastrados`, 100);
+          }
+
+          return cacheExistente;
+        }
+      }
+
       // 1. Carregar todos os OJs já vinculados da página
       if (progressCallback) {
         progressCallback('Carregando OJs já vinculados...', 0);
@@ -119,11 +283,112 @@ class SmartOJCache {
       this.cacheValido = true;
       this.ultimaAtualizacao = new Date();
 
+      // Salvar cache persistente para este servidor
+      await this.salvarCachePersistente(cpfServidor, resultado);
+
       return resultado;
 
     } catch (error) {
       this.logger.error(`❌ Erro na verificação em lote: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Carrega cache persistente para um servidor específico
+   * @param {string} cpfServidor - CPF do servidor
+   * @returns {Object|null} Cache salvo ou null se não encontrado
+   */
+  /**
+   * Normaliza CPF para uso consistente como chave do cache
+   * @param {string} cpf - CPF formatado ou não
+   * @returns {string} - CPF normalizado (apenas números)
+   */
+  _normalizarCPF(cpf) {
+    if (!cpf) return '';
+    return cpf.replace(/\D/g, ''); // Remove tudo que não for dígito
+  }
+
+  async carregarCachePersistente(cpfServidor) {
+    try {
+      const data = await fs.readFile(this.cacheFile, 'utf8');
+      const cacheData = JSON.parse(data);
+
+      // Normalizar CPF para busca
+      const cpfNormalizado = this._normalizarCPF(cpfServidor);
+
+      // Procurar por CPF normalizado ou formatado
+      let servidorCache = null;
+
+      // Primeiro, tentar com CPF exato como fornecido
+      if (cacheData[cpfServidor]) {
+        servidorCache = cacheData[cpfServidor];
+      }
+      // Se não encontrar, procurar por chaves que sejam o mesmo CPF normalizado
+      else {
+        for (const [chaveCPF, dados] of Object.entries(cacheData)) {
+          if (this._normalizarCPF(chaveCPF) === cpfNormalizado) {
+            servidorCache = dados;
+            break;
+          }
+        }
+      }
+
+      if (servidorCache) {
+        const ageSince = Date.now() - servidorCache.timestamp;
+        const maxAge = 24 * 60 * 60 * 1000; // 24 horas
+
+        if (ageSince < maxAge) {
+          this.logger.info(`📦 Cache persistente carregado para ${cpfServidor}: ${servidorCache.ojsJaVinculados?.length || 0} OJs já cadastrados`);
+          return servidorCache;
+        } else {
+          this.logger.info(`⏰ Cache persistente expirado para ${cpfServidor} (${Math.round(ageSince / 1000 / 60 / 60)}h)`);
+        }
+      }
+
+      return null;
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        this.logger.warn(`⚠️ Erro ao carregar cache persistente: ${error.message}`);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Salva cache persistente para um servidor específico
+   * @param {string} cpfServidor - CPF do servidor
+   * @param {Object} dadosVerificacao - Dados da verificação a serem salvos
+   */
+  async salvarCachePersistente(cpfServidor, dadosVerificacao) {
+    try {
+      // Garantir que o diretório existe
+      const dir = path.dirname(this.cacheFile);
+      await fs.mkdir(dir, { recursive: true });
+
+      let cacheData = {};
+      try {
+        const data = await fs.readFile(this.cacheFile, 'utf8');
+        cacheData = JSON.parse(data);
+      } catch (error) {
+        // Arquivo não existe, começar com objeto vazio
+      }
+
+      // Normalizar CPF para chave consistente
+      const cpfNormalizado = this._normalizarCPF(cpfServidor);
+
+      // Salvar dados do servidor usando CPF normalizado
+      cacheData[cpfNormalizado] = {
+        ...dadosVerificacao,
+        timestamp: Date.now(),
+        version: '1.0'
+      };
+
+      await fs.writeFile(this.cacheFile, JSON.stringify(cacheData, null, 2));
+      this.logger.info(`💾 Cache persistente salvo para ${cpfNormalizado}: ${dadosVerificacao.estatisticas?.jaVinculados || 0} OJs já cadastrados`);
+
+    } catch (error) {
+      this.logger.error(`❌ Erro ao salvar cache persistente: ${error.message}`);
     }
   }
 
@@ -279,7 +544,87 @@ class SmartOJCache {
   }
 
   /**
-   * Verifica um OJ específico contra o cache de OJs vinculados
+   * 🎯 NOVO: Verifica um OJ específico considerando também o perfil
+   * @param {string} oj - Nome do OJ para verificar
+   * @param {Map} ojsVinculadosNormalizados - Map de OJs já vinculados normalizados
+   * @param {string} perfilDesejado - Perfil que se deseja verificar
+   * @returns {Object} Resultado da verificação inteligente
+   */
+  verificarOJComPerfil(oj, ojsVinculadosNormalizados, perfilDesejado) {
+    const ojNormalizado = this._normalizarTexto(oj);
+
+    // 1. Verificação exata normalizada COM perfil
+    for (const [ojVinculadoNormalizado, ojVinculadoOriginal] of ojsVinculadosNormalizados) {
+      if (ojVinculadoNormalizado === ojNormalizado) {
+        // OJ encontrado! Agora verificar perfil
+        const cacheEntry = this.cache.get(ojNormalizado);
+
+        if (cacheEntry && cacheEntry.perfil) {
+          if (cacheEntry.perfil === perfilDesejado) {
+            // Perfil IGUAL: OJ já vinculado com o perfil correto
+            return {
+              jaVinculado: true,
+              perfilCorreto: true,
+              textoEncontrado: ojVinculadoOriginal,
+              tipoCorrespondencia: 'exata',
+              perfilEncontrado: cacheEntry.perfil,
+              perfilDesejado: perfilDesejado,
+              acao: 'pular' // Não precisa processar
+            };
+          } else {
+            // Perfil DIFERENTE: OJ vinculado mas com perfil errado
+            return {
+              jaVinculado: true,
+              perfilCorreto: false,
+              textoEncontrado: ojVinculadoOriginal,
+              tipoCorrespondencia: 'exata',
+              perfilEncontrado: cacheEntry.perfil,
+              perfilDesejado: perfilDesejado,
+              acao: 'atualizar_perfil' // Precisa atualizar o perfil
+            };
+          }
+        } else {
+          // OJ vinculado mas sem informação de perfil
+          return {
+            jaVinculado: true,
+            perfilCorreto: false,
+            textoEncontrado: ojVinculadoOriginal,
+            tipoCorrespondencia: 'exata',
+            perfilEncontrado: 'desconhecido',
+            perfilDesejado: perfilDesejado,
+            acao: 'verificar_perfil' // Precisa verificar o perfil atual
+          };
+        }
+      }
+    }
+
+    // 2. Verificações de similaridade (existentes)
+    const resultadoSimilaridade = this.verificarOJContraCache(oj, ojsVinculadosNormalizados);
+
+    if (resultadoSimilaridade.jaVinculado) {
+      return {
+        ...resultadoSimilaridade,
+        perfilCorreto: false,
+        perfilEncontrado: 'desconhecido',
+        perfilDesejado: perfilDesejado,
+        acao: 'verificar_perfil'
+      };
+    }
+
+    // 3. OJ não encontrado - precisa vincular
+    return {
+      jaVinculado: false,
+      perfilCorreto: false,
+      textoEncontrado: null,
+      tipoCorrespondencia: null,
+      perfilEncontrado: null,
+      perfilDesejado: perfilDesejado,
+      acao: 'vincular_novo' // Precisa vincular OJ + perfil
+    };
+  }
+
+  /**
+   * Verifica um OJ específico contra o cache de OJs vinculados (método original)
    * @param {string} oj - Nome do OJ para verificar
    * @param {Map} ojsVinculadosNormalizados - Map de OJs já vinculados normalizados
    * @returns {Object} Resultado da verificação
@@ -344,13 +689,14 @@ class SmartOJCache {
    * @param {string} oj - Nome do OJ
    * @param {Object} verificacao - Resultado da verificação
    */
-  atualizarCache(oj, verificacao) {
+  atualizarCache(oj, verificacao, perfilAtual = null) {
     const ojNormalizado = NormalizadorTexto.normalizar(oj);
     this.cache.set(ojNormalizado, {
       original: oj,
       jaVinculado: verificacao.jaVinculado,
       textoEncontrado: verificacao.textoEncontrado,
       tipoCorrespondencia: verificacao.tipoCorrespondencia,
+      perfil: perfilAtual, // NOVO: Armazenar o perfil associado
       timestamp: Date.now()
     });
   }
@@ -412,14 +758,50 @@ class SmartOJCache {
 
   /**
    * Limpa o cache (usado entre diferentes servidores)
+   * @param {boolean} preservarPersistente - Se true, não limpa dados persistentes
    */
-  limparCache() {
+  limparCache(preservarPersistente = true) {
+    // Apenas limpar cache em memória, preservando persistente por padrão
     this.cache.clear();
     this.cacheValido = false;
     this.ultimaAtualizacao = null;
-    this.logger.info('🧹 Cache de OJs limpo');
-    // Debug específico para DEISE - garantir limpeza total
-    this.logger.info('🎯 [DEISE-DEBUG] Cache SmartOJ completamente resetado - pronto para novo servidor');
+
+    if (preservarPersistente) {
+      this.logger.info('🧹 Cache em memória limpo (dados persistentes preservados)');
+    } else {
+      this.logger.info('🧹 Cache de OJs limpo completamente');
+      // Debug específico para DEISE - garantir limpeza total
+      this.logger.info('🎯 [DEISE-DEBUG] Cache SmartOJ completamente resetado - pronto para novo servidor');
+    }
+  }
+
+  /**
+   * Força limpeza completa incluindo cache persistente
+   * @param {string} cpfServidor - Se fornecido, limpa apenas este servidor
+   */
+  async limparCacheCompleto(cpfServidor = null) {
+    this.limparCache(false);
+
+    if (cpfServidor) {
+      // Limpar apenas um servidor específico
+      try {
+        const data = await fs.readFile(this.cacheFile, 'utf8');
+        const cacheData = JSON.parse(data);
+        delete cacheData[cpfServidor];
+        await fs.writeFile(this.cacheFile, JSON.stringify(cacheData, null, 2));
+        this.logger.info(`🗑️ Cache persistente removido para ${cpfServidor}`);
+      } catch (error) {
+        // Arquivo não existe, tudo bem
+      }
+    } else {
+      // Limpar tudo
+      try {
+        await fs.unlink(this.cacheFile);
+        this.logger.info('🗑️ Arquivo de cache persistente removido completamente');
+      } catch (error) {
+        // Arquivo não existe, tudo bem
+      }
+    }
   }
 
   /**
@@ -488,17 +870,8 @@ class SmartOJCache {
    * @returns {string}
    */
   _normalizarTexto(texto) {
-    if (!texto) return '';
-    
-    return texto
-      .toLowerCase()
-      .trim()
-      // Normalizar diferentes tipos de travessões e hífens
-      .replace(/[\u2013\u2014\u2015\u2212\-–—]/g, '-')  // Travessões para hífen
-      .replace(/[\s\-]+/g, ' ')     // Espaços e hífens para espaço único
-      .replace(/[^a-z0-9\sçáàâãéêíóôõúü]/g, '')  // Manter acentos brasileiros
-      .replace(/\s+/g, ' ')         // Normalizar espaços múltiplos
-      .trim();
+    // Usar a mesma normalização do sistema principal para consistência
+    return NormalizadorTexto.normalizar(texto);
   }
 
   /**
