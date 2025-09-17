@@ -10,8 +10,8 @@ const path = require('path');
 const os = require('os');
 
 const projectDir = __dirname;
-const projectName = 'PJE Automation';
-const description = 'Sistema de automação para vinculação de peritos e servidores no PJE';
+const projectName = 'Central IA - NAPJe Sistema de Automacao Inteligente';
+const description = 'Sistema de automação inteligente para vinculação de peritos e servidores no PJE';
 
 function createWindowsShortcut() {
     const desktopPath = path.join(os.homedir(), 'Desktop');

@@ -134,9 +134,11 @@ async function listarOJsVinculados(page) {
               const textoNormalizado = NormalizadorTexto.normalizar(textoLimpo);
               
               // Verificar se parece ser um nome de órgão julgador usando critérios mais robustos
-              const contemPalavraChave = palavrasChaveOJ.some(palavra => 
-                textoNormalizado.includes(palavra)
-              );
+              const textoNormalizadoProcessed = typeof textoNormalizado === 'string' ? textoNormalizado : (textoNormalizado?.nome || String(textoNormalizado || ''));
+              const contemPalavraChave = palavrasChaveOJ.some(palavra => {
+                const palavraProcessed = typeof palavra === 'string' ? palavra : (palavra?.nome || String(palavra || ''));
+                return textoNormalizadoProcessed.includes(palavraProcessed);
+              });
               
               if (contemPalavraChave && 
                   textoLimpo.length > 10 && 

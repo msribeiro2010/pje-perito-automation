@@ -1,7 +1,7 @@
 {
-  "name": "pje-automation-peritos-servidores",
+  "name": "central-ia-napje-sistema-automacao-inteligente",
   "version": "1.0.0",
-  "description": "Sistema de automação para vinculação de peritos e servidores no PJE",
+  "description": "Sistema de automação inteligente para vinculação de peritos e servidores no PJE",
   "author": "PJE Automation Team",
   "main": "src/main.js",
   "scripts": {
@@ -59,7 +59,7 @@
   },
   "build": {
     "appId": "com.pje.perito.automation",
-    "productName": "PJE Perito Automation",
+    "productName": "Central IA - NAPJe Sistema de Automacao Inteligente",
     "directories": {
       "output": "dist",
       "buildResources": "assets"

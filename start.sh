@@ -3,7 +3,7 @@
 # PJE Automation - Script de Inicialização
 # Este script inicia o sistema PJE Automation
 
-echo "🚀 Iniciando PJE Automation - Peritos e Servidores..."
+echo "Iniciando Central IA - NAPJe Sistema de Automacao Inteligente..."
 echo "📍 Diretório: $(pwd)"
 
 # Verificar se o Node.js está instalado

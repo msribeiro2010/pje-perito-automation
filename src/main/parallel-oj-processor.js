@@ -829,7 +829,17 @@ class ParallelOJProcessor {
   }
   
   async selectOrgaoJulgadorOptimized(orgao) {
-    console.log(`🎯 ASSERTIVO: Seleção direta de OJ: ${orgao}`);
+    // Validação de tipo para evitar erros
+    let orgaoTexto;
+    if (typeof orgao === 'string') {
+      orgaoTexto = orgao;
+    } else if (orgao && typeof orgao === 'object' && orgao.nome) {
+      orgaoTexto = orgao.nome;
+    } else {
+      orgaoTexto = String(orgao || '');
+    }
+    
+    console.log(`🎯 ASSERTIVO: Seleção direta de OJ: ${orgaoTexto}`);
     
     try {
       // Verificar se a página foi fechada
@@ -1477,7 +1487,17 @@ class ParallelOJProcessor {
   }
   
   normalizeOrgaoName(orgao) {
-    return orgao
+    // Validação de tipo para evitar erros
+    let orgaoTexto;
+    if (typeof orgao === 'string') {
+      orgaoTexto = orgao;
+    } else if (orgao && typeof orgao === 'object' && orgao.nome) {
+      orgaoTexto = orgao.nome;
+    } else {
+      orgaoTexto = String(orgao || '');
+    }
+    
+    return orgaoTexto
       .trim()
       .toUpperCase()
       .replace(/\s+/g, ' ')

@@ -59,8 +59,9 @@ class SmartOJCache {
 
       if (progressCallback) {
         const progresso = Math.round(((i + 1) / ojsParaVerificar.length) * 100);
+        const ojTexto = typeof oj === 'string' ? oj : String(oj);
         progressCallback(
-          `🧠 Análise inteligente ${i + 1}/${ojsParaVerificar.length}: ${oj.substring(0, 35)}${oj.length > 35 ? '...' : ''}`,
+          `🧠 Análise inteligente ${i + 1}/${ojsParaVerificar.length}: ${ojTexto.substring(0, 35)}${ojTexto.length > 35 ? '...' : ''}`,
           progresso
         );
       }
@@ -230,8 +231,9 @@ class SmartOJCache {
         
         if (progressCallback) {
           const progresso = Math.round(((i + 1) / ojsParaVerificar.length) * 100);
+          const ojTexto = typeof oj === 'string' ? oj : String(oj);
           progressCallback(
-            `🔍 Analisando OJ ${i + 1}/${ojsParaVerificar.length}: ${oj.substring(0, 50)}${oj.length > 50 ? '...' : ''}`, 
+            `🔍 Analisando OJ ${i + 1}/${ojsParaVerificar.length}: ${ojTexto.substring(0, 50)}${ojTexto.length > 50 ? '...' : ''}`, 
             progresso
           );
         }
@@ -823,7 +825,14 @@ class SmartOJCache {
       'Vara do Trabalho de Santa Bárbara D\'Oeste',
       'Vara do Trabalho de São João da Boa Vista',
       'Posto Avançado da Justiça do Trabalho de São João da Boa Vista em Espírito Santo Do Pinhal',
-      'CEJUSC LIMEIRA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho'
+      'CEJUSC LIMEIRA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho',
+      // Varas de Araraquara - Correção para problema reportado
+      '1ª Vara do Trabalho de Araraquara',
+      '2ª Vara do Trabalho de Araraquara',
+      '3ª Vara do Trabalho de Araraquara',
+      // Apenas OJs que estão realmente disponíveis no perfil dos servidores (PJe produção)
+      'DIVEX - Araraquara',
+      'CEJUSC ARARAQUARA - JT Centro Judiciário de Métodos Consensuais de Solução de Disputas da Justiça do Trabalho'
     ];
     
     const deiseMatch = ojsDeise.find(oj => 

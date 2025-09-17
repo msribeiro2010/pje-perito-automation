@@ -377,6 +377,24 @@ class ServidorAutomationV2 {
 
   // Normalizar nomes de órgãos julgadores para corrigir erros de digitação
   normalizeOrgaoName(orgao) {
+    // Validar se o parâmetro é uma string
+    if (typeof orgao !== 'string') {
+      console.warn(`normalizeOrgaoName: Valor inválido recebido (${typeof orgao}):`, orgao);
+      // Se for um objeto com propriedade nome, usar essa propriedade
+      if (orgao && typeof orgao === 'object' && orgao.nome) {
+        orgao = orgao.nome;
+      } else {
+        // Converter para string ou retornar string vazia
+        orgao = orgao ? String(orgao) : '';
+      }
+    }
+    
+    // Verificar se ainda é uma string válida após conversão
+    if (typeof orgao !== 'string' || orgao.length === 0) {
+      console.warn('normalizeOrgaoName: Não foi possível normalizar o órgão:', orgao);
+      return '';
+    }
+    
     return orgao
       .replace(/\s+/g, ' ')  // Normalizar espaços múltiplos
       .replace(/[–—−]/g, '-')  // Normalizar travessões (–, —, −) para hífen (-)
@@ -2714,7 +2732,17 @@ Sucessos por Servidor:
   }
 
   async selectOrgaoJulgadorRapido(orgao) {
-    console.log(`🎯 ASSERTIVO: Seleção direta de OJ: ${orgao}`);
+    // Validação de tipo para evitar erros
+    let orgaoTexto;
+    if (typeof orgao === 'string') {
+      orgaoTexto = orgao;
+    } else if (orgao && typeof orgao === 'object' && orgao.nome) {
+      orgaoTexto = orgao.nome;
+    } else {
+      orgaoTexto = String(orgao || '');
+    }
+    
+    console.log(`🎯 ASSERTIVO: Seleção direta de OJ: ${orgaoTexto}`);
     
     try {
       // 1. DIRETO: Encontrar e clicar no mat-select de Órgão Julgador
@@ -3364,9 +3392,19 @@ Sucessos por Servidor:
   async selectOrgaoJulgador(orgao) {
     // Implementar seleção do órgão julgador usando a versão melhorada
     // com estratégia aprimorada para mat-select do Angular Material
+    
+    // Validação de tipo para evitar erros
+    let orgaoTexto;
+    if (typeof orgao === 'string') {
+      orgaoTexto = orgao;
+    } else if (orgao && typeof orgao === 'object' && orgao.nome) {
+      orgaoTexto = orgao.nome;
+    } else {
+      orgaoTexto = String(orgao || '');
+    }
         
-    console.log(`🔄 INICIANDO selectOrgaoJulgador para: ${orgao}`);
-    this.sendStatus('info', 'Selecionando órgão julgador...', null, orgao);
+    console.log(`🔄 INICIANDO selectOrgaoJulgador para: ${orgaoTexto}`);
+    this.sendStatus('info', 'Selecionando órgão julgador...', null, orgaoTexto);
         
     // Usar a função melhorada com estratégia de trigger
     const { vincularOJMelhorado } = require('../vincularOJ.js');
@@ -4614,7 +4652,17 @@ Sucessos por Servidor:
   normalizarTextoParaComparacao(texto) {
     if (!texto) return '';
     
-    return texto
+    // Validação de tipos
+    let textoProcessado;
+    if (typeof texto === 'string') {
+      textoProcessado = texto;
+    } else if (typeof texto === 'object' && texto.nome) {
+      textoProcessado = texto.nome;
+    } else {
+      textoProcessado = String(texto);
+    }
+    
+    return textoProcessado
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '') // Remove acentos
@@ -4673,7 +4721,8 @@ Sucessos por Servidor:
     const palavrasRelevantes = [
       'secretario', 'secretaria', 'audiencia', 'assessor', 'analista', 
       'tecnico', 'auxiliar', 'diretor', 'coordenador', 'supervisor',
-      'escrivao', 'oficial', 'chefe', 'gerente', 'judiciario'
+      'escrivao', 'oficial', 'chefe', 'gerente', 'judiciario',
+      'estagiario', 'conhecimento', 'aprendizado', 'formacao'
     ];
     
     // Filtrar apenas palavras relevantes

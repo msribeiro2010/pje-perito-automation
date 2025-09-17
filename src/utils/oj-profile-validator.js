@@ -257,7 +257,17 @@ class OJProfileValidator {
      * 🔧 NORMALIZA NOME DO OJ PARA COMPARAÇÃO
      */
     normalizeOJName(ojName) {
-        return ojName
+        // Validação de tipo para evitar erros
+        let ojTexto;
+        if (typeof ojName === 'string') {
+            ojTexto = ojName;
+        } else if (ojName && typeof ojName === 'object' && ojName.nome) {
+            ojTexto = ojName.nome;
+        } else {
+            ojTexto = String(ojName || '');
+        }
+        
+        return ojTexto
             .toLowerCase()
             .trim()
             .replace(/\s+/g, ' ')
@@ -390,7 +400,17 @@ class OJProfileValidator {
      * 🔧 NORMALIZA NOME DO PAPEL PARA COMPARAÇÃO
      */
     normalizeRoleName(roleName) {
-        return roleName
+        // Validação de tipo para evitar erros
+        let roleTexto;
+        if (typeof roleName === 'string') {
+            roleTexto = roleName;
+        } else if (roleName && typeof roleName === 'object' && roleName.nome) {
+            roleTexto = roleName.nome;
+        } else {
+            roleTexto = String(roleName || '');
+        }
+        
+        return roleTexto
             .toLowerCase()
             .trim()
             .replace(/\s+/g, ' ')

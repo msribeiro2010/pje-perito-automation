@@ -147,10 +147,24 @@ class NormalizadorTexto {
    * @returns {string} Texto com abreviações expandidas
    */
   static expandirAbreviacoes(texto) {
-    let textoExpandido = texto;
+    // Validação de tipos
+    let textoProcessado;
+    if (typeof texto === 'string') {
+      textoProcessado = texto;
+    } else if (texto && typeof texto === 'object' && texto.nome) {
+      textoProcessado = String(texto.nome);
+    } else {
+      textoProcessado = String(texto || '');
+    }
+    
+    if (!textoProcessado) {
+      return '';
+    }
+    
+    let textoExpandido = textoProcessado;
     
     // Expandir abreviações palavra por palavra
-    const palavras = texto.split(' ');
+    const palavras = textoProcessado.split(' ');
     const palavrasExpandidas = palavras.map(palavra => {
       return this.ABREVIACOES[palavra] || palavra;
     });
@@ -173,15 +187,25 @@ class NormalizadorTexto {
    * @returns {Array<string>} Array de tokens significativos
    */
   static extrairTokensSignificativos(texto, minLength = 2) {
-    if (!texto) return [];
+    // Validação de tipos
+    let textoProcessado;
+    if (typeof texto === 'string') {
+      textoProcessado = texto;
+    } else if (texto && typeof texto === 'object' && texto.nome) {
+      textoProcessado = String(texto.nome);
+    } else {
+      textoProcessado = String(texto || '');
+    }
+    
+    if (!textoProcessado) return [];
     
     // Verificar cache primeiro (otimização de performance)
-    const chaveCache = `${texto}|${minLength}`;
+    const chaveCache = `${textoProcessado}|${minLength}`;
     if (this._cacheTokens.has(chaveCache)) {
       return this._cacheTokens.get(chaveCache);
     }
     
-    const textoNormalizado = this.normalizar(texto);
+    const textoNormalizado = this.normalizar(textoProcessado);
     const textoExpandido = this.expandirAbreviacoes(textoNormalizado);
     
     const tokens = textoExpandido

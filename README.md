@@ -1,6 +1,6 @@
-# PJE Automation - Peritos e Servidores
+# Central IA - NAPJe Sistema de Automacao Inteligente
 
-Sistema de automação para vinculação de peritos e servidores no PJE (Processo Judicial Eletrônico) com interface gráfica moderna e intuitiva construída em Electron.
+Sistema de automação inteligente para vinculação de peritos e servidores no PJE (Processo Judicial Eletrônico) com interface gráfica moderna e intuitiva construída em Electron.
 
 ## ⭐ Principais Melhorias (v2.0)
 

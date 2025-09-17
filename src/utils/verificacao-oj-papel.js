@@ -273,7 +273,8 @@ class VerificacaoOJPapel {
     const palavrasChavePapel = [
       'secretário', 'secretaria', 'assessor', 'analista', 'técnico',
       'auxiliar', 'escrivão', 'oficial', 'diretor', 'chefe',
-      'coordenador', 'supervisor', 'gerente', 'audiência'
+      'coordenador', 'supervisor', 'gerente', 'audiência',
+      'estagiário', 'conhecimento', 'aprendizado', 'formação'
     ];
     
     const textoNormalizado = NormalizadorTexto.normalizar(texto);
@@ -297,7 +298,9 @@ class VerificacaoOJPapel {
       /(analista[^,\n\t-]*)/i,
       /(técnico[^,\n\t-]*)/i,
       /(auxiliar[^,\n\t-]*)/i,
-      /(escrivão[^,\n\t-]*)/i
+      /(escrivão[^,\n\t-]*)/i,
+      /(estagiário[^,\n\t-]*)/i,
+      /(conhecimento[^,\n\t-]*)/i
     ];
     
     for (const padrao of padroes) {

@@ -1,10 +1,10 @@
-# CLAUDE.md
+# Central IA - NAPJe Sistema de Automacao Inteligente
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Visão Geral do Projeto
 
-Este é um sistema de automação para o PJE (Processo Judicial Eletrônico) construído com Electron, projetado para automatizar o processo de vinculação de peritos e servidores aos órgãos julgadores do sistema judiciário brasileiro. A aplicação oferece uma interface gráfica moderna para gerenciar e executar fluxos automatizados usando Playwright para automação do navegador.
+Este é um sistema de automação inteligente para o PJE (Processo Judicial Eletrônico) construído com Electron, projetado para automatizar o processo de vinculação de peritos e servidores aos órgãos julgadores do sistema judiciário brasileiro. A aplicação oferece uma interface gráfica moderna para gerenciar e executar fluxos automatizados usando Playwright para automação do navegador.
 
 ## Essential Development Commands
 

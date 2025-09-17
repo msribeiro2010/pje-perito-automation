@@ -6,7 +6,7 @@ echo ========================================
 echo   PJE Automation - Peritos e Servidores
 echo ========================================
 echo.
-echo 🚀 Iniciando sistema...
+echo 🚀 Iniciando Central IA - NAPJe Sistema de Automacao Inteligente...
 echo 📍 Diretorio: %CD%
 echo.
 

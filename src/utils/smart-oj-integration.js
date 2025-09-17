@@ -546,7 +546,17 @@ class SmartOJIntegration {
       * 🔧 NORMALIZA NOME DO OJ PARA COMPARAÇÃO
       */
      normalizeOJName(name) {
-         return name
+         // Validação de tipo para evitar erros
+         let nameTexto;
+         if (typeof name === 'string') {
+             nameTexto = name;
+         } else if (name && typeof name === 'object' && name.nome) {
+             nameTexto = name.nome;
+         } else {
+             nameTexto = String(name || '');
+         }
+         
+         return nameTexto
              .toLowerCase()
              .trim()
              // Normalizar acentos e caracteres especiais

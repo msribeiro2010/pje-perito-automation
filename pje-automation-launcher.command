@@ -3,7 +3,7 @@
 # PJE Automation Launcher - Versão melhorada para macOS
 # Este script garante que a aplicação apareça visualmente
 
-echo "🚀 Iniciando PJE Automation - Peritos e Servidores..."
+echo "🚀 Iniciando Central IA - NAPJe Sistema de Automacao Inteligente..."
 echo "📍 Diretório: $(pwd)"
 
 # Navegar para o diretório do projeto

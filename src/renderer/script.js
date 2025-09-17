@@ -443,7 +443,7 @@ class PeritoApp {
       row.innerHTML = `
                 <td>
                     <input type="checkbox" class="perito-checkbox" data-index="${index}" 
-                           ${this.selectedPeritos.includes(index) ? 'checked' : ''}>
+                           ${Array.isArray(this.selectedPeritos) && this.selectedPeritos.includes(index) ? 'checked' : ''}>
                 </td>
                 <td>${perito.nome}</td>
                 <td>${perito.cpf}</td>
@@ -467,9 +467,9 @@ class PeritoApp {
       checkbox.addEventListener('change', (e) => {
         const index = parseInt(e.target.dataset.index);
         if (e.target.checked) {
-          if (!this.selectedPeritos.includes(index)) {
-            this.selectedPeritos.push(index);
-          }
+          if (Array.isArray(this.selectedPeritos) && !this.selectedPeritos.includes(index)) {
+        this.selectedPeritos.push(index);
+      }
         } else {
           this.selectedPeritos = this.selectedPeritos.filter(i => i !== index);
         }
@@ -488,7 +488,7 @@ class PeritoApp {
       checkbox.checked = checked;
       const index = parseInt(checkbox.dataset.index);
       if (checked) {
-        if (!this.selectedPeritos.includes(index)) {
+        if (Array.isArray(this.selectedPeritos) && !this.selectedPeritos.includes(index)) {
           this.selectedPeritos.push(index);
         }
       } else {
@@ -979,7 +979,7 @@ class PeritoApp {
     console.log('Servidores selecionados:', this.selectedServidores);
         
     this.servidores.forEach((servidor, index) => {
-      const isSelected = this.selectedServidores && this.selectedServidores.includes(index);
+      const isSelected = Array.isArray(this.selectedServidores) && this.selectedServidores.includes(index);
       console.log(`Servidor ${index} (${servidor.nome}): selecionado = ${isSelected}`);
       
       const row = document.createElement('tr');
@@ -2291,7 +2291,7 @@ class PeritoApp {
     }
     
     // Criar variações específicas para CEJUSC
-    if (ojName.includes('CEJUSC') || ojName.includes('Centro Judiciário')) {
+    if ((typeof ojName === 'string' && ojName.includes('CEJUSC')) || (typeof ojName === 'string' && ojName.includes('Centro Judiciário'))) {
       // Extrair a cidade do nome do CEJUSC
       const cityMatch = ojName.match(/CEJUSC\s+([A-Z\s]+)/i);
       if (cityMatch) {
@@ -2353,7 +2353,7 @@ class PeritoApp {
     
     // Buscar por correspondência parcial no início do nome
     for (const [key, value] of this.normalizedOJs) {
-      if (key.includes(cleanInput) || cleanInput.includes(key)) {
+      if ((typeof key === 'string' && key.includes(cleanInput)) || (typeof cleanInput === 'string' && cleanInput.includes(key))) {
         return value;
       }
     }
@@ -2366,7 +2366,7 @@ class PeritoApp {
         let matches = 0;
         
         keywords.forEach(keyword => {
-          if (keyWords.some(keyWord => keyWord.includes(keyword) || keyword.includes(keyWord))) {
+          if (keyWords.some(keyWord => (typeof keyWord === 'string' && keyWord.includes(keyword)) || (typeof keyword === 'string' && keyword.includes(keyWord)))) {
             matches++;
           }
         });
@@ -2894,7 +2894,7 @@ class PeritoApp {
     // Filtrar histórico por CPF
     const filtered = this.cpfHistory.filter(item => {
       const cpfNumbers = item.cpf.replace(/\D/g, '');
-      return cpfNumbers.includes(searchValue);
+      return typeof cpfNumbers === 'string' && cpfNumbers.includes(searchValue);
     });
     
     if (filtered.length === 0) {
@@ -2994,7 +2994,7 @@ class PeritoApp {
           suggestions.push({ name: ojName, score: 100 });
         }
         // Correspondência parcial com palavras
-        else if (ojLower.includes(searchLower)) {
+        else if (typeof ojLower === 'string' && ojLower.includes(searchLower)) {
           suggestions.push({ name: ojName, score: 80 });
         }
         // Correspondência por palavras individuais
@@ -3005,7 +3005,7 @@ class PeritoApp {
           
           for (const searchWord of searchWords) {
             for (const ojWord of ojWords) {
-              if (ojWord.includes(searchWord) || searchWord.includes(ojWord)) {
+              if ((typeof ojWord === 'string' && ojWord.includes(searchWord)) || (typeof searchWord === 'string' && searchWord.includes(ojWord))) {
                 matchScore += 20;
               }
             }
@@ -4618,7 +4618,7 @@ class OJSelector {
       this.filteredOptions = [...this.allOptions];
     } else {
       this.filteredOptions = this.allOptions.filter(option => 
-        option.searchText.includes(term)
+        typeof option.searchText === 'string' && option.searchText.includes(term)
       );
     }
     
@@ -4830,7 +4830,7 @@ PeritoApp.prototype.renderizarTabelaOJsBanco = function(tabelaId, ojs) {
       'CÂMARA', 'CAMARA', 'TURMA', 'TRIBUNAL', 'VARA', 'JUIZADO', 'POSTO', 'AVANÇADO', 'AVANCADO', 'JT'
     ];
 
-    const isGeneric = (s) => genericWords.includes((s || '').toUpperCase());
+    const isGeneric = (s) => Array.isArray(genericWords) && genericWords.includes((s || '').toUpperCase());
 
     const toCityCase = (s) => {
       const stop = ['de','da','do','das','dos','e','em','no','na','nos','nas','ao','aos','à','às'];
@@ -4840,7 +4840,7 @@ PeritoApp.prototype.renderizarTabelaOJsBanco = function(tabelaId, ojs) {
         .map((tok, idx) => {
           if (/^\s+$/.test(tok) || tok === '-') return tok;
           if (/^\d+[ªº]?$/.test(tok)) return tok;
-          if (stop.includes(tok) && idx !== 0) return tok;
+          if (Array.isArray(stop) && stop.includes(tok) && idx !== 0) return tok;
           return tok.replace(/^([\p{L}])(.*)$/u, (m, a, b) => a.toUpperCase() + b);
         })
         .join('');

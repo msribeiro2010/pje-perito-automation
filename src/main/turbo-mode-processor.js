@@ -222,7 +222,17 @@ class TurboModeProcessor {
    * Gera chave de cache para OJ
    */
   generateOJCacheKey(oj) {
-    return `turbo_oj_${oj.toString().toLowerCase().replace(/\s+/g, '_')}`;
+    // Validação de tipo para evitar erros
+    let ojTexto;
+    if (typeof oj === 'string') {
+      ojTexto = oj;
+    } else if (oj && typeof oj === 'object' && oj.nome) {
+      ojTexto = oj.nome;
+    } else {
+      ojTexto = String(oj || '');
+    }
+    
+    return `turbo_oj_${ojTexto.toLowerCase().replace(/\s+/g, '_')}`;
   }
 
   /**

@@ -59,11 +59,16 @@ async function login(page) {
         const value = await element.getAttribute('value');
         const onclick = await element.getAttribute('onclick');
         
-        console.log(`Elemento encontrado - Texto: "${text}", Value: "${value}", Onclick: "${onclick}"`);
+        // Validação de tipos para operações de string
+        const textProcessed = typeof text === 'string' ? text : (text?.toString() || '');
+        const valueProcessed = typeof value === 'string' ? value : (value?.toString() || '');
+        const onclickProcessed = typeof onclick === 'string' ? onclick : (onclick?.toString() || '');
         
-        if ((text && (text.includes('PDPJ') || text.includes('Entrar'))) || 
-            (value && (value.includes('PDPJ') || value.includes('Entrar'))) || 
-            (onclick && (onclick.includes('PDPJ') || onclick.includes('onLoginSSO')))) {
+        console.log(`Elemento encontrado - Texto: "${textProcessed}", Value: "${valueProcessed}", Onclick: "${onclickProcessed}"`);
+        
+        if ((textProcessed && (textProcessed.includes('PDPJ') || textProcessed.includes('Entrar'))) || 
+            (valueProcessed && (valueProcessed.includes('PDPJ') || valueProcessed.includes('Entrar'))) || 
+            (onclickProcessed && (onclickProcessed.includes('PDPJ') || onclickProcessed.includes('onLoginSSO')))) {
           await page.click(selector);
           console.log(`Clicou no botão PDPJ/SSO usando seletor: ${selector}`);
           buttonFound = true;
@@ -88,7 +93,8 @@ async function login(page) {
     
     // Capturar HTML da página (primeiros 2000 caracteres)
     const html = await page.content();
-    console.log(`HTML da página (primeiros 2000 chars): ${html.substring(0, 2000)}`);
+    const htmlProcessed = typeof html === 'string' ? html : (html?.toString() || '');
+    console.log(`HTML da página (primeiros 2000 chars): ${htmlProcessed.substring(0, 2000)}`);
     
     // Listar todos os botões
     const buttons = await page.$$('button');
@@ -137,7 +143,8 @@ async function login(page) {
   console.log('URL atual após clique no PDPJ:', currentUrl);
   
   // Se não houve redirecionamento, pode ser que o formulário apareça na mesma página
-  if (currentUrl === PJE_URL || currentUrl.includes('login.seam')) {
+  const currentUrlProcessed = typeof currentUrl === 'string' ? currentUrl : (currentUrl?.toString() || '');
+  if (currentUrlProcessed === PJE_URL || currentUrlProcessed.includes('login.seam')) {
     console.log('Não houve redirecionamento. Verificando se apareceu formulário de login na mesma página...');
     
     // Aguardar um pouco mais para elementos carregarem

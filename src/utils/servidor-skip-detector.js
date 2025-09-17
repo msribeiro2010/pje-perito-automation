@@ -107,9 +107,11 @@ class ServidorSkipDetector {
         
         if (jaVinculado) {
           ojsVinculados++;
-          console.log(`✅ [SKIP-DETECTOR] OJ ${index + 1}/${ojsNormalizados.length} já vinculado: ${oj.substring(0, 50)}...`);
+          const ojTexto = typeof oj === 'string' ? oj : String(oj);
+          console.log(`✅ [SKIP-DETECTOR] OJ ${index + 1}/${ojsNormalizados.length} já vinculado: ${ojTexto.substring(0, 50)}...`);
         } else {
-          console.log(`❌ [SKIP-DETECTOR] OJ ${index + 1}/${ojsNormalizados.length} NÃO vinculado: ${oj.substring(0, 50)}...`);
+          const ojTexto = typeof oj === 'string' ? oj : String(oj);
+          console.log(`❌ [SKIP-DETECTOR] OJ ${index + 1}/${ojsNormalizados.length} NÃO vinculado: ${ojTexto.substring(0, 50)}...`);
         }
       } catch (error) {
         console.error(`❌ [SKIP-DETECTOR] Erro verificando OJ ${index + 1}: ${error.message}`);

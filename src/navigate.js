@@ -105,10 +105,16 @@ async function navegarViaMenu(page, cpf, logger) {
       const availableElements = await page.evaluate(() => {
         const elements = [];
         document.querySelectorAll('button, a').forEach(el => {
-          if (el.textContent.toLowerCase().includes('menu')) {
+          const textContentProcessed = typeof el.textContent === 'string' 
+            ? el.textContent 
+            : (el.textContent && typeof el.textContent === 'object' && el.textContent.nome) 
+                ? el.textContent.nome 
+                : String(el.textContent || '');
+          
+          if (textContentProcessed.toLowerCase().includes('menu')) {
             elements.push({
               tag: el.tagName,
-              text: el.textContent.trim(),
+              text: textContentProcessed.trim(),
               id: el.id,
               className: el.className,
               title: el.title
@@ -177,10 +183,16 @@ async function navegarViaMenu(page, cpf, logger) {
       const availableElements = await page.evaluate(() => {
         const elements = [];
         document.querySelectorAll('a, button, .menu-item, li').forEach(el => {
-          if (el.textContent && el.textContent.toLowerCase().includes('pessoa')) {
+          const textContentProcessed = typeof el.textContent === 'string' 
+            ? el.textContent 
+            : (el.textContent && typeof el.textContent === 'object' && el.textContent.nome) 
+                ? el.textContent.nome 
+                : String(el.textContent || '');
+          
+          if (textContentProcessed && textContentProcessed.toLowerCase().includes('pessoa')) {
             elements.push({
               tagName: el.tagName,
-              textContent: el.textContent?.trim().substring(0, 50),
+              textContent: textContentProcessed?.trim().substring(0, 50),
               href: el.href,
               title: el.title,
               className: el.className

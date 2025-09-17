@@ -1,5 +1,6 @@
 ===============================================
-    PJE AUTOMATION - PERITOS E SERVIDORES
+    CENTRAL IA - NAPJE SISTEMA DE AUTOMACAO INTELIGENTE
+    Sistema de automação inteligente para vinculação de peritos e servidores no PJE
 ===============================================
 
 🚀 COMO INICIAR O SISTEMA:

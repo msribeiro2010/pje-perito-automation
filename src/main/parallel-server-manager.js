@@ -161,8 +161,13 @@ class ParallelServerManager {
           const instance = await this.createInstance(i);
           
           // Validar instância criada
-          if (!instance || !instance.browser || !instance.context) {
+          if (!instance || !instance.context || !instance.page) {
             throw new Error(`Instância ${i + 1} criada com dados inválidos`);
+          }
+          
+          // Verificar se a página está funcional
+          if (instance.page.isClosed()) {
+            throw new Error(`Página da instância ${i + 1} está fechada`);
           }
           
           this.instances.push(instance);
@@ -287,7 +292,8 @@ class ParallelServerManager {
         totalSuccesses: 0, // Contador de sucessos
         totalErrors: 0, // Contador de erros
         createdAt: timestamp,
-        isValid: true
+        isValid: true,
+        lastActivity: timestamp // Para rastreamento de atividade
       };
       
       console.log(`✅ Instância ${id} criada com sucesso`);
@@ -306,6 +312,37 @@ class ParallelServerManager {
       }
       
       throw new Error(`Falha ao criar instância ${id}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Verifica a saúde de uma instância
+   */
+  async checkInstanceHealth(instance) {
+    try {
+      if (!instance || !instance.context || !instance.page) {
+        return { healthy: false, reason: 'Instância ou componentes inválidos' };
+      }
+      
+      if (instance.page.isClosed()) {
+        return { healthy: false, reason: 'Página está fechada' };
+      }
+      
+      if (instance.context.browser && instance.context.browser.isConnected && !instance.context.browser.isConnected()) {
+        return { healthy: false, reason: 'Browser desconectado' };
+      }
+      
+      // Teste simples de funcionalidade
+      try {
+        await instance.page.evaluate(() => document.title);
+        instance.lastActivity = Date.now();
+        return { healthy: true };
+      } catch (evalError) {
+        return { healthy: false, reason: `Erro ao avaliar página: ${evalError.message}` };
+      }
+      
+    } catch (error) {
+      return { healthy: false, reason: `Erro na verificação: ${error.message}` };
     }
   }
 
@@ -553,6 +590,21 @@ class ParallelServerManager {
         const serverIdentifier = server.nome || server.cpf;
         console.log(`[ParallelServerManager] Instância ${instance.id} processando servidor: ${serverIdentifier}`);
         
+        // Verificar saúde da instância antes do processamento
+        const healthCheck = await this.checkInstanceHealth(instance);
+        if (!healthCheck.healthy) {
+          console.error(`[ParallelServerManager] Instância ${instance.id} não está saudável: ${healthCheck.reason}`);
+          const errorResult = {
+            servidor: server,
+            instancia: instance.id,
+            erro: `Instância não saudável: ${healthCheck.reason}`,
+            timestamp: new Date().toISOString(),
+            tipo: 'instance_health_error'
+          };
+          instance.errors.push(errorResult);
+          continue;
+        }
+        
         instance.busy = true;
         instance.currentServer = server;
         instance.startTime = Date.now();
@@ -662,12 +714,17 @@ class ParallelServerManager {
    */
   async processServerWithInstance(instance, server, config) {
     // Usar automação externa se fornecida (para testes) ou criar nova
-    const automation = config.automationInstance || instance.automation;
+    let automation = config.automationInstance;
     
     if (!automation) {
-      instance.automation = new ServidorAutomationV2();
-      instance.automation.page = instance.page;
-      instance.automation.mainWindow = this.mainWindow;
+      // Criar nova automação se não existir ou se a existente estiver inválida
+      if (!instance.automation || !instance.automation.page) {
+        instance.automation = new ServidorAutomationV2();
+        instance.automation.page = instance.page;
+        instance.automation.mainWindow = this.mainWindow;
+        console.log(`[ParallelServerManager] Nova automação criada para instância ${instance.id}`);
+      }
+      automation = instance.automation;
     }
     
     const startTime = Date.now();
@@ -688,7 +745,12 @@ class ParallelServerManager {
         };
       } else {
         // Usar automação real
-        const realAutomation = instance.automation;
+        const realAutomation = automation;
+        
+        // Validar se a automação tem página válida
+        if (!realAutomation.page || realAutomation.page.isClosed()) {
+          throw new Error('Página da automação está fechada ou inválida');
+        }
         
         // Realizar login se necessário
         await realAutomation.performLogin();
@@ -710,13 +772,18 @@ class ParallelServerManager {
         
         const endTime = Date.now();
         
+        // Validar resultados da automação
+        const results = realAutomation.results || [];
+        const sucessos = results.filter(r => r && r.status === 'Incluído com Sucesso').length;
+        const erros = results.filter(r => r && r.status !== 'Incluído com Sucesso').length;
+        
         return {
           servidor: server,
           instancia: instance.id,
           tempoProcessamento: endTime - startTime,
-          sucessos: realAutomation.results?.filter(r => r.status === 'Incluído com Sucesso').length || 0,
-          erros: realAutomation.results?.filter(r => r.status !== 'Incluído com Sucesso').length || 0,
-          detalhes: realAutomation.results || [],
+          sucessos,
+          erros,
+          detalhes: results,
           timestamp: new Date().toISOString()
         };
       }

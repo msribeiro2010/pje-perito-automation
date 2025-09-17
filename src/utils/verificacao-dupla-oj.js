@@ -201,11 +201,21 @@ class VerificacaoDuplaOJ {
    * @returns {string} OJ normalizado
    */
   _normalizarOJ(oj) {
-    if (!oj || typeof oj !== 'string') {
+    if (!oj) {
       return '';
     }
     
-    let normalizado = oj
+    // Validação de tipo para evitar erros
+    let ojTexto;
+    if (typeof oj === 'string') {
+      ojTexto = oj;
+    } else if (oj && typeof oj === 'object' && oj.nome) {
+      ojTexto = oj.nome;
+    } else {
+      ojTexto = String(oj || '');
+    }
+    
+    let normalizado = ojTexto
       .toLowerCase()
       .trim()
       .replace(/\s+/g, ' '); // Substitui múltiplos espaços por um só
@@ -213,7 +223,7 @@ class VerificacaoDuplaOJ {
     // Para CEJUSCs, preserva a estrutura exata para evitar falsos positivos
     if (normalizado.includes('cejusc')) {
       // Remove apenas espaços extras, mas preserva a estrutura
-      normalizado = oj.trim().replace(/\s+/g, ' ');
+      normalizado = ojTexto.trim().replace(/\s+/g, ' ');
     }
     
     return normalizado;

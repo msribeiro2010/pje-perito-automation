@@ -10,9 +10,14 @@ const { resolverProblemaVarasLimeira, SolucaoLimeiraCompleta, VARAS_LIMEIRA } = 
  * @returns {boolean} - True se for vara de Limeira
  */
 function isVaraLimeira(nomeOJ) {
+    // Validação de tipo para garantir que nomeOJ seja uma string
+    const nomeOJProcessed = typeof nomeOJ === 'string' ? nomeOJ : 
+                           (nomeOJ && typeof nomeOJ === 'object' && nomeOJ.nome) ? nomeOJ.nome : 
+                           String(nomeOJ || '');
+    
     return VARAS_LIMEIRA.some(vara => 
-        nomeOJ.includes('Limeira') && 
-        (nomeOJ.includes('1ª Vara do Trabalho') || nomeOJ.includes('2ª Vara do Trabalho'))
+        nomeOJProcessed.includes('Limeira') && 
+        (nomeOJProcessed.includes('1ª Vara do Trabalho') || nomeOJProcessed.includes('2ª Vara do Trabalho'))
     );
 }
 
@@ -76,13 +81,18 @@ async function expandirOrgaosJulgadores(page, modoRapido = false) {
                     const id = await header.getAttribute('id');
                     console.log(`Header ${i + 1}: ID="${id}", Texto="${text}"`);
                     
+                    // Validação de tipo para garantir que text seja uma string
+                    const textProcessed = typeof text === 'string' ? text : 
+                                         (text && typeof text === 'object' && text.nome) ? text.nome : 
+                                         String(text || '');
+                    
                     // Verifica por diferentes variações de texto para perito e servidor
-                    if (text && (
-                        text.includes('Órgãos Julgadores vinculados ao Perito') ||
-                        text.includes('Órgãos Julgadores vinculados ao Servidor') ||
-                        text.includes('Órgãos Julgadores') ||
-                        text.includes('Localização/Visibilidade') ||
-                        text.includes('Servidor - Localização/Visibilidade')
+                    if (textProcessed && (
+                        textProcessed.includes('Órgãos Julgadores vinculados ao Perito') ||
+                        textProcessed.includes('Órgãos Julgadores vinculados ao Servidor') ||
+                        textProcessed.includes('Órgãos Julgadores') ||
+                        textProcessed.includes('Localização/Visibilidade') ||
+                        textProcessed.includes('Servidor - Localização/Visibilidade')
                     )) {
                         headerOJ = header;
                         headerText = text;
@@ -718,10 +728,15 @@ async function encontrarBotaoAdicionarMelhorado(page, tentativa = 1) {
     try {
         const botaoJS = await page.evaluate(() => {
             const botoes = Array.from(document.querySelectorAll('button'));
-            return botoes.find(btn => 
-                btn.textContent.includes('Adicionar') && 
-                (btn.textContent.includes('Órgão') || btn.textContent.includes('Julgador'))
-            );
+            return botoes.find(btn => {
+                // Validação de tipo para garantir que textContent seja uma string
+                const textContentProcessed = typeof btn.textContent === 'string' ? btn.textContent : 
+                                            (btn.textContent && typeof btn.textContent === 'object' && btn.textContent.nome) ? btn.textContent.nome : 
+                                            String(btn.textContent || '');
+                
+                return textContentProcessed.includes('Adicionar') && 
+                       (textContentProcessed.includes('Órgão') || textContentProcessed.includes('Julgador'));
+            });
         });
         
         if (botaoJS) {
@@ -1267,7 +1282,13 @@ async function prevenirCliqueHeader(page) {
         await page.evaluate(() => {
             const headers = document.querySelectorAll('[id^="mat-expansion-panel-header-"]');
             headers.forEach(header => {
-                if (header.textContent && header.textContent.includes('Órgão')) {
+                const textContentProcessed = typeof header.textContent === 'string' 
+                    ? header.textContent 
+                    : (header.textContent && typeof header.textContent === 'object' && header.textContent.nome) 
+                        ? header.textContent.nome 
+                        : String(header.textContent || '');
+                
+                if (textContentProcessed && textContentProcessed.includes('Órgão')) {
                     header.style.pointerEvents = 'none';
                     console.log('Header temporariamente desabilitado:', header.id);
                 }
@@ -2017,6 +2038,84 @@ async function verificarOJJaCadastrado(page, nomeOJ) {
   }
 }
 
+/**
+ * Tenta clicar no botão VOLTAR quando um OJ já está cadastrado
+ * @param {Page} page - Instância da página do Playwright
+ * @returns {boolean} - true se conseguiu clicar, false caso contrário
+ */
+async function clicarBotaoVoltar(page) {
+  try {
+    console.log('🔄 Procurando botão VOLTAR...');
+    
+    // Lista de seletores possíveis para o botão VOLTAR
+    const seletoresVoltar = [
+      'button:has-text("Voltar")',
+      'button:has-text("voltar")',
+      'button:has-text("VOLTAR")',
+      '.btn:has-text("Voltar")',
+      '.btn:has-text("voltar")',
+      '.btn:has-text("VOLTAR")',
+      'mat-dialog-container button:has-text("Voltar")',
+      'mat-dialog-container button:has-text("voltar")',
+      'mat-dialog-container button:has-text("VOLTAR")',
+      '[role="dialog"] button:has-text("Voltar")',
+      '[role="dialog"] button:has-text("voltar")',
+      '[role="dialog"] button:has-text("VOLTAR")',
+      'button:has-text("Cancelar")',
+      'button:has-text("cancelar")',
+      'button:has-text("CANCELAR")',
+      'mat-dialog-container button:has-text("Cancelar")',
+      'mat-dialog-container button:has-text("cancelar")',
+      'mat-dialog-container button:has-text("CANCELAR")',
+      'button:has-text("Fechar")',
+      'button:has-text("fechar")',
+      'button:has-text("FECHAR")',
+      'mat-dialog-container button:has-text("Fechar")',
+      'mat-dialog-container button:has-text("fechar")',
+      'mat-dialog-container button:has-text("FECHAR")',
+      // Seletores genéricos para botões de modal
+      '.mat-dialog-actions button:first-child',
+      'mat-dialog-actions button:first-child',
+      '[role="dialog"] .mat-dialog-actions button:first-child'
+    ];
+    
+    // Tentar cada seletor
+    for (const seletor of seletoresVoltar) {
+      try {
+        console.log(`🔍 Testando seletor: ${seletor}`);
+        
+        // Verificar se o elemento existe e está visível
+        const elemento = page.locator(seletor).first();
+        const isVisible = await elemento.isVisible({ timeout: 1000 }).catch(() => false);
+        
+        if (isVisible) {
+          console.log(`✓ Elemento encontrado: ${seletor}`);
+          
+          // Tentar clicar
+          await elemento.click({ timeout: 3000 });
+          console.log(`✓ Clique realizado com sucesso no botão VOLTAR`);
+          
+          // Aguardar um pouco para a ação ser processada
+          await page.waitForTimeout(1000);
+          
+          return true;
+        }
+      } catch (error) {
+        console.log(`✗ Falhou com seletor ${seletor}: ${error.message}`);
+        continue;
+      }
+    }
+    
+    // Se chegou até aqui, não encontrou nenhum botão
+    console.log('⚠️ Nenhum botão VOLTAR encontrado');
+    return false;
+    
+  } catch (error) {
+    console.log(`❌ Erro ao tentar clicar no botão VOLTAR: ${error.message}`);
+    return false;
+  }
+}
+
 // Função melhorada para vincular OJ usando o fluxo determinístico sugerido pelo usuário
 async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiência', visibilidade = 'Público', modoRapido = false) {
   const tipoModo = modoRapido ? '⚡ RÁPIDO' : '🔄 NORMAL';
@@ -2049,11 +2148,22 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiên
       console.log(`   📄 Encontrado como: "${verificacao.ojEncontrado}"`);
       console.log(`   🔍 Tipo de match: ${verificacao.tipoMatch}`);
       
+      // Tentar clicar no botão VOLTAR para continuar com próximo OJ
+      console.log(`${tipoModo} 🔄 Tentando clicar no botão VOLTAR para continuar...`);
+      const voltarClicado = await clicarBotaoVoltar(page);
+      
+      if (voltarClicado) {
+        console.log(`${tipoModo} ✓ Botão VOLTAR clicado com sucesso`);
+      } else {
+        console.log(`${tipoModo} ⚠️ Não foi possível clicar no botão VOLTAR`);
+      }
+      
       const error = new Error(`OJ "${nomeOJ}" já está cadastrado como "${verificacao.ojEncontrado}"`);
       error.code = 'OJ_JA_CADASTRADO';
       error.ojEncontrado = verificacao.ojEncontrado;
       error.tipoMatch = verificacao.tipoMatch;
       error.ojsEncontrados = verificacao.ojsEncontrados;
+      error.voltarClicado = voltarClicado;
       throw error;
     }
     

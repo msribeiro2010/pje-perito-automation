@@ -305,17 +305,23 @@ class SeletorManager {
       });
       
       // Verificar se é realmente o campo de órgão julgador
+      const placeholderProcessed = typeof contexto.placeholder === 'string' ? contexto.placeholder : (contexto.placeholder?.nome || String(contexto.placeholder || ''));
+      const nameProcessed = typeof contexto.name === 'string' ? contexto.name : (contexto.name?.nome || String(contexto.name || ''));
+      const idProcessed = typeof contexto.id === 'string' ? contexto.id : (contexto.id?.nome || String(contexto.id || ''));
+      const parentTextProcessed = typeof contexto.parentText === 'string' ? contexto.parentText : (contexto.parentText?.nome || String(contexto.parentText || ''));
+      const seletorProcessed = typeof seletor === 'string' ? seletor : (seletor?.nome || String(seletor || ''));
+      
       const isOrgaoJulgador = 
-        contexto.placeholder.includes('órgão') ||
-        contexto.placeholder.includes('julgador') ||
-        contexto.name.includes('orgao') ||
-        contexto.name.includes('julgador') ||
-        contexto.id.includes('orgao') ||
-        contexto.id.includes('julgador') ||
-        contexto.parentText.includes('órgão') ||
-        contexto.parentText.includes('julgador') ||
-        seletor.toLowerCase().includes('orgao') ||
-        seletor.toLowerCase().includes('órgão');
+        placeholderProcessed.includes('órgão') ||
+        placeholderProcessed.includes('julgador') ||
+        nameProcessed.includes('orgao') ||
+        nameProcessed.includes('julgador') ||
+        idProcessed.includes('orgao') ||
+        idProcessed.includes('julgador') ||
+        parentTextProcessed.includes('órgão') ||
+        parentTextProcessed.includes('julgador') ||
+        seletorProcessed.toLowerCase().includes('orgao') ||
+        seletorProcessed.toLowerCase().includes('órgão');
       
       console.log(`[SeletorManager] Validação contexto: ${isOrgaoJulgador}`, contexto);
       return isOrgaoJulgador;
@@ -376,16 +382,20 @@ class SeletorManager {
    * @param {number} timeout - Timeout para a operação
    * @returns {Promise<boolean>} True se o campo foi habilitado, false caso contrário
    */
-  static async aguardarMatSelectHabilitado(page, timeout = 10000) {
+  static async aguardarMatSelectHabilitado(page, timeout = 20000) {
     try {
       console.log('[SeletorManager] Aguardando mat-select ser habilitado...');
       
+      // Aguardar um pouco para a página carregar completamente
+      await page.waitForTimeout(2000);
+      
       // Primeiro tentar com name="idOrgaoJulgadorSelecionado"
       try {
+        console.log('[SeletorManager] Tentativa 1: Aguardando mat-select com name...');
         await page.waitForFunction(() => {
           const el = document.querySelector('mat-select[name="idOrgaoJulgadorSelecionado"]');
           return el && el.getAttribute('aria-disabled') === 'false';
-        }, { timeout });
+        }, { timeout: timeout / 3 });
         
         console.log('[SeletorManager] ✓ mat-select habilitado (usando name)');
         return true;
@@ -394,13 +404,61 @@ class SeletorManager {
       }
       
       // Fallback para placeholder="Órgão Julgador"
-      await page.waitForFunction(() => {
-        const el = document.querySelector('mat-select[placeholder="Órgão Julgador"]');
-        return el && el.getAttribute('aria-disabled') === 'false';
-      }, { timeout });
+      try {
+        console.log('[SeletorManager] Tentativa 2: Aguardando mat-select com placeholder...');
+        await page.waitForFunction(() => {
+          const el = document.querySelector('mat-select[placeholder="Órgão Julgador"]');
+          return el && el.getAttribute('aria-disabled') === 'false';
+        }, { timeout: timeout / 3 });
+        
+        console.log('[SeletorManager] ✓ mat-select habilitado (usando placeholder)');
+        return true;
+      } catch (error) {
+        console.log('[SeletorManager] Tentativa com placeholder falhou, tentando estratégia genérica...');
+      }
       
-      console.log('[SeletorManager] ✓ mat-select habilitado (usando placeholder)');
-      return true;
+      // Fallback final: qualquer mat-select habilitado
+      try {
+        console.log('[SeletorManager] Tentativa 3: Aguardando qualquer mat-select habilitado...');
+        await page.waitForFunction(() => {
+          const elements = document.querySelectorAll('mat-select');
+          for (const el of elements) {
+            if (el.getAttribute('aria-disabled') === 'false') {
+              return true;
+            }
+          }
+          return false;
+        }, { timeout: timeout / 3 });
+        
+        console.log('[SeletorManager] ✓ mat-select genérico habilitado');
+        return true;
+      } catch (error) {
+        console.log('[SeletorManager] Todas as tentativas falharam, verificando se existe algum mat-select...');
+        
+        // Debug: verificar se existe algum mat-select na página
+        try {
+          const matSelects = await page.$$eval('mat-select', els => 
+            els.map(el => ({
+              placeholder: el.getAttribute('placeholder'),
+              name: el.getAttribute('name'),
+              ariaDisabled: el.getAttribute('aria-disabled'),
+              visible: el.offsetParent !== null
+            }))
+          );
+          
+          console.log('[SeletorManager] Mat-selects encontrados na página:', matSelects);
+          
+          if (matSelects.length > 0) {
+            console.log('[SeletorManager] ⚠️ Mat-selects existem mas não estão habilitados, continuando mesmo assim...');
+            return true; // Continuar mesmo se não estiver habilitado
+          }
+        } catch (debugError) {
+          console.log('[SeletorManager] Erro no debug de mat-selects:', debugError.message);
+        }
+      }
+      
+      console.log('[SeletorManager] ✗ Nenhum mat-select encontrado ou habilitado');
+      return false;
     } catch (error) {
       console.log(`[SeletorManager] ✗ Erro ao aguardar mat-select ser habilitado: ${error.message}`);
       return false;
@@ -408,7 +466,7 @@ class SeletorManager {
   }
 
   /**
-   * Clica no campo "Órgão Julgador" usando locator com has-text
+   * Clica no campo "Órgão Julgador" usando múltiplas estratégias robustas
    * @param {Object} page - Instância da página Playwright
    * @param {number} timeout - Timeout para a operação
    * @returns {Promise<boolean>} True se conseguiu clicar, false caso contrário
@@ -417,15 +475,25 @@ class SeletorManager {
     try {
       console.log('[SeletorManager] Tentando clicar no campo "Órgão Julgador"...');
       
+      // Aguardar que a página carregue completamente
+      await page.waitForTimeout(3000);
+      
       // Primeiro aguardar que o mat-select seja habilitado
       const habilitado = await this.aguardarMatSelectHabilitado(page, timeout);
       if (!habilitado) {
         console.log('[SeletorManager] ⚠️ mat-select não foi habilitado, tentando clicar mesmo assim...');
       }
       
-      // Tentar clicar no mat-select usando name primeiro
+      // Aguardar mais um pouco após verificar se está habilitado
+      await page.waitForTimeout(1000);
+      
+      // Estratégia 1: Tentar clicar no mat-select usando name primeiro
       try {
+        console.log('[SeletorManager] Estratégia 1: Clicando por name...');
         const matSelectName = page.locator('mat-select[name="idOrgaoJulgadorSelecionado"]');
+        
+        // Aguardar o elemento estar presente
+        await matSelectName.waitFor({ timeout: 8000 });
         
         // Verificar se existe e está hidden
         const count = await matSelectName.count();
@@ -450,12 +518,16 @@ class SeletorManager {
           return true;
         }
       } catch (error) {
-        console.log('[SeletorManager] Tentativa com name falhou, tentando com placeholder...');
+        console.log('[SeletorManager] Estratégia 1 falhou, tentando com placeholder...', error.message);
       }
       
-      // Fallback para placeholder
+      // Estratégia 2: Fallback para placeholder
       try {
+        console.log('[SeletorManager] Estratégia 2: Clicando por placeholder...');
         const matSelectPlaceholder = page.locator('mat-select[placeholder="Órgão Julgador"]');
+        
+        // Aguardar o elemento estar presente
+        await matSelectPlaceholder.waitFor({ timeout: 8000 });
         
         const count = await matSelectPlaceholder.count();
         if (count > 0) {
@@ -479,15 +551,53 @@ class SeletorManager {
           return true;
         }
       } catch (error) {
-        console.log('[SeletorManager] Tentativa com placeholder falhou, tentando com ID genérico...');
+        console.log('[SeletorManager] Estratégia 2 falhou, tentando com contexto modal...', error.message);
       }
       
-      // Fallback para qualquer mat-select na seção de órgãos julgadores
+      // Estratégia 3: Fallback para mat-select em contexto modal
       try {
-        // Primeiro tentar encontrar qualquer mat-select visível
-        const anyMatSelect = page.locator('mat-select').first();
-        const count = await anyMatSelect.count();
+        console.log('[SeletorManager] Estratégia 3: Clicando por contexto modal...');
+        const matSelectModal = page.locator('mat-dialog-container mat-select');
         
+        // Aguardar o elemento estar presente
+        await matSelectModal.waitFor({ timeout: 8000 });
+        
+        const count = await matSelectModal.count();
+        if (count > 0) {
+          console.log('[SeletorManager] Encontrado mat-select em modal, tentando clicar...');
+          
+          const isVisible = await matSelectModal.isVisible();
+          console.log(`[SeletorManager] mat-select modal visível: ${isVisible}`);
+          
+          if (!isVisible) {
+            console.log('[SeletorManager] Usando force click no mat-select modal...');
+            try {
+              await matSelectModal.scrollIntoViewIfNeeded();
+              await page.waitForTimeout(500);
+            } catch (scrollError) {
+              console.log('[SeletorManager] Scroll falhou, force click direto...');
+            }
+            await matSelectModal.click({ force: true });
+          } else {
+            await matSelectModal.click();
+          }
+          
+          console.log('[SeletorManager] ✓ Clique no mat-select modal realizado com sucesso');
+          return true;
+        }
+      } catch (error) {
+        console.log('[SeletorManager] Estratégia 3 falhou, tentando genérico...', error.message);
+      }
+      
+      // Estratégia 4: Fallback para qualquer mat-select
+      try {
+        console.log('[SeletorManager] Estratégia 4: Clicando por seletor genérico...');
+        const anyMatSelect = page.locator('mat-select').first();
+        
+        // Aguardar o elemento estar presente
+        await anyMatSelect.waitFor({ timeout: 8000 });
+        
+        const count = await anyMatSelect.count();
         if (count > 0) {
           console.log('[SeletorManager] Encontrado mat-select genérico, tentando clicar...');
           
@@ -511,18 +621,49 @@ class SeletorManager {
           return true;
         }
       } catch (error) {
-        console.log('[SeletorManager] Tentativa genérica falhou, tentando com label...');
+        console.log('[SeletorManager] Estratégia 4 falhou, tentando com label...', error.message);
       }
       
-      // Fallback final para label
+      // Estratégia 5: Fallback para label
       try {
+        console.log('[SeletorManager] Estratégia 5: Clicando por label...');
         const labelElement = page.locator('label:has-text("Órgão Julgador")');
-        await labelElement.waitFor({ state: 'visible', timeout: 2000 });
+        await labelElement.waitFor({ state: 'visible', timeout: 8000 });
         await labelElement.click();
         console.log('[SeletorManager] ✓ Clique no campo "Órgão Julgador" realizado com sucesso (usando label)');
         return true;
       } catch (error) {
-        console.log('[SeletorManager] Tentativa com label também falhou...');
+        console.log('[SeletorManager] Estratégia 5 falhou, tentando JavaScript...', error.message);
+      }
+      
+      // Estratégia 6: Forçar clique com JavaScript
+      try {
+        console.log('[SeletorManager] Estratégia 6: Forçando clique com JavaScript...');
+        const clickResult = await page.evaluate(() => {
+          const selectors = [
+            'mat-select[name="idOrgaoJulgadorSelecionado"]',
+            'mat-select[placeholder="Órgão Julgador"]',
+            'mat-dialog-container mat-select',
+            'mat-select'
+          ];
+          
+          for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+              element.click();
+              console.log(`Clique forçado em: ${selector}`);
+              return true;
+            }
+          }
+          return false;
+        });
+        
+        if (clickResult) {
+          console.log('[SeletorManager] ✓ Clique forçado realizado com JavaScript');
+          return true;
+        }
+      } catch (error) {
+        console.log('[SeletorManager] Estratégia 6 falhou:', error.message);
       }
       
       console.log('[SeletorManager] ❌ Todas as tentativas de clique falharam');
@@ -541,7 +682,22 @@ class SeletorManager {
    */
   static async digitarSelecionarOJ(page, nomeOJ) {
     try {
-      console.log(`[SeletorManager] Tentando digitar/selecionar OJ: ${nomeOJ}`);
+      // Validação de tipos
+      let nomeProcessado;
+      if (typeof nomeOJ === 'string') {
+        nomeProcessado = nomeOJ;
+      } else if (nomeOJ && typeof nomeOJ === 'object' && nomeOJ.nome) {
+        nomeProcessado = String(nomeOJ.nome);
+      } else {
+        nomeProcessado = String(nomeOJ || '');
+      }
+      
+      if (!nomeProcessado) {
+        console.log('[SeletorManager] Nome do OJ vazio ou inválido');
+        return false;
+      }
+      
+      console.log(`[SeletorManager] Tentando digitar/selecionar OJ: ${nomeProcessado}`);
       
       // Aguardar um pouco para o campo estar pronto
       await page.waitForTimeout(500);
@@ -549,7 +705,7 @@ class SeletorManager {
       // Estratégia 1: Tentar digitar usando keyboard.type (para autocomplete)
       try {
         console.log('[SeletorManager] Estratégia 1: Digitando com keyboard.type...');
-        await page.keyboard.type(nomeOJ, { delay: 50 });
+        await page.keyboard.type(nomeProcessado, { delay: 50 });
         
         // Aguardar um pouco para as opções aparecerem
         await page.waitForTimeout(800);
@@ -580,7 +736,7 @@ class SeletorManager {
             
             if (count > 0) {
               console.log(`[SeletorManager] Input encontrado: ${selector}`);
-              await input.fill(nomeOJ);
+              await input.fill(nomeProcessado);
               
               // Aguardar um pouco para as opções aparecerem
               await page.waitForTimeout(800);
@@ -606,7 +762,7 @@ class SeletorManager {
         await page.waitForTimeout(300);
         
         // Digitar caractere por caractere
-        for (const char of nomeOJ) {
+        for (const char of nomeProcessado) {
           await page.keyboard.type(char);
           await page.waitForTimeout(100);
         }
