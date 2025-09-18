@@ -1,13 +1,13 @@
-// Configuração do banco de dados
-// Centraliza todas as configurações de conexão
+// Configuração do banco de dados - EXEMPLO
+// Copie para database.config.js e configure com suas credenciais
 
 module.exports = {
   // Configuração principal do banco
   database: {
-    host: 'pje-db-bugfix-a1',
+    host: 'seu-host-aqui',
     port: 5432,
-    user: 'msribeiro',
-    password: 'WR4*N*d008Eb',
+    user: 'seu-usuario',
+    password: 'sua-senha',
     max: 10, // Máximo de conexões no pool
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
@@ -15,11 +15,11 @@ module.exports = {
   
   // Configuração para banco de 1º grau
   database1Grau: {
-    host: 'pje-db-bugfix-a1',
+    host: 'seu-host-aqui',
     port: 5432,
-    database: 'pje_1grau_bugfix',
-    user: 'msribeiro',
-    password: 'WR4*N*d008Eb',
+    database: 'nome-banco-1grau',
+    user: 'seu-usuario',
+    password: 'sua-senha',
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
@@ -27,11 +27,11 @@ module.exports = {
   
   // Configuração para banco de 2º grau
   database2Grau: {
-    host: 'pje-db-bugfix-a2',
+    host: 'seu-host-aqui',
     port: 5432,
-    database: 'pje_2grau_bugfix',
-    user: 'msribeiro',
-    password: 'WR4*N*d008Eb',
+    database: 'nome-banco-2grau',
+    user: 'seu-usuario',
+    password: 'sua-senha',
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
@@ -51,4 +51,3 @@ module.exports = {
     skipAlreadyProcessed: true,
   }
 };
-

@@ -205,19 +205,53 @@ auth.json
 config.json
 private.json
 
-# User data files that might contain sensitive info
+# User data files that might contain sensitive info (CRITICAL)
 data/perito.json
 data/servidores.json
 data/*.json
+data/*.csv
+data/*.txt
 !data/example.json
+!data/readme.md
 
-# Debug and test files
+# SENSITIVE FILES - NEVER COMMIT
+.env
+.env.*
+database.config.js
+database-credentials.json
+*credentials*
+*password*
+*secret*
+
+# Debug and test files - DEVELOPMENT ONLY
 debug-*.html
 test-*.html
 *-debug.html
 *-test.html
 *.debug.js
 *.test.js.tmp
+
+# Development and test scripts (keep out of production)
+test-*.js
+teste-*.js
+debug-*.js
+solucao-*.js
+exemplo-*.js
+diagnostico-*.js
+correcao-*.js
+integracao-*.js
+funcoes-*.js
+analise-*.js
+codigo-*.js
+fix-*.js
+
+# User-specific configuration files
+config-busca-*.json
+*-sao-jose*.json
+*-limeira*.json
+*-botucatu*.json
+CORRECAO-*.json
+SOLUCAO-*.json
 
 # Electron app data
 userData/
