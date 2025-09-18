@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Consultas de Configuração
   buscarOrgaosJulgadores: (grau) => ipcRenderer.invoke('buscar-orgaos-julgadores', grau),
   buscarServidores: (grau, filtroNome, filtroPerfil) => ipcRenderer.invoke('buscar-servidores', grau, filtroNome, filtroPerfil),
+  buscarServidorPorCPF: (cpf) => ipcRenderer.invoke('buscarServidorPorCPF', cpf),
 
   // Consulta de OJs do Banco de Dados PJE
   buscarOJs1Grau: (filtro, limite) => ipcRenderer.invoke('buscar-ojs-1grau', filtro, limite),

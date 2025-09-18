@@ -29,6 +29,7 @@ const LocationErrorRecovery = require('./utils/location-error-recovery');
 const LocationEfficiencyReporter = require('./utils/location-efficiency-reporter');
 const { loadConfig } = require('./util.js');
 const { Logger } = require('./utils/index.js');
+const DatabaseConnection = require('./utils/database-connection');
 // const ServidorAutomation = require('./main/servidor-automation'); // Removido V1
 const ServidorAutomationV2 = require('./main/servidor-automation-v2');
 const { resolverProblemaVarasLimeira } = require('../solucao-limeira-completa.js');
@@ -1072,17 +1073,10 @@ ipcMain.handle('buscar-servidores', async (_, grau, filtroNome, filtroPerfil) =>
   try {
     console.log(`🔍 Buscando servidores ${grau}º grau - Nome: "${filtroNome}", Perfil: "${filtroPerfil}"`);
     
-    // Funcionalidade simplificada - retornar dados mockados
-    const servidores = [
-      { 
-        id: 1, 
-        nome: `Servidor ${grau}º Grau - Exemplo`, 
-        grau: grau,
-        perfil: filtroPerfil || 'Perito'
-      }
-    ];
+    // Busca real no banco de dados
+    const servidores = await servidorDatabaseService.buscarServidores(grau, filtroNome, filtroPerfil);
     
-    console.log(`✅ Encontrados ${servidores.length} servidores ${grau}º grau (modo simplificado)`);
+    console.log(`✅ Encontrados ${servidores.length} servidores ${grau}º grau`);
     
     return {
       success: true,
@@ -1103,12 +1097,42 @@ ipcMain.handle('buscar-servidores', async (_, grau, filtroNome, filtroPerfil) =>
   }
 });
 
+/**
+ * Buscar servidor específico por CPF
+ */
+ipcMain.handle('buscarServidorPorCPF', async (_, cpf) => {
+  try {
+    console.log(`🔍 Buscando servidor por CPF: ${cpf}`);
+    
+    const dbConnection = new DatabaseConnection();
+    await dbConnection.initialize();
+    
+    const servidor = await dbConnection.buscarServidorPorCPF(cpf);
+    
+    console.log(`✅ Busca concluída para CPF ${cpf}:`, servidor ? 'Encontrado' : 'Não encontrado');
+    
+    return {
+      success: true,
+      servidor: servidor
+    };
+    
+  } catch (error) {
+    console.error(`❌ Erro ao buscar servidor por CPF ${cpf}:`, error);
+    return {
+      success: false,
+      error: error.message || 'Erro desconhecido'
+    };
+  }
+});
+
 // ===== HANDLERS PARA CONSULTA DE OJs DO BANCO =====
 
 const OJDatabaseService = require('./utils/oj-database-service');
 let ojDatabaseService = new OJDatabaseService();
 const ProcessDatabaseService = require('./utils/process-database-service');
 let processDatabaseService = new ProcessDatabaseService();
+const ServidorDatabaseService = require('./utils/servidor-database-service');
+let servidorDatabaseService = new ServidorDatabaseService();
 
 /**
  * Buscar OJs do 1º grau diretamente do banco de dados

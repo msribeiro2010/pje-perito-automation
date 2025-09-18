@@ -85,5 +85,209 @@
       "confianca": 0.6,
       "status": "monitorado"
     }
+  ],
+  "4ª Vara do Trabalho de Bauru": [
+    {
+      "timestamp": "2025-09-17T16:27:22.253Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "4ª Vara do Trabalho de Jundiaí": [
+    {
+      "timestamp": "2025-09-17T16:27:39.470Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "4ª Vara do Trabalho de Ribeirão Preto": [
+    {
+      "timestamp": "2025-09-17T16:27:39.484Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "4ª Vara do Trabalho de Sorocaba": [
+    {
+      "timestamp": "2025-09-17T16:27:39.496Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "4ª Vara do Trabalho de São José do Rio Preto": [
+    {
+      "timestamp": "2025-09-17T16:27:39.509Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "5ª Vara do Trabalho de Jundiaí": [
+    {
+      "timestamp": "2025-09-17T16:27:56.799Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "5ª Vara do Trabalho de Ribeirão Preto": [
+    {
+      "timestamp": "2025-09-17T16:27:56.811Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "6ª Vara do Trabalho de Ribeirão Preto": [
+    {
+      "timestamp": "2025-09-17T16:28:13.516Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Amparo": [
+    {
+      "timestamp": "2025-09-17T16:37:32.701Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Araras": [
+    {
+      "timestamp": "2025-09-17T16:37:39.974Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Avaré": [
+    {
+      "timestamp": "2025-09-17T16:37:47.900Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-17T17:21:44.705Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-17T17:27:08.712Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-17T17:29:44.931Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Cajuru": [
+    {
+      "timestamp": "2025-09-17T16:38:04.820Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Garça": [
+    {
+      "timestamp": "2025-09-17T16:38:53.882Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-17T17:21:44.718Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-17T17:27:08.729Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    },
+    {
+      "timestamp": "2025-09-17T17:29:44.953Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Itararé": [
+    {
+      "timestamp": "2025-09-17T16:39:28.015Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Leme": [
+    {
+      "timestamp": "2025-09-17T16:40:19.446Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Orlândia": [
+    {
+      "timestamp": "2025-09-17T16:40:54.254Z",
+      "categoria": "hortolandia",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Vara do Trabalho de Tanabi": [
+    {
+      "timestamp": "2025-09-17T16:42:21.173Z",
+      "categoria": "sumare",
+      "problema": "potencial_problema_similar",
+      "confianca": 0.9,
+      "status": "monitorado"
+    }
+  ],
+  "Divisão de Execução de Limeira": [
+    {
+      "timestamp": "2025-09-17T16:47:00.989Z",
+      "categoria": "padrao_suspeito",
+      "problema": "potencial_problema_baseado_em_padrao",
+      "confianca": 0.6,
+      "status": "monitorado"
+    }
   ]
 }

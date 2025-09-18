@@ -61,8 +61,10 @@ class PeritoApp {
     this.updateV2StatusIndicator();
 
     // Garantir abas padrão visíveis ao iniciar
-    this.switchTab('peritos');
-    this.switchConfigTab('pje');
+    this.switchTab('inicio');
+    this.updateDashboardStats(); // Atualizar estatísticas do dashboard
+    this.switchConfigTab('sistema');
+    this.initializeConfigurationEnhancements(); // Melhorias na configuração
 
     // Toggle "Mostrar todas as seções"
     const toggleShowAll = document.getElementById('toggleShowAll');
@@ -171,6 +173,9 @@ class PeritoApp {
       });
     });
 
+    // Event listener para o botão de buscar OJs da nova aba Busca OJs
+    this.setupBuscaOJsListeners();
+
     // Perito management
     document.getElementById('add-perito')?.addEventListener('click', () => {
       this.openPeritoModal();
@@ -205,6 +210,10 @@ class PeritoApp {
 
     document.getElementById('bulk-delete-servidores')?.addEventListener('click', () => {
       this.bulkDeleteServidores();
+    });
+
+    document.getElementById('verificar-banco')?.addEventListener('click', () => {
+      this.verificarBancoDados();
     });
 
     // Event listeners para processamento paralelo
@@ -310,6 +319,22 @@ class PeritoApp {
       this.exportarDados('servidores', this.servidoresData || []);
     });
 
+    // Event listeners para comparação de OJs
+    document.getElementById('compararOJs')?.addEventListener('click', () => {
+      this.compararOJs();
+    });
+
+    document.getElementById('limparComparacao')?.addEventListener('click', () => {
+      this.limparComparacao();
+    });
+
+    document.getElementById('gerarAutomacaoFaltantes')?.addEventListener('click', () => {
+      this.gerarAutomacaoFaltantes();
+    });
+
+    // Preview de servidor ao digitar CPF ou Nome
+    this.setupServidorPreview();
+
     // Event listeners para filtros de servidores
     document.querySelectorAll('input[name="grauServidor"]').forEach(radio => {
       radio.addEventListener('change', () => {
@@ -365,6 +390,23 @@ class PeritoApp {
       this.togglePauseServidorAutomation();
     });
 
+    // Event listeners para abas do modal de verificação
+    document.querySelectorAll('.verification-tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        const tabName = e.target.dataset.verificationTab;
+        this.ativarAbaVerificacao(tabName);
+      });
+    });
+
+    // Event listeners para botões do modal de verificação
+    document.getElementById('corrigir-discrepancias')?.addEventListener('click', () => {
+      this.corrigirTodasDiscrepancias();
+    });
+
+    document.getElementById('prosseguir-automacao')?.addEventListener('click', () => {
+      this.prosseguirComAutomacao();
+    });
+
     // Close modals when clicking outside
     window.addEventListener('click', (e) => {
       const peritoModal = document.getElementById('perito-modal');
@@ -414,6 +456,7 @@ class PeritoApp {
     try {
       this.peritos = await window.electronAPI.loadData('perito.json') || [];
       this.renderPeritosTable();
+      this.updateDashboardStats(); // Atualizar estatísticas
     } catch (error) {
       console.error('Erro ao carregar peritos:', error);
       this.showNotification('Erro ao carregar peritos', 'error');
@@ -946,6 +989,7 @@ class PeritoApp {
     try {
       this.servidores = await window.electronAPI.loadData('servidores.json') || [];
       this.renderServidoresTable();
+      this.updateDashboardStats(); // Atualizar estatísticas
     } catch (error) {
       console.error('Erro ao carregar servidores:', error);
       this.showNotification('Erro ao carregar servidores', 'error');
@@ -1135,6 +1179,358 @@ class PeritoApp {
       
       this.showNotification(`${count} servidor${count > 1 ? 'es excluídos' : ' excluído'} com sucesso!`, 'success');
     }
+  }
+
+  async verificarBancoDados() {
+    try {
+      // Verificar se há servidores carregados
+      if (!this.servidores || this.servidores.length === 0) {
+        this.showNotification('Nenhum servidor carregado para verificação', 'warning');
+        return;
+      }
+
+      // Verificar se as credenciais do banco estão configuradas
+      const dbConfig = await window.electronAPI.loadDatabaseCredentials();
+      if (!dbConfig.success || !dbConfig.credentials || !dbConfig.credentials.user || !dbConfig.credentials.password) {
+        this.showNotification('Configure as credenciais do banco de dados primeiro', 'error');
+        return;
+      }
+
+      // Abrir modal de verificação
+      const modal = document.getElementById('verificacao-banco-modal');
+      modal.style.display = 'block';
+
+      // Mostrar loading
+      this.showVerificationLoading(true);
+
+      // Executar verificação
+      const resultado = await this.executarVerificacaoBanco();
+
+      // Mostrar resultados
+      this.showVerificationLoading(false);
+      this.exibirResultadosVerificacao(resultado);
+
+    } catch (error) {
+      console.error('Erro na verificação do banco:', error);
+      this.showNotification('Erro ao verificar banco de dados', 'error');
+      this.showVerificationLoading(false);
+    }
+  }
+
+  async executarVerificacaoBanco() {
+    console.log('🔍 Iniciando verificação do banco de dados...');
+    console.log(`📊 Total de servidores para verificar: ${this.servidores.length}`);
+    
+    const resultado = {
+      total: this.servidores.length,
+      compatíveis: [],
+      discrepâncias: [],
+      nãoEncontrados: []
+    };
+
+    for (let i = 0; i < this.servidores.length; i++) {
+      const servidor = this.servidores[i];
+      console.log(`🔄 Verificando servidor ${i + 1}/${this.servidores.length}: ${servidor.nome} (CPF: ${servidor.cpf})`);
+      
+      try {
+        // Buscar servidor no banco por CPF
+        console.log(`🔍 Buscando servidor no banco: ${servidor.cpf}`);
+        const servidorBanco = await this.buscarServidorNoBanco(servidor.cpf);
+        console.log(`📋 Resultado da busca:`, servidorBanco ? 'Encontrado' : 'Não encontrado');
+        
+        if (!servidorBanco) {
+          console.log(`❌ Servidor não encontrado no banco: ${servidor.nome}`);
+          resultado.nãoEncontrados.push({
+            nome: servidor.nome,
+            cpf: servidor.cpf,
+            perfil: servidor.perfil,
+            orgaosJulgadores: servidor.orgaosJulgadores
+          });
+        } else {
+          // Comparar dados
+          console.log(`🔍 Comparando dados do servidor: ${servidor.nome}`);
+          const discrepancias = this.compararDadosServidor(servidor, servidorBanco);
+          console.log(`📊 Discrepâncias encontradas: ${discrepancias.length}`);
+          
+          if (discrepancias.length > 0) {
+            console.log(`⚠️ Discrepâncias encontradas para ${servidor.nome}:`, discrepancias);
+            resultado.discrepâncias.push({
+              servidor: servidor,
+              servidorBanco: servidorBanco,
+              discrepancias: discrepancias
+            });
+          } else {
+            console.log(`✅ Servidor compatível: ${servidor.nome}`);
+            resultado.compatíveis.push({
+              nome: servidor.nome,
+              cpf: servidor.cpf,
+              perfil: servidor.perfil
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Erro ao verificar servidor ${servidor.nome}:`, error);
+        resultado.nãoEncontrados.push({
+          nome: servidor.nome,
+          cpf: servidor.cpf,
+          perfil: servidor.perfil,
+          orgaosJulgadores: servidor.orgaosJulgadores,
+          erro: error.message
+        });
+      }
+    }
+
+    console.log('✅ Verificação concluída!');
+    console.log(`📊 Resumo: ${resultado.compatíveis.length} compatíveis, ${resultado.discrepâncias.length} discrepâncias, ${resultado.nãoEncontrados.length} não encontrados`);
+    return resultado;
+  }
+
+  async buscarServidorNoBanco(cpf) {
+    try {
+      const result = await window.electronAPI.buscarServidorPorCPF(cpf);
+      
+      // Verificar se a busca foi bem-sucedida e se o servidor existe
+      if (result.success && result.servidor && result.servidor.existe) {
+        return result.servidor.servidor;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Erro ao buscar servidor no banco:', error);
+      return null;
+    }
+  }
+
+  compararDadosServidor(servidorLocal, servidorBanco) {
+    const discrepancias = [];
+
+    // Comparar CPF (principal verificação)
+    const cpfLocal = servidorLocal.cpf.replace(/\D/g, '');
+    const cpfBanco = servidorBanco.cpf.replace(/\D/g, '');
+    
+    if (cpfLocal !== cpfBanco) {
+      discrepancias.push({
+        campo: 'cpf',
+        valorLocal: servidorLocal.cpf,
+        valorBanco: servidorBanco.cpf,
+        tipo: 'diferença_cpf'
+      });
+    }
+
+    // Verificar se há informações sobre órgãos julgadores cadastrados
+    if (servidorBanco.totalOjsCadastrados !== undefined) {
+      const totalOjsLocal = servidorLocal.orgaosJulgadores ? servidorLocal.orgaosJulgadores.length : 0;
+      
+      if (totalOjsLocal !== servidorBanco.totalOjsCadastrados) {
+        discrepancias.push({
+          campo: 'totalOrgaosJulgadores',
+          valorLocal: totalOjsLocal,
+          valorBanco: servidorBanco.totalOjsCadastrados,
+          tipo: 'diferença_quantidade_ojs'
+        });
+      }
+    }
+
+    // Nota: Comparações de nome e perfil não são possíveis com os dados atuais do banco
+    // O banco retorna apenas: idUsuario, idUsuarioLocalizacao, cpf, totalOjsCadastrados
+
+    return discrepancias;
+  }
+
+  normalizarTexto(texto) {
+    return texto
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/[^a-z0-9\s]/g, '') // Remove caracteres especiais
+      .replace(/\s+/g, ' ') // Normaliza espaços
+      .trim();
+  }
+
+  showVerificationLoading(show) {
+    const loadingDiv = document.querySelector('#verificacao-banco-modal .verification-loading');
+    const contentDiv = document.querySelector('#verificacao-banco-modal .verification-content');
+    
+    if (show) {
+      loadingDiv.style.display = 'block';
+      contentDiv.style.display = 'none';
+    } else {
+      loadingDiv.style.display = 'none';
+      contentDiv.style.display = 'block';
+    }
+  }
+
+  exibirResultadosVerificacao(resultado) {
+    // Atualizar resumos
+    document.getElementById('total-servidores').textContent = resultado.total;
+    document.getElementById('compativeis-count').textContent = resultado.compatíveis.length;
+    document.getElementById('discrepancias-count').textContent = resultado.discrepâncias.length;
+    document.getElementById('nao-encontrados-count').textContent = resultado.nãoEncontrados.length;
+
+    // Renderizar abas
+    this.renderizarAbaDiscrepancias(resultado.discrepâncias);
+    this.renderizarAbaNaoEncontrados(resultado.nãoEncontrados);
+    this.renderizarAbaCompativeis(resultado.compatíveis);
+
+    // Ativar primeira aba com dados
+    if (resultado.discrepâncias.length > 0) {
+      this.ativarAbaVerificacao('discrepancias');
+    } else if (resultado.nãoEncontrados.length > 0) {
+      this.ativarAbaVerificacao('nao-encontrados');
+    } else {
+      this.ativarAbaVerificacao('compativeis');
+    }
+  }
+
+  renderizarAbaDiscrepancias(discrepancias) {
+    const container = document.getElementById('discrepancias-list');
+    container.innerHTML = '';
+
+    discrepancias.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.className = 'discrepancy-item';
+      
+      let discrepanciasHtml = '';
+      item.discrepancias.forEach(disc => {
+        discrepanciasHtml += `
+          <div class="discrepancy-detail">
+            <strong>${disc.campo}:</strong>
+            <div class="value-comparison">
+              <div class="local-value">Local: ${disc.valorLocal}</div>
+              <div class="banco-value">Banco: ${disc.valorBanco}</div>
+            </div>
+            ${disc.campo === 'nome' ? `
+              <div class="correction-input">
+                <input type="text" 
+                       id="correcao-${index}-nome" 
+                       value="${disc.valorBanco}" 
+                       placeholder="Correção sugerida">
+                <button onclick="app.aplicarCorrecao(${index}, 'nome')" class="btn btn-sm btn-primary">
+                  Aplicar
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+
+      div.innerHTML = `
+        <h4>${item.servidor.nome} (${item.servidor.cpf})</h4>
+        ${discrepanciasHtml}
+      `;
+      
+      container.appendChild(div);
+    });
+  }
+
+  renderizarAbaNaoEncontrados(naoEncontrados) {
+    const container = document.getElementById('nao-encontrados-list');
+    container.innerHTML = '';
+
+    naoEncontrados.forEach(servidor => {
+      const div = document.createElement('div');
+      div.className = 'not-found-item';
+      
+      div.innerHTML = `
+        <h4>${servidor.nome}</h4>
+        <p><strong>CPF:</strong> ${servidor.cpf}</p>
+        <p><strong>Perfil:</strong> ${servidor.perfil}</p>
+        <p><strong>Órgãos:</strong> ${servidor.orgaosJulgadores.join(', ')}</p>
+        ${servidor.erro ? `<p class="error-message">Erro: ${servidor.erro}</p>` : ''}
+      `;
+      
+      container.appendChild(div);
+    });
+  }
+
+  renderizarAbaCompativeis(compativeis) {
+    const container = document.getElementById('compativeis-list');
+    container.innerHTML = '';
+
+    compativeis.forEach(servidor => {
+      const div = document.createElement('div');
+      div.className = 'compatible-item';
+      
+      div.innerHTML = `
+        <h4>${servidor.nome}</h4>
+        <p><strong>CPF:</strong> ${servidor.cpf}</p>
+        <p><strong>Perfil:</strong> ${servidor.perfil}</p>
+        <i class="fas fa-check-circle"></i>
+      `;
+      
+      container.appendChild(div);
+    });
+  }
+
+  ativarAbaVerificacao(aba) {
+    // Remover classe ativa de todas as abas
+    document.querySelectorAll('.verification-tab').forEach(tab => {
+      tab.classList.remove('active');
+    });
+    
+    document.querySelectorAll('.verification-tab-content').forEach(content => {
+      content.classList.remove('active');
+    });
+
+    // Ativar aba selecionada
+    document.querySelector(`[data-verification-tab="${aba}"]`).classList.add('active');
+    document.getElementById(`${aba}-tab`).classList.add('active');
+  }
+
+  aplicarCorrecao(index, campo) {
+    const input = document.getElementById(`correcao-${index}-${campo}`);
+    const novoValor = input.value.trim();
+    
+    if (novoValor) {
+      // Aplicar correção ao servidor local
+      this.servidores[index][campo] = novoValor;
+      this.saveServidores();
+      this.renderServidoresTable();
+      this.showNotification(`Correção aplicada: ${campo} atualizado`, 'success');
+    }
+  }
+
+  async corrigirTodasDiscrepancias() {
+    const inputs = document.querySelectorAll('#discrepancias-list .correction-input input');
+    let correcoes = 0;
+
+    inputs.forEach(input => {
+      const value = input.value.trim();
+      if (value && value !== input.defaultValue) {
+        // Extrair índice e campo do ID do input
+        const match = input.id.match(/correcao-(\d+)-(\w+)/);
+        if (match) {
+          const index = parseInt(match[1]);
+          const campo = match[2];
+          this.servidores[index][campo] = value;
+          correcoes++;
+        }
+      }
+    });
+
+    if (correcoes > 0) {
+      await this.saveServidores();
+      this.renderServidoresTable();
+      this.showNotification(`${correcoes} correção${correcoes > 1 ? 'ões aplicadas' : ' aplicada'} com sucesso!`, 'success');
+      
+      // Fechar modal
+      document.getElementById('verificacao-banco-modal').style.display = 'none';
+    } else {
+      this.showNotification('Nenhuma correção para aplicar', 'warning');
+    }
+  }
+
+  async prosseguirComAutomacao() {
+    // Fechar modal de verificação
+    document.getElementById('verificacao-banco-modal').style.display = 'none';
+    
+    // Iniciar automação dos servidores
+    this.showNotification('Iniciando automação com dados verificados...', 'info');
+    
+    // Aguardar um momento para o usuário ver a notificação
+    setTimeout(() => {
+      this.startServidorAutomation();
+    }, 1000);
   }
 
   async importServidores() {
@@ -3438,6 +3834,196 @@ class PeritoApp {
   setupServidorV2Listeners() {
     // Método removido - funcionalidade V2 descontinuada
   }
+
+  setupBuscaOJsListeners() {
+    // Event listeners já existentes para OJs - apenas garantir que funcionem com a nova estrutura
+    const configButtons = document.querySelectorAll('#busca-ojs .config-tab-button');
+    configButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        const tab = e.currentTarget?.dataset?.configTab || e.target?.dataset?.configTab;
+        this.switchConfigTab(tab);
+      });
+    });
+  }
+
+  setupServidorPreview() {
+    const input = document.getElementById('filtroNomeServidor');
+    const preview = document.getElementById('servidor-preview');
+    if (!input || !preview) return;
+
+    let searchTimeout;
+    let lastSearch = '';
+
+    // Função para buscar servidor
+    const buscarPreview = async (valor) => {
+      if (valor === lastSearch) return;
+      lastSearch = valor;
+
+      if (valor.length < 3) {
+        preview.classList.add('hidden');
+        return;
+      }
+
+      // Obter grau selecionado
+      const grauRadio = document.querySelector('input[name="grauServidor"]:checked');
+      const grau = grauRadio ? grauRadio.value : '1';
+
+      // Mostrar loading
+      preview.classList.remove('hidden');
+      const loading = preview.querySelector('.preview-loading');
+      const content = preview.querySelector('.preview-content');
+      const suggestions = preview.querySelector('.preview-suggestions');
+      
+      loading?.classList.remove('hidden');
+      content?.classList.add('hidden');
+      suggestions?.classList.add('hidden');
+
+      try {
+        // Buscar servidor
+        const response = await window.electronAPI.buscarServidores(grau, valor, '', 5);
+        
+        if (response.success && response.data && response.data.length > 0) {
+          loading?.classList.add('hidden');
+          
+          if (response.data.length === 1) {
+            // Mostrar preview único
+            const servidor = response.data[0];
+            content?.classList.remove('hidden');
+            
+            const nameEl = preview.querySelector('.preview-name');
+            const cpfEl = preview.querySelector('.preview-cpf');
+            const detailsEl = preview.querySelector('.preview-details');
+            
+            // Determinar o que destacar baseado no que foi digitado
+            const isCPF = /^\d+$/.test(valor);
+            
+            if (nameEl) {
+              nameEl.textContent = servidor.nome || 'Nome não disponível';
+              nameEl.style.color = isCPF ? '#8b7355' : '#2c3e50';
+              nameEl.style.fontWeight = isCPF ? 'bold' : 'normal';
+            }
+            
+            if (cpfEl) {
+              cpfEl.textContent = servidor.cpf || 'CPF não disponível';
+              cpfEl.style.fontWeight = !isCPF ? 'bold' : 'normal';
+            }
+            
+            if (detailsEl) {
+              const totalOJs = servidor.ojs ? servidor.ojs.length : 0;
+              detailsEl.textContent = `${totalOJs} órgão(s) julgador(es) vinculado(s) • ${grau}º Grau`;
+            }
+            
+            // Ao clicar no preview, preenche o campo e faz a busca
+            content.onclick = () => {
+              input.value = isCPF ? servidor.nome : servidor.cpf;
+              preview.classList.add('hidden');
+              this.buscarServidores();
+            };
+            
+          } else {
+            // Mostrar múltiplas sugestões
+            suggestions?.classList.remove('hidden');
+            const listEl = preview.querySelector('.suggestions-list');
+            
+            if (listEl) {
+              listEl.innerHTML = '';
+              
+              response.data.forEach(servidor => {
+                const item = document.createElement('div');
+                item.className = 'suggestion-item';
+                item.innerHTML = `
+                  <div>
+                    <div class="suggestion-name">${servidor.nome}</div>
+                    <div class="suggestion-cpf">CPF: ${servidor.cpf}</div>
+                  </div>
+                `;
+                
+                item.onclick = () => {
+                  input.value = servidor.cpf;
+                  preview.classList.add('hidden');
+                  this.buscarServidores();
+                };
+                
+                listEl.appendChild(item);
+              });
+            }
+          }
+        } else {
+          // Nenhum resultado
+          loading?.classList.add('hidden');
+          content?.classList.remove('hidden');
+          
+          const nameEl = preview.querySelector('.preview-name');
+          const cpfEl = preview.querySelector('.preview-cpf');
+          const detailsEl = preview.querySelector('.preview-details');
+          
+          if (nameEl) nameEl.textContent = 'Nenhum servidor encontrado';
+          if (cpfEl) cpfEl.textContent = '';
+          if (detailsEl) detailsEl.textContent = 'Tente outro CPF ou nome';
+        }
+      } catch (error) {
+        console.error('Erro no preview:', error);
+        preview.classList.add('hidden');
+      }
+    };
+
+    // Event listener com debounce
+    input.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      const valor = e.target.value.trim();
+      
+      if (valor.length < 3) {
+        preview.classList.add('hidden');
+        lastSearch = '';
+        return;
+      }
+      
+      searchTimeout = setTimeout(() => {
+        buscarPreview(valor);
+      }, 500); // Aguarda 500ms após parar de digitar
+    });
+
+    // Fechar preview ao clicar fora
+    document.addEventListener('click', (e) => {
+      if (!input.contains(e.target) && !preview.contains(e.target)) {
+        preview.classList.add('hidden');
+      }
+    });
+
+    // Fechar preview ao pressionar Esc
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        preview.classList.add('hidden');
+      }
+    });
+  }
+
+  updateDashboardStats() {
+    // Atualizar estatísticas do dashboard
+    const totalServidoresEl = document.getElementById('total-servidores');
+    const totalPeritosEl = document.getElementById('total-peritos');
+    const totalAutomacoesEl = document.getElementById('total-automacoes');
+    const statusSistemaEl = document.getElementById('status-sistema');
+
+    if (totalServidoresEl) {
+      totalServidoresEl.textContent = this.servidores?.length || 0;
+    }
+    
+    if (totalPeritosEl) {
+      totalPeritosEl.textContent = this.peritos?.length || 0;
+    }
+    
+    if (totalAutomacoesEl) {
+      // Pode ser incrementado durante automações
+      const automacoes = localStorage.getItem('total-automacoes') || 0;
+      totalAutomacoesEl.textContent = automacoes;
+    }
+    
+    if (statusSistemaEl) {
+      // Verificar status do sistema
+      statusSistemaEl.textContent = '✓';
+    }
+  }
   
   updatePerfilInfo(perfilValue, selectedOption) {
     const perfilInfo = document.getElementById('perfil-description');
@@ -4234,6 +4820,11 @@ class PeritoApp {
       // Obter grau selecionado
       const grauRadio = document.querySelector('input[name="grauServidor"]:checked');
       const grau = grauRadio ? grauRadio.value : '1';
+      
+      // Log para debug
+      console.log('🔍 [DEBUG] Radio selecionado:', grauRadio);
+      console.log('🔍 [DEBUG] Valor do grau extraído:', grau);
+      console.log('🔍 [DEBUG] Todos os radios:', document.querySelectorAll('input[name="grauServidor"]'));
 
       // Obter filtros
       const filtroNome = document.getElementById('filtroNomeServidor').value.trim();
@@ -4269,6 +4860,7 @@ class PeritoApp {
       }
 
       console.log(`🔍 Buscando servidores ${grau}º grau - Nome/CPF: "${filtroNome}", Perfil: "${filtroPerfil}"`);
+      console.log(`🔍 [DEBUG] Parâmetros enviados - Grau: ${grau}, Nome: ${filtroNome}, Perfil: ${filtroPerfil}`);
 
       // Fazer busca no banco
       const response = await window.electronAPI.buscarServidores(grau, filtroNome, filtroPerfil);
@@ -4297,10 +4889,44 @@ class PeritoApp {
           exportBtn.disabled = servidores.length === 0;
         }
 
-        if (servidores.length === 0) {
-          this.showNotification('Nenhum servidor encontrado com os filtros especificados', 'info');
+        // Calcular contagem de OJs únicos para notificação
+        const uniqueOJs = new Set();
+        const uniqueUsers = new Set();
+        
+        servidores.forEach(servidor => {
+          try {
+            // Adicionar usuário único por CPF
+            if (servidor.cpf) {
+              uniqueUsers.add(servidor.cpf);
+            }
+            
+            // Processar OJs do servidor (nova estrutura)
+            if (servidor.ojs && Array.isArray(servidor.ojs)) {
+              servidor.ojs.forEach(vincolo => {
+                if (vincolo && vincolo.orgaoJulgador && vincolo.orgaoJulgador.trim()) {
+                  uniqueOJs.add(vincolo.orgaoJulgador.trim());
+                }
+              });
+            }
+            
+          } catch (error) {
+            console.warn('Erro ao processar dados do servidor:', servidor.nome || servidor.cpf, error);
+          }
+        });
+        
+        const ojCount = uniqueOJs.size;
+        const userCount = uniqueUsers.size;
+        
+        // Debug da contagem na busca principal
+        console.log(`🔍 [BUSCA DEBUG] Total de servidores retornados: ${servidores.length}`);
+        console.log(`🔍 [BUSCA DEBUG] Total de vínculos: ${servidores.reduce((total, s) => total + (s.ojs ? s.ojs.length : 0), 0)}`);
+        console.log(`🔍 [BUSCA DEBUG] OJs únicos: ${ojCount}`);
+        console.log(`🔍 [BUSCA DEBUG] Usuários únicos: ${userCount}`);
+        
+        if (userCount === 0) {
+          this.showNotification('Nenhum usuário encontrado com os filtros especificados', 'info');
         } else {
-          this.showNotification(`${servidores.length} servidor(es) encontrado(s)`, 'success');
+          this.showNotification(`${ojCount} órgão(s) julgador(es) e ${userCount} usuário(s) encontrado(s)`, 'success');
         }
 
       } else {
@@ -4337,76 +4963,198 @@ class PeritoApp {
     if (headerInfo) {
       headerInfo.textContent = `Servidores - ${grau}º Grau`;
     }
-    if (countSpan) {
-      countSpan.textContent = `${servidores.length} servidor(es) encontrado(s)`;
+    // Debug detalhado antes da contagem
+    console.log('🔍 [DEBUG CONTAGEM] Total de registros:', servidores.length);
+    if (servidores.length > 0) {
+      console.log('🔍 [DEBUG CONTAGEM] Primeiro registro completo:', servidores[0]);
+      console.log('🔍 [DEBUG CONTAGEM] Campos disponíveis:', Object.keys(servidores[0]));
+    }
+    
+    // Calcular contagem de OJs únicos
+    const uniqueOJs = new Set();
+    const uniqueUsers = new Set();
+    
+    servidores.forEach((servidor, index) => {
+      try {
+        // Debug para cada servidor
+        if (index < 5) {  // Mostrar apenas os primeiros 5 para não poluir console
+          console.log(`🔍 [DEBUG] Servidor ${index}:`, {
+            nome: servidor.nome,
+            cpf: servidor.cpf,
+            totalOJs: servidor.ojs ? servidor.ojs.length : 0
+          });
+        }
+        
+        // Adicionar usuário único por CPF
+        if (servidor.cpf) {
+          uniqueUsers.add(servidor.cpf);
+        }
+        
+        // Processar OJs do servidor (nova estrutura)
+        if (servidor.ojs && Array.isArray(servidor.ojs)) {
+          servidor.ojs.forEach(vincolo => {
+            if (vincolo && vincolo.orgaoJulgador && vincolo.orgaoJulgador.trim()) {
+              uniqueOJs.add(vincolo.orgaoJulgador.trim());
+            }
+          });
+        }
+        
+      } catch (error) {
+        console.warn('Erro ao processar dados do servidor:', servidor.nome || servidor.cpf, error);
+      }
+    });
+    
+    const ojCount = uniqueOJs.size;
+    const userCount = uniqueUsers.size;
+    
+    // Debug da contagem
+    console.log(`🔍 [CONTAGEM DEBUG] Total de servidores processados: ${servidores.length}`);
+    console.log(`🔍 [CONTAGEM DEBUG] Total de vínculos (rows do banco): ${servidores.reduce((total, s) => total + (s.ojs ? s.ojs.length : 0), 0)}`);
+    console.log(`🔍 [CONTAGEM DEBUG] OJs únicos encontrados: ${ojCount}`);
+    console.log(`🔍 [CONTAGEM DEBUG] Usuários únicos: ${userCount}`);
+    console.log(`🔍 [CONTAGEM DEBUG] Lista de OJs únicos:`, Array.from(uniqueOJs).slice(0, 10));
+    
+    // Atualizar métricas na nova interface
+    try {
+      const countOjsElement = resultContainer.querySelector('#countOjsVinculados');
+      const countServidoresElement = resultContainer.querySelector('#countServidores');
+      
+      if (countOjsElement) {
+        countOjsElement.textContent = ojCount;
+      }
+      if (countServidoresElement) {
+        countServidoresElement.textContent = userCount;
+      }
+      
+      // Atualizar estatísticas do header
+      const totalOjsDisplay = document.getElementById('totalOjsDisplay');
+      const totalUsuariosDisplay = document.getElementById('totalUsuariosDisplay');
+      
+      if (totalOjsDisplay) {
+        totalOjsDisplay.textContent = ojCount;
+      }
+      if (totalUsuariosDisplay) {
+        totalUsuariosDisplay.textContent = userCount;
+      }
+    } catch (error) {
+      console.warn('Erro ao atualizar elementos da interface:', error);
+    }
+    
+    // Manter compatibilidade com elementos antigos (fallback)
+    if (countSpan && !resultContainer.querySelector('.results-metrics')) {
+      countSpan.textContent = `${ojCount} órgão(s) julgador(es) encontrado(s)`;
+    } else if (countSpan) {
+      countSpan.textContent = `${userCount} servidor(es) encontrado(s)`;
     }
 
-    // Criar ou limpar tabela
-    let tabelaContainer = resultContainer.querySelector('.table-container');
-    if (!tabelaContainer) {
-      tabelaContainer = document.createElement('div');
-      tabelaContainer.className = 'table-container';
-      resultContainer.appendChild(tabelaContainer);
+    // Usar a tabela existente no HTML sem modificar o cabeçalho
+    const tabelaExistente = resultContainer.querySelector('.data-table');
+    if (tabelaExistente) {
+      // Manter o cabeçalho original sem adicionar botão inline
+      const thOrgao = tabelaExistente.querySelector('thead th:nth-child(4)');
+      if (thOrgao && !thOrgao.querySelector('.copy-all-btn')) {
+        // Adicionar botão de forma mais elegante ao lado do título
+        thOrgao.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span>Órgão Julgador</span>
+            <button class="copy-all-btn-small" onclick="window.app.copiarTodosOrgaos()" title="Copiar todos os órgãos julgadores">
+              <i class="fas fa-copy"></i>
+            </button>
+          </div>`;
+      }
     }
-
-    tabelaContainer.innerHTML = `
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>CPF</th>
-            <th>Tipo Usuário</th>
-            <th>Órgão Julgador</th>
-            <th>Perfil no OJ</th>
-            <th>Data Início</th>
-            <th>Data Fim</th>
-          </tr>
-        </thead>
-        <tbody id="tabelaServidores"></tbody>
-      </table>
-    `;
 
     const tbody = document.getElementById('tabelaServidores');
+    if (tbody) {
+      tbody.innerHTML = ''; // Limpar conteúdo existente
+    }
 
-    servidores.forEach(servidor => {
-      const row = tbody.insertRow();
+    // Obter o filtro para destacar o campo pesquisado
+    const filtroNome = document.getElementById('filtroNomeServidor').value.trim();
+    const buscandoPorCPF = /^\d+$/.test(filtroNome);
 
-      // Nome
-      const cellNome = row.insertCell();
-      cellNome.textContent = servidor.nome || '-';
-      cellNome.className = 'text-left';
+    servidores.forEach((servidor, index) => {
+      // Debug geral para os primeiros registros
+      if (index < 3) {
+        console.log(`🔍 [DEBUG] Servidor ${index}:`, {
+          nome: servidor.nome,
+          cpf: servidor.cpf,
+          totalOJs: servidor.ojs ? servidor.ojs.length : 0,
+          primeiroOJ: servidor.ojs && servidor.ojs[0] ? servidor.ojs[0] : null
+        });
+      }
+      
+      // Debug detalhado para verificar estrutura dos dados
+      if (servidor.cpf && servidor.cpf === '53036140697') {
+        console.log('🔍 [DEBUG] Dados completos do servidor Marcelo:', servidor);
+        console.log('🔍 [DEBUG] OJs do Marcelo:', servidor.ojs);
+        if (servidor.ojs && servidor.ojs[0]) {
+          console.log('🔍 [DEBUG] Primeiro OJ:', servidor.ojs[0]);
+          console.log('🔍 [DEBUG] Propriedades do OJ:', Object.keys(servidor.ojs[0]));
+        }
+      }
+      
+      // Renderizar cada vínculo (OJ) como uma linha separada
+      if (servidor.ojs && servidor.ojs.length > 0) {
+        servidor.ojs.forEach((vinculous, vincIndex) => {
+          const row = tbody.insertRow();
+          row.className = 'servidor-row';
+          
+          // Nome
+          const cellNome = row.insertCell();
+          cellNome.textContent = servidor.nome || '-';
+          cellNome.className = buscandoPorCPF ? 'font-bold text-primary' : 'text-left';
+          
+          // CPF
+          const cellCpf = row.insertCell();
+          cellCpf.textContent = servidor.cpf || '-';
+          cellCpf.className = !buscandoPorCPF ? 'font-bold text-primary' : 'text-left';
 
-      // CPF
-      const cellCpf = row.insertCell();
-      cellCpf.textContent = servidor.cpf || '-';
-      cellCpf.className = 'text-center';
+          // Perfil
+          const cellPerfil = row.insertCell();
+          cellPerfil.textContent = vinculous.perfil || 'Não informado';
+          cellPerfil.className = 'text-left';
+          
+          // Órgão Julgador  
+          const cellOrgao = row.insertCell();
+          cellOrgao.textContent = vinculous.orgaoJulgador || 'Não informado';
+          cellOrgao.className = 'text-left orgao-cell';
+          
+          // Data de Início
+          const cellData = row.insertCell();
+          cellData.textContent = vinculous.dataInicio || 'Não informado';
+          cellData.className = 'text-center';
+        });
+      } else {
+        // Caso não tenha OJs, mostrar linha com dados básicos
+        const row = tbody.insertRow();
+        row.className = 'servidor-row';
+        
+        // Nome
+        const cellNome = row.insertCell();
+        cellNome.textContent = servidor.nome || '-';
+        cellNome.className = buscandoPorCPF ? 'font-bold text-primary' : 'text-left';
+        
+        // CPF
+        const cellCpf = row.insertCell();
+        cellCpf.textContent = servidor.cpf || '-';
+        cellCpf.className = !buscandoPorCPF ? 'font-bold text-primary' : 'text-left';
 
-      // Perfil
-      const cellPerfil = row.insertCell();
-      cellPerfil.textContent = servidor.perfil || '-';
-      cellPerfil.className = 'text-left';
-
-      // Órgão
-      const cellOrgao = row.insertCell();
-      cellOrgao.textContent = servidor.orgao || 'Não informado';
-      cellOrgao.className = 'text-left';
-
-      // Papel no Órgão
-      const cellPapelOrgao = row.insertCell();
-      cellPapelOrgao.textContent = servidor.papel_orgao || 'Não informado';
-      cellPapelOrgao.className = 'text-left';
-
-      // Data Início
-      const cellDtInicio = row.insertCell();
-      const dtInicio = servidor.dt_inicio ? new Date(servidor.dt_inicio).toLocaleDateString('pt-BR') : '-';
-      cellDtInicio.textContent = dtInicio;
-      cellDtInicio.className = 'text-center';
-
-      // Data Fim
-      const cellDtFim = row.insertCell();
-      const dtFim = servidor.dt_final ? new Date(servidor.dt_final).toLocaleDateString('pt-BR') : '-';
-      cellDtFim.textContent = dtFim;
-      cellDtFim.className = 'text-center';
+        // Perfil
+        const cellPerfil = row.insertCell();
+        cellPerfil.textContent = 'Não informado';
+        cellPerfil.className = 'text-left';
+        
+        // Órgão Julgador  
+        const cellOrgao = row.insertCell();
+        cellOrgao.textContent = 'Não informado';
+        cellOrgao.className = 'text-left orgao-cell';
+        
+        // Data de Início
+        const cellData = row.insertCell();
+        cellData.textContent = 'Não informado';
+        cellData.className = 'text-center';
+      }
     });
   }
 
@@ -4434,6 +5182,86 @@ class PeritoApp {
     this.servidoresData = [];
 
     this.showNotification('Filtros limpos', 'info');
+  }
+
+  /**
+   * Atualiza filtros baseado no grau selecionado
+   */
+  atualizarFiltroGrau() {
+    // Obter grau selecionado
+    const grauSelecionado = document.querySelector('input[name="grauServidor"]:checked');
+    
+    if (!grauSelecionado) {
+      console.warn('Nenhum grau selecionado');
+      return;
+    }
+
+    const grau = grauSelecionado.value;
+    console.log(`🔄 Atualizando filtros para ${grau}º grau`);
+
+    // Limpar resultados anteriores
+    this.limparResultadosOJs();
+    this.limparResultadosServidores();
+
+    // Atualizar interface baseado no grau
+    this.atualizarInterfacePorGrau(grau);
+
+    // Notificar mudança
+    this.showNotification(`Filtros atualizados para ${grau}º grau`, 'info');
+  }
+
+  /**
+   * Limpa resultados de OJs de ambos os graus
+   */
+  limparResultadosOJs() {
+    ['1', '2'].forEach(grau => {
+      const resultadoDiv = document.getElementById(`resultadoOjs${grau}Grau`);
+      const statusDiv = document.getElementById(`statusOjs${grau}Grau`);
+      const exportBtn = document.getElementById(`exportarOjs${grau}Grau`);
+      const filtroInput = document.getElementById(`filtroOjs${grau}Grau`);
+
+      if (resultadoDiv) resultadoDiv.classList.add('hidden');
+      if (statusDiv) statusDiv.classList.add('hidden');
+      if (exportBtn) exportBtn.disabled = true;
+      if (filtroInput) filtroInput.value = '';
+    });
+  }
+
+  /**
+   * Limpa resultados de servidores
+   */
+  limparResultadosServidores() {
+    const resultadoDiv = document.getElementById('resultadoServidores');
+    const exportBtn = document.getElementById('exportarServidores');
+    const filtroInput = document.getElementById('filtroNomeServidor');
+
+    if (resultadoDiv) resultadoDiv.classList.add('hidden');
+    if (exportBtn) exportBtn.disabled = true;
+    if (filtroInput) filtroInput.value = '';
+
+    // Limpar dados armazenados
+    this.servidoresData = [];
+  }
+
+  /**
+   * Atualiza interface baseado no grau selecionado
+   */
+  atualizarInterfacePorGrau(grau) {
+    // Aqui você pode adicionar lógica específica para cada grau
+    // Por exemplo, mostrar/ocultar campos específicos, alterar placeholders, etc.
+    
+    console.log(`🎯 Interface atualizada para ${grau}º grau`);
+    
+    // Exemplo: atualizar placeholders dos filtros
+    const filtroOJ = document.getElementById(`filtroOjs${grau}Grau`);
+    if (filtroOJ) {
+      filtroOJ.placeholder = `Digite parte do nome do órgão (${grau}º grau)...`;
+    }
+
+    const filtroServidor = document.getElementById('filtroNomeServidor');
+    if (filtroServidor) {
+      filtroServidor.placeholder = `Digite CPF ou nome do servidor (${grau}º grau)`;
+    }
   }
 
   /**
@@ -5228,6 +6056,133 @@ PeritoApp.prototype.mostrarEstatisticasOJs = function(stats) {
   });
 };
 
+/**
+ * Copia todo o conteúdo da coluna Órgão Julgador
+ */
+PeritoApp.prototype.copiarColunaOrgao = function() {
+  try {
+    const tabela = document.getElementById('tabelaServidores');
+    if (!tabela) {
+      this.showNotification('Tabela não encontrada', 'error');
+      return;
+    }
+
+    const linhas = tabela.querySelectorAll('tbody tr');
+    const orgaos = [];
+
+    linhas.forEach(linha => {
+      const colunaOrgao = linha.cells[3]; // Coluna "Órgão Julgador" é a 4ª (índice 3)
+      if (colunaOrgao && colunaOrgao.textContent.trim() !== '-') {
+        orgaos.push(colunaOrgao.textContent.trim());
+      }
+    });
+
+    if (orgaos.length === 0) {
+      this.showNotification('Nenhum órgão julgador encontrado para copiar', 'warning');
+      return;
+    }
+
+    const textoParaCopiar = orgaos.join('\n');
+    
+    // Usar a API moderna do clipboard se disponível
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(textoParaCopiar).then(() => {
+        this.showNotification(`${orgaos.length} órgãos julgadores copiados para a área de transferência`, 'success');
+      }).catch(err => {
+        console.error('Erro ao copiar:', err);
+        this.copiarTextoFallback(textoParaCopiar);
+      });
+    } else {
+      // Fallback para navegadores mais antigos
+      this.copiarTextoFallback(textoParaCopiar);
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao copiar coluna de órgãos:', error);
+    this.showNotification(`Erro ao copiar: ${error.message}`, 'error');
+  }
+};
+
+/**
+ * Copia TODOS os órgãos julgadores da tabela (incluindo repetidos)
+ */
+PeritoApp.prototype.copiarTodosOrgaos = function() {
+  try {
+    console.log('🔄 Iniciando cópia de TODOS os órgãos julgadores...');
+    
+    const tabela = document.getElementById('tabelaServidores');
+    if (!tabela) {
+      this.showNotification('Tabela de servidores não encontrada', 'error');
+      return;
+    }
+
+    const linhas = tabela.querySelectorAll('tr');
+    const todosOrgaos = [];
+
+    linhas.forEach(linha => {
+      const celulas = linha.querySelectorAll('td');
+      
+      // Nova estrutura: Nome, CPF, Perfil, Órgão Julgador (índice 3), Data
+      if (celulas.length >= 5) {
+        const orgaoTexto = celulas[3].textContent.trim(); // Coluna do Órgão Julgador (índice 3)
+        if (orgaoTexto && orgaoTexto !== '-' && orgaoTexto !== '' && orgaoTexto !== 'Não informado') {
+          todosOrgaos.push(orgaoTexto);
+        }
+      }
+    });
+
+    if (todosOrgaos.length === 0) {
+      this.showNotification('Nenhum órgão julgador encontrado na tabela', 'warning');
+      return;
+    }
+
+    // Juntar TODOS os órgãos (incluindo repetidos) com quebras de linha
+    const textoParaCopiar = todosOrgaos.join('\n');
+    
+    console.log(`📋 Copiando ${todosOrgaos.length} órgãos julgadores (incluindo repetidos):`);
+    console.log(textoParaCopiar);
+    
+    // Usar a API moderna do clipboard se disponível
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(textoParaCopiar).then(() => {
+        this.showNotification(`${todosOrgaos.length} órgãos julgadores copiados (incluindo repetidos)`, 'success');
+      }).catch(err => {
+        console.error('Erro ao copiar:', err);
+        this.copiarTextoFallback(textoParaCopiar, todosOrgaos.length);
+      });
+    } else {
+      // Fallback para navegadores mais antigos
+      this.copiarTextoFallback(textoParaCopiar, todosOrgaos.length);
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao copiar todos os órgãos:', error);
+    this.showNotification(`Erro ao copiar: ${error.message}`, 'error');
+  }
+};
+
+/**
+ * Método fallback para copiar texto em navegadores mais antigos
+ */
+PeritoApp.prototype.copiarTextoFallback = function(texto, quantidade = null) {
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = texto;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    
+    const linhas = quantidade || texto.split('\n').length;
+    this.showNotification(`${linhas} órgãos julgadores copiados para a área de transferência`, 'success');
+  } catch (error) {
+    console.error('Erro no fallback de cópia:', error);
+    this.showNotification('Erro ao copiar texto', 'error');
+  }
+};
+
 // Inicialização da aplicação
 document.addEventListener('DOMContentLoaded', function() {
   console.log('🚀 Iniciando aplicação PJE Automation...');
@@ -5240,6 +6195,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Tornar acessível globalmente para debugging
     window.peritoApp = app;
+    
+    // Verificar banners que devem permanecer escondidos
+    app.checkHiddenBanners();
 
     // Adicionar event listeners para os novos botões de busca
     const buscarTodasOjs1GrauBtn = document.getElementById('buscarTodasOjs1Grau');
@@ -5347,3 +6305,368 @@ document.addEventListener('DOMContentLoaded', function() {
     console.error('❌ Erro ao inicializar aplicação:', error);
   }
 });
+
+/**
+ * Função para esconder banner informativo BugFix
+ * @param {string} bannerId - ID do banner a ser escondido
+ */
+PeritoApp.prototype.hideBugfixBanner = function(bannerId) {
+  try {
+    const banner = document.getElementById(bannerId);
+    if (banner) {
+      banner.classList.add("hidden");
+      console.log(`🔇 Banner ${bannerId} foi fechado pelo usuário`);
+      
+      // Salvar preferência no localStorage para não mostrar novamente nesta sessão
+      const hiddenBanners = JSON.parse(localStorage.getItem("hiddenBugfixBanners") || "[]");
+      if (!hiddenBanners.includes(bannerId)) {
+        hiddenBanners.push(bannerId);
+        localStorage.setItem("hiddenBugfixBanners", JSON.stringify(hiddenBanners));
+      }
+    }
+  } catch (error) {
+    console.error("❌ Erro ao esconder banner:", error);
+  }
+};
+
+/**
+ * Função para verificar banners que devem permanecer escondidos
+ * Executada no carregamento da página
+ */
+PeritoApp.prototype.checkHiddenBanners = function() {
+  try {
+    const hiddenBanners = JSON.parse(localStorage.getItem("hiddenBugfixBanners") || "[]");
+    hiddenBanners.forEach(bannerId => {
+      const banner = document.getElementById(bannerId);
+      if (banner) {
+        banner.classList.add("hidden");
+        console.log(`🔇 Banner ${bannerId} permanece escondido (preferência salva)`);
+      }
+    });
+  } catch (error) {
+    console.error("❌ Erro ao verificar banners escondidos:", error);
+  }
+};
+
+/**
+ * Compara OJs cadastrados com os do usuário consultado
+ */
+PeritoApp.prototype.compararOJs = function() {
+  try {
+    const linhasDigitadas = document.getElementById("ojsComparacaoTextarea").value
+      .split("\n")
+      .map(linha => linha.trim())
+      .filter(linha => linha.length > 0);
+    
+    if (linhasDigitadas.length === 0) {
+      this.showNotification("Digite os OJs cadastrados para comparar", "warning");
+      return;
+    }
+    
+    // Obter OJs do usuário consultado da última busca
+    if (!this.servidoresData || this.servidoresData.length === 0) {
+      this.showNotification("Faça uma busca de usuário primeiro para ter dados para comparar", "warning");
+      return;
+    }
+    
+    // Processar linhas digitadas para separar OJ e perfil
+    const itensDigitados = linhasDigitadas.map(linha => {
+      // Verificar se tem perfil especificado (após hífen)
+      const partes = linha.split(' - ');
+      return {
+        oj: partes[0].trim(),
+        perfil: partes[1] ? partes[1].trim() : null,
+        textoCompleto: linha
+      };
+    });
+    
+    // Extrair OJs com perfis do usuário consultado
+    const vinculosUsuario = [];
+    this.servidoresData.forEach(servidor => {
+      if (servidor.ojs && Array.isArray(servidor.ojs)) {
+        servidor.ojs.forEach(vincolo => {
+          if (vincolo && vincolo.orgaoJulgador && vincolo.orgaoJulgador.trim()) {
+            vinculosUsuario.push({
+              oj: vincolo.orgaoJulgador.trim(),
+              perfil: vincolo.perfil ? vincolo.perfil.trim() : null,
+              dataInicio: vincolo.dataInicio
+            });
+          }
+        });
+      }
+    });
+    
+    console.log("🔍 [COMPARACAO] Itens Digitados:", itensDigitados);
+    console.log("🔍 [COMPARACAO] Vínculos do Usuário:", vinculosUsuario);
+    
+    // Calcular diferenças considerando perfil
+    const ojsFaltantes = [];
+    const ojsJaVinculados = [];
+    const ojsVinculadosComPerfilDiferente = [];
+    
+    itensDigitados.forEach(item => {
+      // Buscar vínculos correspondentes
+      const vinculosCorrespondentes = vinculosUsuario.filter(v => v.oj === item.oj);
+      
+      if (vinculosCorrespondentes.length === 0) {
+        // OJ não está vinculado de forma alguma
+        ojsFaltantes.push(item);
+      } else if (item.perfil) {
+        // Foi especificado um perfil, verificar se existe
+        const temPerfilEspecifico = vinculosCorrespondentes.some(v => 
+          v.perfil && v.perfil.toLowerCase() === item.perfil.toLowerCase()
+        );
+        
+        if (temPerfilEspecifico) {
+          ojsJaVinculados.push(item);
+        } else {
+          // OJ está vinculado mas com perfil diferente
+          ojsVinculadosComPerfilDiferente.push({
+            ...item,
+            perfisExistentes: vinculosCorrespondentes.map(v => v.perfil).filter(p => p)
+          });
+        }
+      } else {
+        // Não foi especificado perfil, apenas verificar se OJ está vinculado
+        ojsJaVinculados.push({
+          ...item,
+          perfisExistentes: vinculosCorrespondentes.map(v => v.perfil).filter(p => p)
+        });
+      }
+    });
+    
+    // OJs do Usuário não listados
+    const ojsUsuarioUnicos = [...new Set(vinculosUsuario.map(v => v.oj))];
+    const ojsDigitadosUnicos = [...new Set(itensDigitados.map(i => i.oj))];
+    const ojsNaoListados = ojsUsuarioUnicos.filter(oj => !ojsDigitadosUnicos.includes(oj));
+    
+    console.log("✅ [COMPARACAO] OJs/Perfis que PRECISAM ser vinculados:", ojsFaltantes);
+    console.log("⚠️ [COMPARACAO] OJs com PERFIL DIFERENTE:", ojsVinculadosComPerfilDiferente);
+    console.log("🔗 [COMPARACAO] OJs/Perfis que JÁ estão vinculados:", ojsJaVinculados);
+    console.log("📋 [COMPARACAO] OJs do usuário não listados:", ojsNaoListados);
+    
+    // Atualizar interface com os dados corretos
+    this.exibirResultadoComparacao(ojsFaltantes, ojsJaVinculados, ojsVinculadosComPerfilDiferente, ojsNaoListados);
+    
+    // Armazenar para uso posterior
+    this.dadosComparacao = {
+      ojsFaltantes: [...ojsFaltantes, ...ojsVinculadosComPerfilDiferente], // Incluir perfis diferentes para automação
+      ojsJaVinculados,
+      ojsVinculadosComPerfilDiferente,
+      ojsNaoListados,
+      usuarioConsultado: this.servidoresData[0] // Assumir primeiro usuário
+    };
+    
+  } catch (error) {
+    console.error("❌ Erro ao comparar OJs:", error);
+    this.showNotification("Erro ao comparar OJs: " + error.message, "error");
+  }
+};
+
+/**
+ * Exibe os resultados da comparação na interface
+ */
+PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinculados, ojsVinculadosComPerfilDiferente, ojsNaoListados) {
+  const resultadoDiv = document.getElementById("resultadoComparacao");
+  const listaFaltantes = document.getElementById("listaFaltantes");
+  const listaExtras = document.getElementById("listaExtras");
+  const countFaltantes = document.getElementById("countFaltantes");
+  const countExtras = document.getElementById("countExtras");
+  const btnGerarAutomacao = document.getElementById("gerarAutomacaoFaltantes");
+  
+  // Calcular total de faltantes (incluindo perfis diferentes)
+  const totalFaltantes = ojsFaltantes.length + ojsVinculadosComPerfilDiferente.length;
+  
+  // Atualizar contadores
+  countFaltantes.textContent = totalFaltantes;
+  countExtras.textContent = ojsJaVinculados.length;
+  
+  // Atualizar cor dos badges
+  countFaltantes.style.background = totalFaltantes > 0 ? "#e74c3c" : "#28a745";
+  countExtras.style.background = ojsJaVinculados.length > 0 ? "#28a745" : "#6c757d";
+  
+  // Mostrar OJs faltantes (que precisam ser adicionados)
+  let htmlFaltantes = '';
+  
+  // OJs completamente faltantes
+  if (ojsFaltantes.length > 0) {
+    htmlFaltantes += '<div style="margin-bottom: 10px;"><strong style="color: #e74c3c;">🚫 OJs não vinculados:</strong></div>';
+    htmlFaltantes += ojsFaltantes
+      .map(item => `<div class="oj-item" style="color: #e74c3c;">
+        <i class="fas fa-plus-circle"></i> ${item.textoCompleto}
+      </div>`)
+      .join("");
+  }
+  
+  // OJs com perfil diferente
+  if (ojsVinculadosComPerfilDiferente.length > 0) {
+    if (ojsFaltantes.length > 0) {
+      htmlFaltantes += '<div style="margin-top: 15px; margin-bottom: 10px;"><strong style="color: #f39c12;">⚠️ OJs com perfil diferente:</strong></div>';
+    } else {
+      htmlFaltantes += '<div style="margin-bottom: 10px;"><strong style="color: #f39c12;">⚠️ OJs com perfil diferente:</strong></div>';
+    }
+    htmlFaltantes += ojsVinculadosComPerfilDiferente
+      .map(item => `<div class="oj-item" style="color: #f39c12;">
+        <i class="fas fa-exclamation-triangle"></i> ${item.textoCompleto}
+        <div style="font-size: 11px; margin-left: 20px; color: #666;">
+          Perfis atuais: ${item.perfisExistentes.join(', ') || 'Sem perfil definido'}
+        </div>
+      </div>`)
+      .join("");
+  }
+  
+  if (totalFaltantes > 0) {
+    listaFaltantes.innerHTML = htmlFaltantes;
+    btnGerarAutomacao.style.display = "block";
+  } else {
+    listaFaltantes.innerHTML = '<div style="color: #28a745; text-align: center; padding: 20px;"><i class="fas fa-check-circle"></i> Todos os OJs e perfis da lista já estão vinculados corretamente!</div>';
+    btnGerarAutomacao.style.display = "none";
+  }
+  
+  // Mostrar OJs já vinculados (da lista que o usuário já possui)
+  if (ojsJaVinculados.length > 0) {
+    listaExtras.innerHTML = `
+      <div style="color: #28a745; margin-bottom: 10px;">
+        <strong>✅ OJs da lista que já estão vinculados corretamente:</strong>
+      </div>` + 
+      ojsJaVinculados
+        .map(item => {
+          let html = `<div class="oj-item" style="color: #28a745;">
+            <i class="fas fa-check"></i> ${item.textoCompleto}`;
+          
+          // Se foi especificado perfil, mostrar confirmação
+          if (item.perfil) {
+            html += `<div style="font-size: 11px; margin-left: 20px; color: #28a745;">
+              ✓ Perfil confirmado: ${item.perfil}
+            </div>`;
+          } else if (item.perfisExistentes && item.perfisExistentes.length > 0) {
+            // Se não foi especificado perfil mas existem, mostrar quais
+            html += `<div style="font-size: 11px; margin-left: 20px; color: #666;">
+              Perfis vinculados: ${item.perfisExistentes.join(', ')}
+            </div>`;
+          }
+          
+          html += '</div>';
+          return html;
+        })
+        .join("");
+  } else {
+    listaExtras.innerHTML = '<div style="color: #6c757d; text-align: center; padding: 20px;"><i class="fas fa-info-circle"></i> Nenhum OJ da lista está vinculado ainda</div>';
+  }
+  
+  // Adicionar info sobre OJs não listados se houver
+  if (ojsNaoListados.length > 0) {
+    listaExtras.innerHTML += `
+      <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+        <div style="color: #6c757d; margin-bottom: 5px; font-size: 12px;">
+          <i class="fas fa-info-circle"></i> O usuário também possui ${ojsNaoListados.length} outro(s) OJ(s) não listado(s)
+        </div>
+      </div>`;
+  }
+  
+  // Mostrar seção de resultados
+  resultadoDiv.classList.remove("hidden");
+  
+  // Scroll suave para os resultados
+  resultadoDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+  
+  // Notificação resumo
+  let mensagem = `Comparação concluída: `;
+  const partes = [];
+  
+  if (ojsFaltantes.length > 0) {
+    partes.push(`${ojsFaltantes.length} OJ(s) não vinculado(s)`);
+  }
+  if (ojsVinculadosComPerfilDiferente.length > 0) {
+    partes.push(`${ojsVinculadosComPerfilDiferente.length} com perfil diferente`);
+  }
+  if (ojsJaVinculados.length > 0) {
+    partes.push(`${ojsJaVinculados.length} já vinculado(s) corretamente`);
+  }
+  
+  mensagem += partes.join(', ');
+  this.showNotification(mensagem, totalFaltantes > 0 ? "warning" : "success");
+};
+
+/**
+ * Limpa a comparação de OJs
+ */
+PeritoApp.prototype.limparComparacao = function() {
+  document.getElementById("ojsComparacaoTextarea").value = "";
+  document.getElementById("resultadoComparacao").classList.add("hidden");
+  this.dadosComparacao = null;
+  this.showNotification("Comparação limpa", "info");
+};
+
+/**
+ * Gera automação para os OJs faltantes
+ */
+PeritoApp.prototype.gerarAutomacaoFaltantes = function() {
+  try {
+    if (!this.dadosComparacao || !this.dadosComparacao.ojsFaltantes.length) {
+      this.showNotification("Nenhum OJ faltante para gerar automação", "warning");
+      return;
+    }
+    
+    const { ojsFaltantes, usuarioConsultado } = this.dadosComparacao;
+    
+    if (!usuarioConsultado || !usuarioConsultado.nome || !usuarioConsultado.cpf) {
+      this.showNotification("Dados do usuário não encontrados para gerar automação", "error");
+      return;
+    }
+    
+    // Criar estrutura de servidor para automação
+    const servidorParaAutomacao = {
+      nome: usuarioConsultado.nome,
+      cpf: usuarioConsultado.cpf,
+      perfil: "Servidor",
+      ojs: ojsFaltantes
+    };
+    
+    console.log("🤖 [AUTOMACAO] Gerando para servidor:", servidorParaAutomacao);
+    
+    // Confirmar com usuário
+    const confirmar = confirm(
+      `Gerar automação para vincular ${ojsFaltantes.length} OJ(s) faltante(s) ao usuário?\n\n` +
+      `Usuário: ${usuarioConsultado.nome}\n` +
+      `CPF: ${usuarioConsultado.cpf}\n\n` +
+      `OJs a serem vinculados:\n${ojsFaltantes.slice(0, 5).join("\n")}` +
+      (ojsFaltantes.length > 5 ? `\n... e mais ${ojsFaltantes.length - 5} OJ(s)` : "")
+    );
+    
+    if (!confirmar) {
+      return;
+    }
+    
+    // Salvar servidor temporário para automação
+    const servidoresAtuais = JSON.parse(localStorage.getItem("servidores") || "[]");
+    const servidorExistente = servidoresAtuais.find(s => s.cpf === servidorParaAutomacao.cpf);
+    
+    if (servidorExistente) {
+      // Atualizar servidor existente com novos OJs
+      const ojsExistentes = servidorExistente.ojs || [];
+      const novosOJs = ojsFaltantes.filter(oj => !ojsExistentes.includes(oj));
+      servidorExistente.ojs = [...ojsExistentes, ...novosOJs];
+      
+      localStorage.setItem("servidores", JSON.stringify(servidoresAtuais));
+      this.showNotification(`Servidor atualizado com ${novosOJs.length} novo(s) OJ(s) para automação`, "success");
+    } else {
+      // Adicionar novo servidor
+      servidoresAtuais.push(servidorParaAutomacao);
+      localStorage.setItem("servidores", JSON.stringify(servidoresAtuais));
+      this.showNotification("Servidor adicionado para automação", "success");
+    }
+    
+    // Redirecionar para aba de servidores
+    setTimeout(() => {
+      const confirmarRedirect = confirm("Deseja ir para a aba Servidores para executar a automação?");
+      if (confirmarRedirect) {
+        this.switchTab("servidores");
+      }
+    }, 1000);
+    
+  } catch (error) {
+    console.error("❌ Erro ao gerar automação:", error);
+    this.showNotification("Erro ao gerar automação: " + error.message, "error");
+  }
+};

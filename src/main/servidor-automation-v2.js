@@ -843,9 +843,39 @@ Sucessos por Servidor:
           console.log(`   Servidor ${i + 1}: ${servidor.nome} (${servidor.cpf})`);
           console.log(`   OJs a processar: ${JSON.stringify(servidor.orgaos?.slice(0,3) || [])}${servidor.orgaos?.length > 3 ? '...' : ''}`);
           
-          // Navegação robusta
+          // Navegação robusta com tratamento específico para CPF não encontrado
           console.log(`🔗 [${i + 1}/${servidores.length}] Navegando para pessoa...`);
-          await this.navigateDirectlyToPerson(servidor.cpf);
+          try {
+            await this.navigateDirectlyToPerson(servidor.cpf);
+          } catch (error) {
+            if (error.message === 'PESSOA_FISICA_NAO_ENCONTRADA') {
+              // Formatação de mensagens específicas para CPF não encontrado
+              const mensagemErro = `CPF ${servidor.cpf} não foi encontrado no sistema PJE`;
+              const mensagemDetalhada = `O servidor ${servidor.nome} (CPF: ${servidor.cpf}) não está cadastrado no sistema. Verifique se o CPF está correto ou se o servidor já foi incluído no PJE.`;
+              
+              console.log(`❌ CPF NÃO ENCONTRADO: ${mensagemErro}`);
+              
+              // Enviar status específico para CPF não encontrado
+              this.sendStatus('error', `❌ [${i + 1}/${servidores.length}] ${servidor.nome}: ${mensagemErro}`, 
+                ((i + 1) / servidores.length) * 90, 'CPF não cadastrado no sistema');
+              
+              // Adicionar ao relatório de erros do servidor
+              const serverResult = this.servidorResults[servidor.cpf];
+              serverResult.status = 'CPF não encontrado';
+              serverResult.erroGeral = mensagemDetalhada;
+              serverResult.detalhes.push({
+                tipo: 'erro',
+                mensagem: mensagemDetalhada,
+                timestamp: new Date().toISOString()
+              });
+              
+              // Relançar erro com mensagem mais clara
+              throw new Error(mensagemDetalhada);
+            } else {
+              // Outros erros são relançados normalmente
+              throw error;
+            }
+          }
           
           // Debug após navegação
           const urlAposNavegacao = this.page.url();
@@ -961,12 +991,45 @@ Sucessos por Servidor:
   async processSingleServidor(config) {
     this.sendStatus('info', 'Iniciando automação moderna...', 0, 'Configurando ambiente');
             
-    await this.initializeBrowser();
-    await this.performLogin();
-    await this.navigateDirectlyToPerson(config.cpf);
-    await this.navigateToServerTab();
-    await this.processOrgaosJulgadores();
-    await this.generateReport();
+    try {
+      await this.initializeBrowser();
+      await this.performLogin();
+      await this.navigateDirectlyToPerson(config.cpf);
+      await this.navigateToServerTab();
+      await this.processOrgaosJulgadores();
+      await this.generateReport();
+    } catch (error) {
+      // Tratamento específico para CPF não encontrado
+      if (error.message && error.message.includes('PESSOA_FISICA_NAO_ENCONTRADA')) {
+        const cpfFormatted = config.cpf || 'não informado';
+        const errorMessage = `❌ CPF ${cpfFormatted} não foi encontrado no sistema PJE`;
+        const detailedMessage = `O CPF ${cpfFormatted} não existe no cadastro de pessoas físicas do PJE. Verifique se o CPF está correto ou se a pessoa está cadastrada no sistema.`;
+        
+        console.error('❌ ERRO - CPF NÃO ENCONTRADO:', errorMessage);
+        console.error('💡 DETALHES:', detailedMessage);
+        
+        // Enviar status de erro específico para a interface
+        this.sendStatus('error', errorMessage, 0, detailedMessage);
+        
+        // Adicionar ao relatório de erros
+        if (!this.relatorio.erros) {
+          this.relatorio.erros = [];
+        }
+        this.relatorio.erros.push({
+          tipo: 'CPF_NAO_ENCONTRADO',
+          cpf: cpfFormatted,
+          mensagem: errorMessage,
+          detalhes: detailedMessage,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Re-lançar erro com mensagem mais clara
+        throw new Error(`CPF_NAO_ENCONTRADO: ${errorMessage}`);
+      }
+      
+      // Para outros tipos de erro, re-lançar o erro original
+      throw error;
+    }
   }
 
   async initializeBrowser() {
@@ -1365,10 +1428,63 @@ Sucessos por Servidor:
     
     console.log('🎯 VERSÃO MELHORADA: Detecção robusta de ícone de edição...');
     
-    // Debug: verificar elementos visíveis na página
+    // PRIMEIRA VERIFICAÇÃO: Detectar se não há pessoas físicas encontradas
     try {
       const pageContent = await this.page.content();
       console.log(`📄 URL atual: ${this.page.url()}`);
+      
+      // Verificar se há mensagem de "não encontradas pessoas físicas"
+      const noResultsMessages = [
+        'Não foram encontradas pessoas físicas',
+        'Nenhuma pessoa física encontrada',
+        'Não há resultados',
+        'Nenhum resultado encontrado'
+      ];
+      
+      const hasNoResults = noResultsMessages.some(msg => 
+        pageContent.toLowerCase().includes(msg.toLowerCase())
+      );
+      
+      if (hasNoResults) {
+        console.log('⚠️ DETECTADO: Não foram encontradas pessoas físicas com os parâmetros informados');
+        console.log('🔄 ESTRATÉGIA ALTERNATIVA: Tentando busca sem filtros restritivos...');
+        
+        // Estratégia 1: Tentar remover filtros da URL atual
+        const currentUrl = this.page.url();
+        const urlObj = new URL(currentUrl);
+        
+        // Remover parâmetros que podem estar restringindo a busca
+        urlObj.searchParams.delete('situacao');
+        urlObj.searchParams.delete('pagina');
+        urlObj.searchParams.set('tamanhoPagina', '50'); // Aumentar tamanho da página
+        
+        const newSearchUrl = urlObj.toString();
+        console.log(`🔍 Tentando busca expandida: ${newSearchUrl}`);
+        
+        try {
+          await this.page.goto(newSearchUrl, { waitUntil: 'networkidle' });
+          await this.delay(2000);
+          
+          // Verificar se agora há resultados
+          const newPageContent = await this.page.content();
+          const stillNoResults = noResultsMessages.some(msg => 
+            newPageContent.toLowerCase().includes(msg.toLowerCase())
+          );
+          
+          if (stillNoResults) {
+            console.log('❌ Pessoa física não encontrada mesmo com busca expandida');
+            console.log('💡 SUGESTÃO: Verificar se o CPF está correto ou se a pessoa existe no sistema');
+            
+            // Retornar erro específico para que o sistema possa tratar adequadamente
+            throw new Error('PESSOA_FISICA_NAO_ENCONTRADA: CPF não localizado no sistema PJE');
+          } else {
+            console.log('✅ Busca expandida encontrou resultados! Continuando...');
+          }
+        } catch (navigationError) {
+          console.log('⚠️ Erro na navegação expandida:', navigationError.message);
+          // Continuar com a busca normal se a navegação falhar
+        }
+      }
       
       // Verificar se há tabela na página
       const hasTable = pageContent.includes('<table') || pageContent.includes('datatable');
@@ -1703,44 +1819,13 @@ Sucessos por Servidor:
           }
         }
         
-        // ESTRATÉGIA 4: Navegação direta por URL
+        // ESTRATÉGIA 4: Navegação direta por URL (REMOVIDA - URLs inválidas)
+        // NOTA: As URLs /pessoa-fisica/edit e /pessoa-fisica/editar não existem no PJE
+        // Causam erro: "Cannot match any routes. URL Segment: 'pessoa-fisica/edit'"
         if (!editButton || !editButtonElement) {
-          console.log('🔗 ESTRATÉGIA 4: Navegação direta por URL...');
-          
-          try {
-            const currentUrl = this.page.url();
-            console.log(`📍 URL atual: ${currentUrl}`);
-            
-            // Tentar diferentes padrões de URL de edição
-            const editUrlPatterns = [
-              currentUrl.replace('/pessoa-fisica', '/pessoa-fisica/edit'),
-              currentUrl.replace('/pessoa-fisica', '/pessoa-fisica/editar'),
-              currentUrl + '/edit',
-              currentUrl + '/editar',
-              currentUrl + '/detalhes'
-            ];
-            
-            for (const editUrl of editUrlPatterns) {
-              try {
-                console.log(`🔗 Tentando navegar para: ${editUrl}`);
-                await this.navigationOptimizer.optimizedNavigate(this.page, editUrl);
-                
-                const finalUrl = this.page.url();
-                console.log(`📍 URL final: ${finalUrl}`);
-                
-                if (finalUrl.includes('edit') || finalUrl.includes('editar') || finalUrl.includes('detalhes')) {
-                  console.log('✅ SUCESSO: Navegação direta realizada!');
-                  editButton = `Navegação direta: ${editUrl}`;
-                  editButtonElement = 'direct-navigation';
-                  break;
-                }
-              } catch (urlError) {
-                console.log(`⚠️ Erro na navegação para ${editUrl}:`, urlError.message);
-              }
-            }
-          } catch (directNavError) {
-            console.log('❌ Erro na navegação direta:', directNavError.message);
-          }
+          console.log('🔗 ESTRATÉGIA 4: Navegação direta por URL DESABILITADA');
+          console.log('⚠️ URLs de edição direta não são suportadas pelo PJE');
+          console.log('💡 O PJE requer interação com elementos da interface para acessar edição');
         }
         
         // ESTRATÉGIA 5: Última tentativa com clique em elementos
@@ -1843,34 +1928,24 @@ Sucessos por Servidor:
       throw new Error('Ícone de edição não encontrado após múltiplas estratégias');
     }
         
-    // Clicar no elemento encontrado ou verificar navegação direta
+    // Clicar no elemento encontrado
     console.log(`🖱️ Processando ação: ${editButton}`);
     
-    if (editButtonElement === 'direct-navigation') {
-      console.log('✅ Navegação direta já realizada - verificando página atual');
-      const currentUrl = this.page.url();
-      if (currentUrl.includes('edit') || currentUrl.includes('editar') || currentUrl.includes('detalhes')) {
-        console.log('✅ Navegação direta confirmada com sucesso');
-      } else {
-        throw new Error('Navegação direta não levou à página esperada');
-      }
-    } else {
-      try {
-        // Scroll para o elemento antes de clicar
-        await editButtonElement.scrollIntoViewIfNeeded();
-        await this.delay(500);
-        
-        // Clicar no elemento
-        await editButtonElement.click();
-        await this.delay(3000); // Aguardar navegação
-        
-        console.log('✅ Clique no ícone de edição executado com sucesso');
-        this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, true);
-      } catch (clickError) {
-        console.error('❌ Erro ao clicar no ícone de edição:', clickError.message);
-        this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, false);
-        throw new Error(`Falha ao clicar no ícone de edição: ${clickError.message}`);
-      }
+    try {
+      // Scroll para o elemento antes de clicar
+      await editButtonElement.scrollIntoViewIfNeeded();
+      await this.delay(500);
+      
+      // Clicar no elemento
+      await editButtonElement.click();
+      await this.delay(3000); // Aguardar navegação
+      
+      console.log('✅ Clique no ícone de edição executado com sucesso');
+      this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, true);
+    } catch (clickError) {
+      console.error('❌ Erro ao clicar no ícone de edição:', clickError.message);
+      this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, false);
+      throw new Error(`Falha ao clicar no ícone de edição: ${clickError.message}`);
     }
     
     // Registrar fim da operação se não houve clique
