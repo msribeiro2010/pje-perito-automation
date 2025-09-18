@@ -173,8 +173,22 @@ ipcMain.handle('save-config', async (event, config) => {
     const envContent = Object.entries(config)
       .map(([key, value]) => `${key}=${value}`)
       .join('\n');
-    
+
     fs.writeFileSync(path.join(__dirname, '../.env'), envContent);
+
+    try {
+      const credentialsPath = path.join(__dirname, '../pje-credentials.json');
+      const payload = {
+        PJE_URL: config.PJE_URL || '',
+        LOGIN: config.LOGIN || '',
+        PASSWORD: config.PASSWORD || '',
+        updatedAt: new Date().toISOString()
+      };
+      fs.writeFileSync(credentialsPath, JSON.stringify(payload, null, 2));
+    } catch (innerError) {
+      console.warn('Warning: falha ao salvar pje-credentials.json:', innerError.message);
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };

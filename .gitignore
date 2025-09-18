@@ -294,3 +294,4 @@ ehthumbs_vista.db
 *.orig
 .tmp/
 .temp/
+pje-credentials.json

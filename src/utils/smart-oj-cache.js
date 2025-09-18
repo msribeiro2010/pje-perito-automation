@@ -167,15 +167,58 @@ class SmartOJCache {
 
           // Reconstruir o cache em memória preservando perfis
           if (cacheExistente.ojsJaVinculados) {
+            const confiaveis = [];
+            const duvidosos = [];
+
             cacheExistente.ojsJaVinculados.forEach(item => {
-              // CORREÇÃO: Preservar perfil do cache ou marcar como desconhecido para análise inteligente
-              const perfilExistente = item.perfil || null; // null indica perfil desconhecido
+              if (item && item.tipoCorrespondencia === 'palavras_chave') {
+                duvidosos.push(item);
+              } else {
+                confiaveis.push(item);
+              }
+            });
+
+            confiaveis.forEach(item => {
+              const perfilExistente = item?.perfil || null;
               this.atualizarCache(item.oj, {
                 jaVinculado: true,
                 textoEncontrado: item.textoEncontrado,
                 tipoCorrespondencia: item.tipoCorrespondencia
               }, perfilExistente);
             });
+
+            // Itens duvidosos permanecem no cache como não vinculados para forçar revalidação
+            duvidosos.forEach(item => {
+              this.atualizarCache(item.oj, {
+                jaVinculado: false,
+                textoEncontrado: item?.textoEncontrado || null,
+                tipoCorrespondencia: item?.tipoCorrespondencia || null
+              }, item?.perfil || null);
+            });
+
+            if (duvidosos.length > 0) {
+              this.logger.warn(`⚠️ Cache possivelmente desatualizado para ${cpfServidor}: ${duvidosos.length} entradas fracas (palavras-chave) serão reprocessadas`);
+            }
+
+            cacheExistente.ojsJaVinculados = confiaveis;
+            if (!Array.isArray(cacheExistente.ojsParaVincular)) {
+              cacheExistente.ojsParaVincular = [];
+            }
+            cacheExistente.ojsParaVincular = [
+              ...cacheExistente.ojsParaVincular.filter(item => item && duvidosos.every(duv => duv.oj !== item.oj)),
+              ...duvidosos.map(item => ({
+                oj: item.oj,
+                textoEncontrado: item?.textoEncontrado || null,
+                motivo: 'palavras_chave_inseguro'
+              }))
+            ];
+
+            if (cacheExistente.estatisticas) {
+              const stats = cacheExistente.estatisticas;
+              stats.jaVinculados = Math.max(0, (stats.jaVinculados || 0) - duvidosos.length);
+              stats.paraVincular = (stats.paraVincular || 0) + duvidosos.length;
+              stats.totalVerificados = stats.totalVerificados || (confiaveis.length + duvidosos.length);
+            }
           }
 
           this.cacheValido = true;
@@ -341,7 +384,44 @@ class SmartOJCache {
         const maxAge = 24 * 60 * 60 * 1000; // 24 horas
 
         if (ageSince < maxAge) {
-          this.logger.info(`📦 Cache persistente carregado para ${cpfServidor}: ${servidorCache.ojsJaVinculados?.length || 0} OJs já cadastrados`);
+          if (Array.isArray(servidorCache.ojsJaVinculados)) {
+            const confiaveis = [];
+            const duvidosos = [];
+
+            servidorCache.ojsJaVinculados.forEach(item => {
+              if (item && item.tipoCorrespondencia === 'palavras_chave') {
+                duvidosos.push(item);
+              } else {
+                confiaveis.push(item);
+              }
+            });
+
+            servidorCache.ojsJaVinculados = confiaveis;
+            if (!Array.isArray(servidorCache.ojsParaVincular)) {
+              servidorCache.ojsParaVincular = [];
+            }
+            servidorCache.ojsParaVincular = [
+              ...servidorCache.ojsParaVincular.filter(item => item && duvidosos.every(duv => duv.oj !== item.oj)),
+              ...duvidosos.map(item => ({
+                oj: item.oj,
+                textoEncontrado: item?.textoEncontrado || null,
+                motivo: 'palavras_chave_inseguro'
+              }))
+            ];
+
+            if (servidorCache.estatisticas) {
+              const stats = servidorCache.estatisticas;
+              stats.jaVinculados = Math.max(0, (stats.jaVinculados || 0) - duvidosos.length);
+              stats.paraVincular = (stats.paraVincular || 0) + duvidosos.length;
+              stats.totalVerificados = stats.totalVerificados || (confiaveis.length + duvidosos.length);
+            }
+
+            if (duvidosos.length > 0) {
+              this.logger.warn(`⚠️ Cache persistente contém ${duvidosos.length} entradas fracas (palavras-chave) para ${cpfServidor} - serão reprocessadas`);
+            }
+          }
+
+          this.logger.info(`📦 Cache persistente carregado para ${cpfServidor}: ${servidorCache.ojsJaVinculados?.length || 0} OJs confiáveis`);
           return servidorCache;
         } else {
           this.logger.info(`⏰ Cache persistente expirado para ${cpfServidor} (${Math.round(ageSince / 1000 / 60 / 60)}h)`);
@@ -981,27 +1061,47 @@ class SmartOJCache {
       return texto1Norm === texto2Norm;
     }
     
-    // Extrair palavras-chave importantes (substantivos de órgãos julgadores)
-    const palavrasChave = [
+    const palavrasChaveGenericas = [
       'vara', 'tribunal', 'juizado', 'turma', 'camara', 'secao',
       'comarca', 'foro', 'instancia', 'supremo', 'superior',
       'regional', 'federal', 'estadual', 'militar', 'eleitoral',
       'trabalho', 'justica', 'civil', 'criminal', 'fazenda'
     ];
 
-    const extrairChaves = (texto) => {
-      return palavrasChave.filter(chave => texto.includes(chave));
-    };
+    const stopwords = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'the']);
 
-    const chaves1 = extrairChaves(texto1);
-    const chaves2 = extrairChaves(texto2);
+    const tokenizar = (texto) => texto
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
 
-    if (chaves1.length === 0 || chaves2.length === 0) return false;
+    const tokens1 = tokenizar(texto1);
+    const tokens2 = tokenizar(texto2);
 
-    // Verificar se há sobreposição significativa de palavras-chave
+    if (tokens1.length === 0 || tokens2.length === 0) {
+      return false;
+    }
+
+    const chaves1 = tokens1.filter(t => palavrasChaveGenericas.includes(t));
+    const chaves2 = tokens2.filter(t => palavrasChaveGenericas.includes(t));
+
+    if (chaves1.length === 0 || chaves2.length === 0) {
+      return false;
+    }
+
+    const especificos1 = new Set(tokens1.filter(t => !palavrasChaveGenericas.includes(t) && !stopwords.has(t) && !/^\d/.test(t) && t.length > 3));
+    const especificos2 = new Set(tokens2.filter(t => !palavrasChaveGenericas.includes(t) && !stopwords.has(t) && !/^\d/.test(t) && t.length > 3));
+
+    // É necessário pelo menos um token específico em comum (ex: nome da cidade)
+    const temEspecificoComum = [...especificos1].some(token => especificos2.has(token));
+    if (!temEspecificoComum) {
+      return false;
+    }
+
     const chavesComuns = chaves1.filter(chave => chaves2.includes(chave));
     const percentualComum = chavesComuns.length / Math.min(chaves1.length, chaves2.length);
-    
+
     return percentualComum >= 0.6 && chavesComuns.length >= 2;
   }
 
