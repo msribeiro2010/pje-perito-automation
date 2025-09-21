@@ -73,9 +73,9 @@ class PJEPageReader {
                 // Verificar se contém nome de OJ (heurísticas)
                 if (this.isOJText(text)) {
                   results.ojs.push({
-                    text: text,
-                    selector: selector,
-                    index: index,
+                    text,
+                    selector,
+                    index,
                     element: element.outerHTML.substring(0, 200) + '...'
                   });
                 }
@@ -83,9 +83,9 @@ class PJEPageReader {
                 // Verificar se contém perfil/cargo
                 if (this.isPerfilText(text)) {
                   results.perfis.push({
-                    text: text,
-                    selector: selector,
-                    index: index
+                    text,
+                    selector,
+                    index
                   });
                 }
               });
@@ -215,8 +215,8 @@ class PJEPageReader {
 
     return {
       total: desiredOJs.length,
-      existing: existing,
-      missing: missing,
+      existing,
+      missing,
       existingCount: existing.length,
       missingCount: missing.length,
       completionPercentage: Math.round((existing.length / desiredOJs.length) * 100)
@@ -287,7 +287,7 @@ class PJEPageReader {
    */
   generateComparisonReport(comparisonResult, cpf) {
     const report = {
-      cpf: cpf,
+      cpf,
       timestamp: new Date().toISOString(),
       summary: {
         total: comparisonResult.total,

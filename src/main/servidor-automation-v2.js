@@ -23,6 +23,11 @@ const DatabaseConnection = require('../utils/database-connection.js');
 const { verificarEProcessarLocalizacoesFaltantes, isVaraLimeira, aplicarTratamentoLimeira } = require('../vincularOJ.js');
 const { resolverProblemaVarasLimeira, SolucaoLimeiraCompleta } = require('../../solucao-limeira-completa.js');
 const { DetectorVarasProblematicas } = require('../utils/detector-varas-problematicas.js');
+const PerformanceOptimizer = require('../utils/performance-optimizer.js');
+const { SmartDOMCache } = require('../utils/smart-dom-cache.js');
+// const PJEErrorHandler = require('../utils/pje-error-handler.js'); // Removido - tratamento simplificado
+const PerformanceDashboard = require('../utils/performance-dashboard.js');
+const BatchOJProcessor = require('./batch-oj-processor.js');
 
 /**
  * Automação moderna para vinculação de OJs a servidores
@@ -59,6 +64,11 @@ class ServidorAutomationV2 {
     this.detectorVaras = new DetectorVarasProblematicas(); // Detector automático de varas problemáticas
     this.dbConnection = null; // Conexão com banco de dados para verificação inteligente
     this.forcedOJsNormalized = null; // OJs que DEVEM ser processadas (normalizadas)
+    this.performanceOptimizer = null; // Otimizador de performance
+    this.smartDOMCache = new SmartDOMCache(150, 600000); // Cache DOM inteligente (150 itens, 10 min TTL)
+    // this.pjeErrorHandler = null; // Removido - tratamento simplificado direto no código
+    this.performanceDashboard = new PerformanceDashboard(); // Dashboard de monitoramento de performance
+    this.batchOJProcessor = null; // Processador de OJs em lote mantendo modal aberto
   }
 
   setMainWindow(window) {
@@ -96,12 +106,12 @@ class ServidorAutomationV2 {
    * @returns {Object} Resultado da verificação inteligente
    */
   async verificarOJsInteligente(cpfServidor, ojsParaProcessar) {
-    console.log(`🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Iniciando verificarOJsInteligente`);
+    console.log('🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Iniciando verificarOJsInteligente');
     console.log(`🔍 [DEBUG] DIRLEI VERIFICAÇÃO - CPF: ${cpfServidor}`);
     console.log(`🔍 [DEBUG] DIRLEI VERIFICAÇÃO - OJs para processar: ${JSON.stringify(ojsParaProcessar)}`);
 
     // CORREÇÃO: Integrar com SmartOJCache para usar dados do cache persistente
-    console.log(`🔍 [DEBUG] INTEGRAÇÃO CACHE - Verificando cache persistente primeiro...`);
+    console.log('🔍 [DEBUG] INTEGRAÇÃO CACHE - Verificando cache persistente primeiro...');
     const cacheCarregado = await this.smartOJCache.carregarCachePersistente(cpfServidor);
 
     if (cacheCarregado && cacheCarregado.ojsJaVinculados) {
@@ -115,7 +125,7 @@ class ServidorAutomationV2 {
         )
       );
 
-      console.log(`🎯 [DEBUG] RESULTADO CACHE:`);
+      console.log('🎯 [DEBUG] RESULTADO CACHE:');
       console.log(`   - OJs já vinculadas: ${ojsJaVinculadasDoCache.length}`);
       console.log(`   - OJs para processar: ${ojsParaProcessarFinal.length}`);
 
@@ -138,10 +148,10 @@ class ServidorAutomationV2 {
     }
 
     if (!this.dbConnection || !this.dbConnection.isConnected) {
-      console.log(`❌ [DEBUG] DIRLEI VERIFICAÇÃO - Banco não conectado!`);
+      console.log('❌ [DEBUG] DIRLEI VERIFICAÇÃO - Banco não conectado!');
       return {
         inteligenciaAtiva: false,
-        ojsParaProcessar: ojsParaProcessar,
+        ojsParaProcessar,
         ojsJaCadastrados: [],
         economia: { tempo: 0, cliques: 0 },
         mensagem: 'Banco não conectado - processando todos os OJs'
@@ -152,9 +162,9 @@ class ServidorAutomationV2 {
       this.sendStatus('info', '🧠 Verificação inteligente: consultando OJs cadastrados...', 0, 'Analisando situação do servidor');
 
       // Buscar servidor por CPF
-      console.log(`🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Buscando servidor por CPF...`);
+      console.log('🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Buscando servidor por CPF...');
       const resultadoServidor = await this.dbConnection.buscarServidorPorCPF(cpfServidor);
-      console.log(`🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Resultado busca servidor:`, {
+      console.log('🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Resultado busca servidor:', {
         existe: resultadoServidor.existe,
         servidor: resultadoServidor.servidor ? {
           idUsuario: resultadoServidor.servidor.idUsuario,
@@ -163,11 +173,11 @@ class ServidorAutomationV2 {
       });
 
       if (!resultadoServidor.existe) {
-        console.log(`❌ [DEBUG] DIRLEI VERIFICAÇÃO - Servidor não encontrado no BD!`);
+        console.log('❌ [DEBUG] DIRLEI VERIFICAÇÃO - Servidor não encontrado no BD!');
         return {
           inteligenciaAtiva: true,
           servidorExiste: false,
-          ojsParaProcessar: ojsParaProcessar,
+          ojsParaProcessar,
           ojsJaCadastrados: [],
           economia: { tempo: 0, cliques: 0 },
           mensagem: `Servidor CPF ${cpfServidor} não encontrado no sistema`
@@ -181,7 +191,7 @@ class ServidorAutomationV2 {
         ojsParaProcessar
       );
 
-      console.log(`🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Resultado da consulta BD:`, {
+      console.log('🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Resultado da consulta BD:', {
         totalVerificados: verificacao.totalVerificados,
         ojsParaProcessar: verificacao.ojsParaProcessar,
         ojsJaCadastrados: verificacao.ojsJaCadastrados,
@@ -213,7 +223,7 @@ class ServidorAutomationV2 {
         mensagem: `Sistema inteligente: ${verificacao.ojsParaProcessar.length}/${verificacao.totalVerificados} OJs precisam ser processados`
       };
 
-      console.log(`🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Resultado FINAL que será retornado:`, {
+      console.log('🔍 [DEBUG] DIRLEI VERIFICAÇÃO - Resultado FINAL que será retornado:', {
         inteligenciaAtiva: resultadoFinal.inteligenciaAtiva,
         ojsParaProcessar: resultadoFinal.ojsParaProcessar,
         ojsJaCadastrados: resultadoFinal.ojsJaCadastrados?.length || 0
@@ -228,7 +238,7 @@ class ServidorAutomationV2 {
       return {
         inteligenciaAtiva: false,
         erro: error.message,
-        ojsParaProcessar: ojsParaProcessar,
+        ojsParaProcessar,
         ojsJaCadastrados: [],
         economia: { tempo: 0, cliques: 0 },
         mensagem: `Erro na verificação: ${error.message}`
@@ -252,14 +262,14 @@ class ServidorAutomationV2 {
     let detalhes = '';
     
     if (resultadoVerificacao.ojsJaCadastrados.length > 0) {
-      detalhes += `\n✅ OJs JÁ CADASTRADOS (serão pulados):\n`;
+      detalhes += '\n✅ OJs JÁ CADASTRADOS (serão pulados):\n';
       resultadoVerificacao.ojsJaCadastrados.forEach((oj, index) => {
         detalhes += `   ${index + 1}. ${oj.nome}\n`;
       });
     }
     
     if (resultadoVerificacao.ojsParaProcessar.length > 0) {
-      detalhes += `\n🔄 OJs QUE SERÃO PROCESSADOS:\n`;
+      detalhes += '\n🔄 OJs QUE SERÃO PROCESSADOS:\n';
       resultadoVerificacao.ojsParaProcessar.forEach((oj, index) => {
         detalhes += `   ${index + 1}. ${oj}\n`;
       });
@@ -354,16 +364,16 @@ class ServidorAutomationV2 {
 
     // Usar UltraFastDelayManager para contextos específicos
     if (context === 'hyperFastBetweenOJs' || context === 'critical') {
-      return await this.ultraFastDelayManager.criticalDelay({ priority: 'critical', context: context });
+      return await this.ultraFastDelayManager.criticalDelay({ priority: 'critical', context });
     }
     if (context === 'click' || context === 'form') {
-      return await this.ultraFastDelayManager.clickDelay({ priority: 'critical', context: context });
+      return await this.ultraFastDelayManager.clickDelay({ priority: 'critical', context });
     }
     if (context === 'navigation') {
-      return await this.ultraFastDelayManager.navigationDelay({ priority: 'critical', context: context });
+      return await this.ultraFastDelayManager.navigationDelay({ priority: 'critical', context });
     }
     if (context === 'search') {
-      return await this.ultraFastDelayManager.searchDelay({ priority: 'critical', context: context });
+      return await this.ultraFastDelayManager.searchDelay({ priority: 'critical', context });
     }
 
     // Fallback para outros contextos
@@ -516,6 +526,15 @@ class ServidorAutomationV2 {
     }
     
     // Iniciar monitoramento de performance
+    this.performanceDashboard.reset();
+    this.performanceDashboard.startContinuousMonitoring(10000); // Monitor a cada 10 segundos
+    
+    // Atualizar status dos otimizadores
+    this.performanceDashboard.updateOptimizerStatus('timeoutManager', true);
+    this.performanceDashboard.updateOptimizerStatus('smartRetryManager', true);
+    this.performanceDashboard.updateOptimizerStatus('navigationOptimizer', true);
+    this.performanceDashboard.updateOptimizerStatus('smartDOMCache', true);
+    // this.performanceDashboard.updateOptimizerStatus('pjeErrorHandler', false); // Removido
     this.performanceMonitor.startMonitoring();
     
     // Inicializar timer de processamento para o modal
@@ -546,6 +565,21 @@ class ServidorAutomationV2 {
       this.sendStatus('error', `Erro na automação: ${error.message}`, this.currentProgress, 'Erro crítico');
       throw error;
     } finally {
+      // Exibir dashboard de performance final
+      console.log('\n📊 RELATÓRIO FINAL DE PERFORMANCE:');
+      this.performanceDashboard.displayDashboard();
+      
+      // Salvar relatório
+      try {
+        const reportPath = await this.performanceDashboard.saveReport();
+        console.log(`📄 Relatório de performance salvo em: ${reportPath}`);
+      } catch (e) {
+        console.log('⚠️ Não foi possível salvar o relatório de performance');
+      }
+      
+      // Parar monitoramento contínuo
+      this.performanceDashboard.stopContinuousMonitoring();
+      
       await this.cleanup();
       this.isRunning = false;
     }
@@ -1426,7 +1460,43 @@ Sucessos por Servidor:
     const clickStartTime = Date.now();
     this.performanceMonitor.recordClickStart('clickEditIcon');
     
-    console.log('🎯 VERSÃO MELHORADA: Detecção robusta de ícone de edição...');
+    // Inicializar otimizador de performance se não existir
+    if (!this.performanceOptimizer) {
+      this.performanceOptimizer = new PerformanceOptimizer(this.page, console);
+      this.performanceDashboard.updateOptimizerStatus('performanceOptimizer', true);
+    }
+    
+    // Tentar primeiro o método otimizado
+    try {
+      // Verificar cache DOM primeiro
+      const cachedSelector = this.smartDOMCache.get('editIcon', 'clickEditIcon', this.page);
+      if (cachedSelector && cachedSelector.selector) {
+        try {
+          await this.page.click(cachedSelector.selector, { timeout: 500 });
+          const duration = Date.now() - clickStartTime;
+          console.log(`✅ CACHE HIT: Clique realizado em ${duration}ms`);
+          this.performanceMonitor.recordClickEnd('clickEditIcon', duration, true);
+          this.performanceDashboard.recordOperation('clickEditIcon', duration, true);
+          this.performanceDashboard.recordCacheAccess(true);
+          return;
+        } catch (e) {
+          console.log('⚠️ Cache miss, tentando otimização...');
+          this.smartDOMCache.delete('editIcon', 'clickEditIcon', this.page);
+          this.performanceDashboard.recordCacheAccess(false);
+        }
+      }
+      
+      // Usar método otimizado se cache falhou
+      await this.performanceOptimizer.optimizedClickEditIcon();
+      const duration = Date.now() - clickStartTime;
+      this.performanceMonitor.recordClickEnd('clickEditIcon', duration, true);
+      this.performanceDashboard.recordOperation('clickEditIcon', duration, true);
+      return;
+    } catch (optimizedError) {
+      console.log('⚠️ Método otimizado falhou, tentando método tradicional...');
+    }
+    
+    console.log('🎯 VERSÃO TRADICIONAL: Detecção robusta de ícone de edição...');
     
     // PRIMEIRA VERIFICAÇÃO: Detectar se não há pessoas físicas encontradas
     try {
@@ -1533,64 +1603,82 @@ Sucessos por Servidor:
     let editButton = null;
     let editButtonElement = null;
     
-    // NOVA ESTRATÉGIA 1: Forçar visibilidade e fazer hover intensivo
-    console.log('🔧 ESTRATÉGIA 1: Forçando visibilidade e hover intensivo...');
+    // ESTRATÉGIA 1 OTIMIZADA: Cache inteligente + hover rápido (CORRIGIDO: reduzido de 2367ms)
+    console.log('🚀 ESTRATÉGIA 1 OTIMIZADA: Cache inteligente + hover rápido...');
     
     try {
-      // 1.1: Forçar visibilidade via JavaScript
-      await this.page.evaluate(() => {
-        // Forçar todos os elementos .visivel-hover serem visíveis
-        const hoverElements = document.querySelectorAll('.visivel-hover, button[aria-label="Alterar pessoa"]');
-        console.log(`Forçando visibilidade em ${hoverElements.length} elementos`);
-        
-        hoverElements.forEach((element, index) => {
-          element.style.visibility = 'visible';
-          element.style.opacity = '1'; 
-          element.style.display = 'inline-block';
-          element.style.pointerEvents = 'auto';
-          console.log(`Elemento ${index + 1} forçado a ser visível`);
+      // 1.1: Cache de seletores para evitar re-busca
+      const cachedSelectors = this.domCache?.get('editButtonSelectors') || [];
+      if (cachedSelectors.length > 0) {
+        console.log(`📋 Usando cache de ${cachedSelectors.length} seletores`);
+        for (const selector of cachedSelectors.slice(0, 3)) { // Limitar a 3 seletores do cache
+          try {
+            const element = await this.page.$(selector);
+            if (element && await element.isVisible()) {
+              editButtonElement = element;
+              editButton = `Cache: ${selector}`;
+              console.log(`🎯 SUCESSO RÁPIDO (cache): ${editButton}`);
+              break;
+            }
+          } catch (e) {
+            console.log(`⚠️ Cache selector falhou: ${selector}`);
+          }
+        }
+      }
+      
+      // 1.2: Se cache falhou, forçar visibilidade otimizada (máximo 500ms)
+      if (!editButtonElement) {
+        const startTime = Date.now();
+        await this.page.evaluate(() => {
+          // Forçar visibilidade apenas nos primeiros 5 elementos
+          const hoverElements = Array.from(document.querySelectorAll('.visivel-hover, button[aria-label="Alterar pessoa"]')).slice(0, 5);
+          console.log(`Forçando visibilidade em ${hoverElements.length} elementos (otimizado)`);
+          
+          hoverElements.forEach((element, index) => {
+            element.style.visibility = 'visible';
+            element.style.opacity = '1'; 
+            element.style.display = 'inline-block';
+            element.style.pointerEvents = 'auto';
+          });
+          
+          return hoverElements.length;
         });
         
-        return hoverElements.length;
-      });
-      
-      console.log('✅ Visibilidade forçada via JavaScript');
-      
-      // 1.2: Fazer hover intensivo em todas as linhas da tabela (otimizado)
-      const allRows = await this.page.$$('table tbody tr, .table tbody tr, .datatable tbody tr, #cdk-drop-list-1 > tr');
-      console.log(`📋 Fazendo hover intensivo em ${allRows.length} linhas...`);
-      
-      for (let i = 0; i < Math.min(allRows.length, 3); i++) {
-        const row = allRows[i];
-        try {
-          console.log(`🖱️ Hover intensivo na linha ${i + 1}...`);
-          await row.hover();
-          await this.delay(1000);
+        console.log(`✅ Visibilidade forçada em ${Date.now() - startTime}ms`);
+        
+        // 1.3: Hover rápido apenas na primeira linha (máximo 300ms)
+        const firstRow = await this.page.$('table tbody tr:first-child, .table tbody tr:first-child, .datatable tbody tr:first-child, #cdk-drop-list-1 > tr:first-child');
+        if (firstRow) {
+          console.log('🖱️ Hover rápido na primeira linha...');
+          await firstRow.hover();
+          await this.delay(300); // Reduzido de 1000ms para 300ms
           
-          // Verificar imediatamente se botões apareceram
-          const buttonsInRow = await row.$$('button[aria-label="Alterar pessoa"], .visivel-hover, i.fa-pencil-alt');
+          // Verificar botões imediatamente
+          const buttonsInRow = await firstRow.$$('button[aria-label="Alterar pessoa"], .visivel-hover, i.fa-pencil-alt');
           if (buttonsInRow.length > 0) {
-            console.log(`✅ ${buttonsInRow.length} botões encontrados após hover na linha ${i + 1}`);
-            
             for (const btn of buttonsInRow) {
               const isVisible = await btn.isVisible();
               if (isVisible) {
                 editButtonElement = btn;
-                editButton = `Hover linha ${i + 1} - botão visível`;
-                console.log(`🎯 SUCESSO: ${editButton}`);
+                editButton = 'Hover primeira linha - otimizado';
+                console.log(`🎯 SUCESSO RÁPIDO: ${editButton}`);
+                
+                // Salvar no cache para próxima vez
+                const selector = await btn.evaluate(el => {
+                  if (el.getAttribute('aria-label')) return `button[aria-label="${el.getAttribute('aria-label')}"]`;
+                  if (el.className) return `.${el.className.split(' ')[0]}`;
+                  return el.tagName.toLowerCase();
+                });
+                this.domCache?.set('editButtonSelectors', [selector, ...cachedSelectors.slice(0, 4)]);
                 break;
               }
             }
-            
-            if (editButtonElement) break;
           }
-        } catch (hoverRowError) {
-          console.log(`⚠️ Erro hover linha ${i + 1}:`, hoverRowError.message);
         }
       }
       
     } catch (forceError) {
-      console.log('⚠️ Erro na estratégia de força:', forceError.message);
+      console.log('⚠️ Erro na estratégia otimizada:', forceError.message);
     }
     
     // ESTRATÉGIA 2: Clique direto na linha se não encontrou botões 
@@ -1941,15 +2029,21 @@ Sucessos por Servidor:
       await this.delay(3000); // Aguardar navegação
       
       console.log('✅ Clique no ícone de edição executado com sucesso');
-      this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, true);
+      const finalDuration = Date.now() - clickStartTime;
+      this.performanceMonitor.recordClickEnd('clickEditIcon', finalDuration, true);
+      this.performanceDashboard.recordOperation('clickEditIcon', finalDuration, true);
     } catch (clickError) {
       console.error('❌ Erro ao clicar no ícone de edição:', clickError.message);
-      this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, false);
+      const errorDuration = Date.now() - clickStartTime;
+      this.performanceMonitor.recordClickEnd('clickEditIcon', errorDuration, false);
+      this.performanceDashboard.recordOperation('clickEditIcon', errorDuration, false);
       throw new Error(`Falha ao clicar no ícone de edição: ${clickError.message}`);
     }
     
     // Registrar fim da operação se não houve clique
-    this.performanceMonitor.recordClickEnd('clickEditIcon', Date.now() - clickStartTime, false);
+    const noDuration = Date.now() - clickStartTime;
+    this.performanceMonitor.recordClickEnd('clickEditIcon', noDuration, false);
+    this.performanceDashboard.recordOperation('clickEditIcon', noDuration, false);
   }
 
   async clickServerTab() {
@@ -2201,35 +2295,111 @@ Sucessos por Servidor:
 
   async processOrgaosJulgadoresUltraFast() {
     console.log('⚡ ATIVANDO MODO ULTRA-RÁPIDO para processamento de OJs...');
+    console.log('🚀 [ULTRA-FAST] Usando APENAS BatchOJProcessor - sem verificações desnecessárias');
     this.sendStatus('info', '⚡ MODO ULTRA-RÁPIDO ATIVADO', 50, 'Processamento em velocidade máxima');
     
-    // Forçar uso do processamento sequencial otimizado
-    return this.processOrgaosJulgadoresSequential();
+    // USAR APENAS BATCHOJPROCESSOR - sem fallbacks ou verificações prévias
+    return this.processOrgaosJulgadoresBatch();
+  }
+  
+  /**
+   * Processa múltiplos OJs em lote mantendo o modal aberto
+   */
+  async processOrgaosJulgadoresBatch() {
+    console.log('🚀 [BATCH] Iniciando processamento em lote de OJs');
+    this.sendStatus('info', 'Processamento em lote iniciado...', 60, 'Mantendo modal aberto para múltiplos OJs');
+    
+    try {
+      // Inicializar o processador em lote se não existir
+      if (!this.batchOJProcessor) {
+        this.batchOJProcessor = new BatchOJProcessor(
+          this.page, 
+          this.config, 
+          this.performanceMonitor, 
+          this.performanceDashboard
+        );
+      }
+      
+      // Processar todos os OJs em lote
+      const result = await this.batchOJProcessor.processBatchOJs(this.config.orgaos);
+      
+      // Atualizar resultados
+      if (result.results) {
+        for (const ojResult of result.results) {
+          this.results.push({
+            orgao: ojResult.orgao,
+            status: ojResult.status === 'success' ? 'Vinculado com Sucesso' : 
+              ojResult.status === 'skipped' ? 'Já Incluído (PJE-281)' : 
+                'Erro na Vinculação',
+            erro: ojResult.error || null,
+            perfil: this.config.perfil,
+            cpf: this.config.cpf,
+            timestamp: ojResult.timestamp
+          });
+        }
+      }
+      
+      // Enviar status final
+      const summary = result.summary;
+      this.sendStatus(
+        result.success ? 'success' : 'warning',
+        `Processamento em lote concluído: ${summary.success} sucesso, ${summary.skipped} pulados, ${summary.errors} erros`,
+        100,
+        'Lote processado',
+        null,
+        this.currentServidor?.nome,
+        summary.total,
+        summary.total
+      );
+      
+      console.log('✅ [BATCH] Processamento em lote concluído');
+      
+    } catch (error) {
+      console.error('❌ [BATCH] Erro no processamento em lote:', error);
+      this.sendStatus('error', `Erro no processamento em lote: ${error.message}`, 100, 'Erro crítico');
+      
+      // Fallback para processamento individual
+      console.log('🔄 [BATCH] Tentando fallback para processamento individual...');
+      
+      // Processar cada OJ individualmente
+      for (let i = 0; i < this.config.orgaos.length; i++) {
+        const orgao = this.config.orgaos[i];
+        try {
+          await this.processOrgaoJulgador(orgao);
+        } catch (individualError) {
+          console.error(`❌ Erro processando ${orgao}:`, individualError.message);
+        }
+      }
+    }
   }
   
   /**
    * Fallback para processamento sequencial (método original)
    */
   async processOrgaosJulgadoresSequential() {
-    this.sendStatus('info', 'Usando processamento sequencial (fallback)...', 55, 'Verificando OJs cadastrados');
+    this.sendStatus('info', 'Usando processamento sequencial otimizado...', 55, 'Verificando OJs cadastrados');
     
     // Validar configuração antes de processar
     if (!this.config || !this.config.orgaos || !Array.isArray(this.config.orgaos)) {
       throw new Error('Configuração de órgãos julgadores inválida ou não definida');
     }
+    
+    // SEMPRE usar o processador em lote para manter modal aberto
+    console.log('🚀 [BATCH] Usando processador em lote otimizado');
+    return await this.processOrgaosJulgadoresBatch();
         
-    // Verificar OJs já cadastrados em lote usando SmartOJCache
-    await this.loadExistingOJsWithSmartCache();
+    // BYPASS: Pular verificações e processar todos os OJs diretamente
+    console.log('🔥 [BYPASS] Pulando verificações SmartCache - processando todos os OJs');
         
-    // Normalizar e filtrar OJs que precisam ser processados
+    // Processar todos os OJs sem verificação prévia
     const ojsNormalizados = this.config.orgaos.map(orgao => this.normalizeOrgaoName(orgao));
-    const ojsToProcess = ojsNormalizados.filter(orgao => !this.ojCache.has(orgao));
+    const ojsToProcess = ojsNormalizados; // Processar todos sem filtrar
     
     // Contador de OJs processadas
     let ojsProcessadasTotal = 0; // Começar em 0
     const totalOjs = this.config.orgaos.length;
         
-    this.sendStatus('info', `${ojsToProcess.length} OJs para processar`, 60, `${this.ojCache.size} já cadastrados`, null, null, ojsProcessadasTotal, totalOjs);
+    this.sendStatus('info', `${ojsToProcess.length} OJs para processar`, 60, 'Processamento direto sem verificações', null, null, ojsProcessadasTotal, totalOjs);
         
     // Processar cada OJ restante
     for (let i = 0; i < ojsToProcess.length; i++) {
@@ -2436,6 +2606,17 @@ Sucessos por Servidor:
   async processOrgaoJulgador(orgao) {
     const processStartTime = Date.now();
     this.performanceMonitor.recordPJEOperationStart('processOrgaoJulgador', orgao);
+    
+    // Verificar se o navegador está ativo antes de processar
+    console.log(`🔍 [${orgao}] Verificando estado do navegador antes do processamento...`);
+    await this.ensureBrowserActive();
+    
+    // Verificar se estamos na página correta (não pré-cadastro)
+    const handledPreCadastro = await this.detectAndHandlePreCadastro();
+    if (handledPreCadastro) {
+      console.log(`✅ [${orgao}] Recuperação de pré-cadastro concluída, continuando processamento...`);
+    }
+    
     // Definir papel desejado no escopo da função (usado em múltiplos blocos)
     const papelDesejado = this.config?.perfil || 'Assessor';
     // Flag da verificação simples (true/false) ou null se não foi possível verificar
@@ -2657,45 +2838,65 @@ Sucessos por Servidor:
       
     } catch (error) {
       const tempoDecorrido = Date.now() - startTime;
-      console.error(`❌ ERRO após ${tempoDecorrido}ms processando OJ ${orgao}:`, error.message);
-      console.error('❌ Stack trace completo:', error.stack);
-
-      // Fallback robusto: usar fluxo tradicional do vincularOJ.js
-      try {
-        console.log('🔄 [FALLBACK] Tentando fluxo tradicional vincularOJ...');
-        const { vincularOJ } = require('../vincularOJ');
-        await vincularOJ(this.page, orgao, papelDesejado, 'Público');
-        console.log('✅ [FALLBACK] Vinculação tradicional concluída com sucesso');
-
-        // Adicionar ao cache e registrar sucesso
-        const ojNormalizadoFB = this.normalizeOrgaoName(orgao);
-        this.ojCache.add(ojNormalizadoFB);
+      
+      // Verificar se é erro PJE-281 (OJ já existe)
+      if (error.code === 'PJE_281_SKIP') {
+        console.log(`⏭️ OJ ${orgao} já existe (PJE-281) - continuando para próximo...`);
+        
+        // Adicionar ao cache
+        this.ojCache.add(ojNormalizado);
+        
+        // Registrar como já incluído
         this.results.push({
           orgao,
-          status: 'Vinculado com Sucesso (Fallback)',
+          status: 'Já Incluído (PJE-281)',
           erro: null,
           perfil: this.config.perfil,
           cpf: this.config.cpf,
           timestamp: new Date().toISOString()
         });
-        this.sendStatus('success', `✅ OJ ${orgao} incluído com sucesso (fallback)`, null, null, orgao, this.currentServidor?.nome);
+        
+        // Limpar o campo de OJ para próxima seleção
+        try {
+          console.log('🔄 Limpando campo de OJ para próxima seleção...');
+          const matSelectOJ = await this.page.locator('mat-dialog-container mat-select[placeholder="Órgão Julgador"]').first();
+          if (await matSelectOJ.isVisible({ timeout: 1000 })) {
+            // Clicar no campo para abrir e limpar
+            await matSelectOJ.click();
+            await this.page.waitForTimeout(300);
+            // Pressionar ESC para fechar sem selecionar
+            await this.page.keyboard.press('Escape');
+            console.log('✅ Campo de OJ pronto para próxima seleção');
+          }
+        } catch (clearError) {
+          console.log('⚠️ Não foi possível limpar campo de OJ:', clearError.message);
+        }
+        
+        // Registrar sucesso (OJ já existente é considerado sucesso)
         this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', Date.now() - processStartTime, true);
         return;
-      } catch (fallbackError) {
-        console.error(`❌ [FALLBACK] Falhou vincularOJ para ${orgao}: ${fallbackError.message}`);
-        // Adicionar resultado de erro final
-        this.results.push({
-          orgao,
-          status: 'Erro na Vinculação',
-          erro: fallbackError.message || error.message,
-          perfil: this.config.perfil,
-          cpf: this.config.cpf,
-          timestamp: new Date().toISOString()
-        });
-        // Registrar fim com erro
-        this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', Date.now() - processStartTime, false);
-        console.log(`⚠️ Erro processando ${orgao}, mas continuando com próximo...`);
       }
+      
+      console.error(`❌ ERRO após ${tempoDecorrido}ms processando OJ ${orgao}:`, error.message);
+      console.error('❌ Stack trace completo:', error.stack);
+
+      // REMOVIDO FALLBACK TRADICIONAL - Usar apenas BatchOJProcessor otimizado
+      console.log(`❌ Erro não-crítico processando OJ ${orgao}:`, error.message);
+      
+      // Registrar como erro apenas se não for erro conhecido do BatchOJProcessor
+      this.results.push({
+        orgao,
+        status: 'Erro na Vinculação',
+        erro: error.message,
+        perfil: this.config.perfil,
+        cpf: this.config.cpf,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Registrar fim com erro
+      this.performanceMonitor.recordPJEOperationEnd('processOrgaoJulgador', Date.now() - processStartTime, false);
+      this.sendStatus('error', `⚠️ OJ ${orgao} - ${error.message}`, null, null, orgao, this.currentServidor?.nome);
+      console.log(`⚠️ Erro processando ${orgao}, mas continuando com próximo...`);
     }
   }
 
@@ -2738,6 +2939,12 @@ Sucessos por Servidor:
   }
 
   async clickAddLocationButtonRapido() {
+    // Verificar se estamos na página correta antes de clicar no botão
+    const handledPreCadastro = await this.detectAndHandlePreCadastro();
+    if (handledPreCadastro) {
+      console.log('✅ Recuperação de pré-cadastro concluída antes de clicar botão...');
+    }
+    
     console.log('🎯 ASSERTIVO: Verificando se modal já está aberto...');
     
     // 1. PRIMEIRO: Verificar se o modal já está aberto
@@ -2807,6 +3014,12 @@ Sucessos por Servidor:
   }
 
   async selectOrgaoJulgadorRapido(orgao) {
+    // Verificar se estamos na página correta antes de selecionar OJ
+    const handledPreCadastro = await this.detectAndHandlePreCadastro();
+    if (handledPreCadastro) {
+      console.log('✅ Recuperação de pré-cadastro concluída antes de selecionar OJ...');
+    }
+    
     // Validação de tipo para evitar erros
     let orgaoTexto;
     if (typeof orgao === 'string') {
@@ -2852,18 +3065,24 @@ Sucessos por Servidor:
         throw new Error('Mat-select de Órgão Julgador não encontrado no modal');
       }
       
-      await this.retryManager.retryClick(
-        async (selector) => {
-          const element = await this.page.$(selector);
-          if (element) {
-            await element.click();
-          } else {
-            throw new Error('Element not found');
-          }
-        },
-        matSelectElement
-      );
-      console.log('✅ Mat-select de OJ clicado');
+      // Verificar se o dropdown já está aberto (caso de erro PJE-281 anterior)
+      const isDropdownOpen = await this.page.locator('mat-option').count() > 0;
+      if (isDropdownOpen) {
+        console.log('📋 Dropdown já está aberto (provavelmente após erro PJE-281)');
+      } else {
+        await this.retryManager.retryClick(
+          async (selector) => {
+            const element = await this.page.$(selector);
+            if (element) {
+              await element.click();
+            } else {
+              throw new Error('Element not found');
+            }
+          },
+          matSelectElement
+        );
+        console.log('✅ Mat-select de OJ clicado');
+      }
       
       // 2. AGUARDAR: Opções aparecerem
       console.log('🎯 Aguardando opções do dropdown...');
@@ -2908,7 +3127,7 @@ Sucessos por Servidor:
       
       // Se busca exata falhou, usar busca inteligente
       if (!opcaoEncontrada) {
-        console.log(`⚠️ Busca exata falhou. Iniciando busca inteligente por palavras-chave...`);
+        console.log('⚠️ Busca exata falhou. Iniciando busca inteligente por palavras-chave...');
         
         const { match, score } = this.findBestOJMatch(orgao, availableOptions);
         
@@ -2918,7 +3137,7 @@ Sucessos por Servidor:
           opcaoEncontrada = true;
         } else {
           // Listar todas as opções disponíveis para debug
-          console.log(`❌ Nenhuma opção compatível encontrada. Opções disponíveis:`);
+          console.log('❌ Nenhuma opção compatível encontrada. Opções disponíveis:');
           availableOptions.forEach((option, idx) => {
             console.log(`   ${idx + 1}. "${option.text}"`);
           });
@@ -3245,6 +3464,7 @@ Sucessos por Servidor:
   }
 
   async saveConfigurationRapido() {
+    const saveStartTime = Date.now();
     console.log('🎯 ASSERTIVO: Salvamento direto...');
     
     try {
@@ -3281,16 +3501,63 @@ Sucessos por Servidor:
       );
       console.log('✅ CLIQUE no botão Gravar realizado');
       
-      // 2. AGUARDAR: Modal fechar ou sucesso
+      // 2. AGUARDAR: Apenas aguardar processamento sem tratamento de erro
       console.log('🎯 Aguardando processamento...');
       
-      // Aguardar uma das condições: modal fechar OU mensagem de sucesso
-      await Promise.race([
-        this.page.waitForSelector('mat-dialog-container', { state: 'detached', timeout: 5000 }),
-        this.page.waitForSelector(':has-text("sucesso"), :has-text("salvo"), :has-text("cadastrado")', { timeout: 5000 })
-      ]);
+      // Aguardar um momento para o sistema processar
+      await this.page.waitForTimeout(1000);
       
-      console.log('✅ Salvamento confirmado');
+      // Verificar se há mensagens de erro visíveis (PJE-281)
+      try {
+        const errorMessage = await this.page.locator('.mat-error, .error-message, .alert-danger, .mat-snack-bar-container').first();
+        if (await errorMessage.isVisible({ timeout: 500 })) {
+          const errorText = await errorMessage.textContent();
+          if (errorText && (errorText.includes('PJE-281') || errorText.includes('período ativo conflitante'))) {
+            console.log('⚠️ OJ já existe (PJE-281) - aguardando erro desaparecer...');
+            
+            // Registrar o erro
+            this.performanceDashboard.recordPJE281Error(true);
+            const duration = Date.now() - saveStartTime;
+            this.performanceDashboard.recordOperation('errorRecovery', duration, true, { type: 'PJE-281', action: 'skipped' });
+            
+            // Aguardar mensagem de erro desaparecer
+            await this.page.waitForTimeout(2000);
+            
+            // Fechar qualquer snackbar ou toast de erro
+            try {
+              const closeButton = await this.page.locator('.mat-snack-bar-container button, .mat-error button, button[aria-label="Close"]').first();
+              if (await closeButton.isVisible({ timeout: 500 })) {
+                await closeButton.click();
+                console.log('✅ Mensagem de erro fechada');
+              }
+            } catch (e) {
+              // Ignorar se não houver botão de fechar
+            }
+            
+            // Sinalizar que houve erro PJE-281 para o processamento continuar
+            const error = new Error('PJE-281: OJ já existe');
+            error.code = 'PJE_281_SKIP';
+            throw error;
+          }
+        }
+      } catch (e) {
+        // Re-lançar apenas erros PJE-281
+        if (e.code === 'PJE_281_SKIP') {
+          throw e;
+        }
+        // Ignorar outros erros
+      }
+      
+      // Aguardar modal fechar ou sucesso (tempo reduzido)
+      try {
+        await Promise.race([
+          this.page.waitForSelector('mat-dialog-container', { state: 'detached', timeout: 3000 }),
+          this.page.waitForSelector(':has-text("sucesso"), :has-text("salvo"), :has-text("cadastrado")', { timeout: 3000 })
+        ]);
+        console.log('✅ Salvamento confirmado');
+      } catch (waitError) {
+        console.log('⚠️ Timeout ao aguardar confirmação - continuando...');
+      }
       
     } catch (error) {
       console.log(`⚠️ Erro no salvamento assertivo: ${error.message}`);
@@ -3580,6 +3847,77 @@ Sucessos por Servidor:
     await this.delay(500);
   }
 
+  // Método auxiliar para processamento individual de OJs
+  async processOJsIndividually(ojsToProcess, servidor, serverResult, ojsProcessadasTotal, totalOjs) {
+    console.log(`🔍 [DEBUG] INICIANDO loop de processamento individual de ${ojsToProcess.length} OJs`);
+    for (let i = 0; i < ojsToProcess.length; i++) {
+      const orgao = ojsToProcess[i];
+      console.log(`🔍 [DEBUG] Processando OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`);
+      serverResult.ojsProcessados++;
+      
+      this.sendStatus('info', `OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`, null, 'Processando vinculação', orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
+            
+      try {
+        const startOJ = Date.now();
+        await this.processOrgaoJulgador(orgao);
+        const timeOJ = Date.now() - startOJ;
+        
+        ojsProcessadasTotal++; // Incrementar contador após sucesso
+        
+        serverResult.sucessos++;
+        serverResult.detalhes.push({
+          orgao,
+          status: 'Incluído com Sucesso',
+          tempo: timeOJ,
+          perfil: this.config.perfil,
+          timestamp: new Date().toISOString()
+        });
+        
+        this.results.push({
+          servidor: servidor.nome,
+          orgao,
+          status: 'Incluído com Sucesso',
+          erro: null,
+          perfil: this.config.perfil,
+          cpf: this.config.cpf,
+          timestamp: new Date().toISOString()
+        });
+        
+        this.sendStatus('success', `✅ OJ ${orgao} incluído com sucesso`, null, null, orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
+        
+      } catch (error) {
+        console.error(`❌ Erro OJ ${orgao} (${servidor.nome}):`, error.message);
+        
+        ojsProcessadasTotal++; // Incrementar contador mesmo com erro
+        
+        serverResult.erros++;
+        serverResult.detalhes.push({
+          orgao,
+          status: 'Erro',
+          erro: error.message,
+          timestamp: new Date().toISOString()
+        });
+        
+        this.results.push({
+          servidor: servidor.nome,
+          orgao,
+          status: 'Erro',
+          erro: error.message,
+          cpf: this.config.cpf,
+          timestamp: new Date().toISOString()
+        });
+        
+        this.sendStatus('error', `❌ Erro ao processar OJ ${orgao}: ${error.message}`, null, null, orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
+                
+        // Recuperação rápida sem interromper processamento
+        await this.quickErrorRecovery();
+      }
+            
+      // Pausa ultra-otimizada entre OJs (25ms para velocidade máxima)
+      await this.delay(25);
+    }
+  }
+
   async processOrgaosJulgadoresWithServerTracking(servidor) {
     console.log(`🎯 [DEBUG] INICIANDO processOrgaosJulgadoresWithServerTracking para ${servidor.nome}`);
     console.log(`📎 Servidor: ${servidor.nome || servidor.cpf} - ${servidor.orgaos?.length || 0} órgãos julgadores`);
@@ -3614,89 +3952,15 @@ Sucessos por Servidor:
       throw new Error(`Resultado do servidor não encontrado para CPF ${servidor.cpf}`);
     }
     
-    // SISTEMA INTELIGENTE: Verificação de OJs já cadastrados via BD
-    let ojsParaProcessarOtimizado = servidor.orgaos || [];
-    let resultadoVerificacao = null;
+    // Processar todos os OJs diretamente sem verificação prévia
+    const ojsParaProcessarOtimizado = servidor.orgaos || [];
     
-    console.log(`🔍 [DEBUG] DIRLEI CASO - INICIANDO verificação inteligente para ${servidor.nome}`);
-    console.log(`🔍 [DEBUG] DIRLEI CASO - CPF: ${servidor.cpf}`);
-    console.log(`🔍 [DEBUG] DIRLEI CASO - OJs originais: ${JSON.stringify(servidor.orgaos)}`);
-    console.log(`🔍 [DEBUG] DIRLEI CASO - Conexão BD disponível: ${this.dbConnection ? 'SIM' : 'NÃO'}`);
-    console.log(`🔍 [DEBUG] DIRLEI CASO - Conexão BD ativa: ${this.dbConnection?.isConnected ? 'SIM' : 'NÃO'}`);
-    
-    try {
-      resultadoVerificacao = await this.verificarOJsInteligente(servidor.cpf, servidor.orgaos || []);
-      
-      console.log(`🔍 [DEBUG] DIRLEI CASO - Resultado da verificação:`, {
-        inteligenciaAtiva: resultadoVerificacao.inteligenciaAtiva,
-        ojsParaProcessar: resultadoVerificacao.ojsParaProcessar,
-        ojsJaCadastrados: resultadoVerificacao.ojsJaCadastrados?.length || 0,
-        economia: resultadoVerificacao.economia,
-        mensagem: resultadoVerificacao.mensagem
-      });
-      
-      if (resultadoVerificacao.inteligenciaAtiva) {
-        // Atualizar lista de OJs para processar apenas os necessários
-        ojsParaProcessarOtimizado = resultadoVerificacao.ojsParaProcessar;
-        
-        console.log(`🔍 [DEBUG] DIRLEI CASO - Lista ANTES: ${JSON.stringify(servidor.orgaos)}`);
-        console.log(`🔍 [DEBUG] DIRLEI CASO - Lista DEPOIS: ${JSON.stringify(ojsParaProcessarOtimizado)}`);
-        
-        // Registrar economia no resultado do servidor
-        serverResult.verificacaoInteligente = {
-          ativa: true,
-          totalOriginal: resultadoVerificacao.totalVerificados || 0,
-          ojsJaCadastrados: resultadoVerificacao.ojsJaCadastrados.length,
-          ojsParaProcessar: resultadoVerificacao.ojsParaProcessar.length,
-          economia: resultadoVerificacao.economia,
-          detalhesJaCadastrados: resultadoVerificacao.ojsJaCadastrados
-        };
-        
-        console.log(`🎯 [INTELIGÊNCIA] Sistema ativo para ${servidor.nome}:`);
-        console.log(`   📊 OJs originais: ${servidor.orgaos?.length || 0}`);
-        console.log(`   ✅ Já cadastrados: ${resultadoVerificacao.ojsJaCadastrados.length}`);
-        console.log(`   🔄 Para processar: ${ojsParaProcessarOtimizado.length}`);
-        console.log(`   ⚡ Economia estimada: ${resultadoVerificacao.economia.tempo}s e ${resultadoVerificacao.economia.cliques} cliques`);
-        
-        if (ojsParaProcessarOtimizado.length === 0) {
-          // Não há OJs para processar: pular automaticamente sem solicitar confirmação
-          this.sendStatus('success', `🎉 ${servidor.nome}: Todos os OJs já estão cadastrados! Pulando...`, null,
-            `Economia: ${resultadoVerificacao.economia.tempo}s`);
-          serverResult.pularMotivo = 'Todos os OJs já estão cadastrados';
-          serverResult.status = 'Pulado - Todos OJs cadastrados';
-          return;
-        }
-        // Há OJs para processar: continuar automaticamente sem solicitar confirmação
-        const detalhesOJs = this.formatarDetalhesOJs(resultadoVerificacao);
-        this.sendStatus('info', `✅ ${servidor.nome}: Prosseguindo com ${ojsParaProcessarOtimizado.length} OJs`, null,
-          detalhesOJs.resumo);
-
-        // Marcar OJs que vieram da verificação inteligente como FORÇADAS para processamento
-        try {
-          this.forcedOJsNormalized = new Set(
-            (ojsParaProcessarOtimizado || []).map(orgao => this.normalizeOrgaoName(orgao))
-          );
-          console.log(`🧠 [INTELIGÊNCIA] Forçando processamento destas OJs: ${JSON.stringify(Array.from(this.forcedOJsNormalized))}`);
-        } catch (e) {
-          this.forcedOJsNormalized = null;
-        }
-
-        // Aplicar imediatamente a lista filtrada na configuração para todas as etapas seguintes
-        try {
-          console.log(`🎯 [OTIMIZAÇÃO] Aplicando lista filtrada diretamente na config: ${ojsParaProcessarOtimizado.length} OJs`);
-          this.config.orgaos = ojsParaProcessarOtimizado;
-        } catch (e) {
-          console.log(`⚠️ [OTIMIZAÇÃO] Falha ao aplicar lista filtrada: ${e.message}`);
-        }
-      }
-    } catch (error) {
-      console.error(`⚠️ [INTELIGÊNCIA] Erro na verificação: ${error.message}`);
-      // Continuar com lista original em caso de erro
-      ojsParaProcessarOtimizado = servidor.orgaos || [];
-    }
+    console.log(`🚀 [AUTOMAÇÃO] Iniciando processamento direto para ${servidor.nome}`);
+    console.log(`📋 [AUTOMAÇÃO] CPF: ${servidor.cpf}`);
+    console.log(`📋 [AUTOMAÇÃO] OJs para processar: ${ojsParaProcessarOtimizado.length}`);
     
     this.sendStatus('info', `🔍 Processando ${ojsParaProcessarOtimizado.length} OJs para ${servidor.nome}...`, null, 
-      resultadoVerificacao?.economia?.ojsEvitados > 0 ? `${resultadoVerificacao.economia.ojsEvitados} OJs já cadastrados` : 'Otimizando processo');
+      'Iniciando vinculação direta');
     
     // VERIFICAÇÃO AUTOMÁTICA DE LOCALIZAÇÕES/VISIBILIDADES ATIVAS
     console.log(`🎯 [LOCALIZAÇÕES] Iniciando verificação automática de localizações para ${servidor.nome}...`);
@@ -3771,19 +4035,21 @@ Sucessos por Servidor:
     console.log('✅ [DEBUG] Cache em memória limpo - dados persistentes preservados');
     console.log('🎯 [DEBUG] BYPASS-UNIVERSAL: Garantindo que não há contaminação de cache entre servidores');
     
-    // SISTEMA INTELIGENTE: Habilitado para permitir verificação inteligente via banco
-    // Usar verificação prévia para otimizar processamento
-    const isUniversalBypass = false; // Permitir verificações inteligentes via BD
+    // SISTEMA INTELIGENTE: DESABILITADO - Bypass universal ativado
+    // Pular todas as verificações e ir direto ao cadastro
+    const isUniversalBypass = true; // BYPASS ATIVADO: Pular todas as verificações
+    let resultadoVerificacao = null; // Inicializar variável para evitar erro
     
     if (isUniversalBypass) {
       console.log(`🔥 [BYPASS-UNIVERSAL] REMOVENDO TODAS AS VERIFICAÇÕES para ${servidor.nome}`);
       console.log('🔥 [BYPASS-UNIVERSAL] Pulando SmartCache, ServidorSkipDetector e TODAS verificações');
       console.log('🔥 [BYPASS-UNIVERSAL] PROCESSAMENTO DIRETO de todas as OJs configuradas');
       // PULAR COMPLETAMENTE loadExistingOJs, verificacoes, etc.
+      resultadoVerificacao = { inteligenciaAtiva: false }; // Definir valor padrão para bypass
     } else {
       // Comportamento normal para outros servidores
       console.log(`🔍 [DEBUG] Carregando OJs existentes para ${servidor.nome} usando SmartOJCache (cache limpo)...`);
-      await this.loadExistingOJsWithSmartCache();
+      resultadoVerificacao = await this.loadExistingOJsWithSmartCache();
       console.log(`🔍 [DEBUG] Cache de OJs carregado: ${this.ojCache.size} OJs em cache`);
     }
     
@@ -3826,7 +4092,7 @@ Sucessos por Servidor:
     // SISTEMA INTELIGENTE: Usar lista otimizada da verificação inteligente ou filtro por cache
     let ojsToProcess;
     
-    console.log(`🔍 [DEBUG] DIRLEI CASO - DECISÃO DE LISTA:`);
+    console.log('🔍 [DEBUG] DIRLEI CASO - DECISÃO DE LISTA:');
     console.log(`   resultadoVerificacao existe: ${resultadoVerificacao ? 'SIM' : 'NÃO'}`);
     console.log(`   inteligenciaAtiva: ${resultadoVerificacao?.inteligenciaAtiva ? 'SIM' : 'NÃO'}`);
     console.log(`   ojsParaProcessarOtimizado.length: ${ojsParaProcessarOtimizado.length}`);
@@ -3839,7 +4105,7 @@ Sucessos por Servidor:
       ojsToProcess = ojsParaProcessarOtimizado.map(orgao => this.normalizeOrgaoName(orgao));
       console.log(`🧠 [INTELIGÊNCIA] ESCOLHA: Usando lista inteligente: ${ojsToProcess.length} OJs`);
       console.log(`🧠 [INTELIGÊNCIA] OJs selecionados: ${JSON.stringify(ojsToProcess)}`);
-      console.log(`🧠 [INTELIGÊNCIA] CONFIRMANDO: Esta é a lista DEFINITIVA que será processada`);
+      console.log('🧠 [INTELIGÊNCIA] CONFIRMANDO: Esta é a lista DEFINITIVA que será processada');
     } else if (isUniversalBypass) {
       ojsToProcess = this.config.orgaos; // Usar OJs ORIGINAIS, não normalizadas
       console.log('🔥 [BYPASS-UNIVERSAL] ESCOLHA: PROCESSAMENTO DIRETO - ignorando TUDO');
@@ -3873,73 +4139,95 @@ Sucessos por Servidor:
       return;
     }
         
-    // Processar cada OJ restante com tracking
-    console.log(`🔍 [DEBUG] INICIANDO loop de processamento de ${ojsToProcess.length} OJs`);
-    for (let i = 0; i < ojsToProcess.length; i++) {
-      const orgao = ojsToProcess[i];
-      console.log(`🔍 [DEBUG] Processando OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`);
-      serverResult.ojsProcessados++;
+    // Verificar se deve usar modo sequencial (BatchOJProcessor)
+    const isSequentialMode = this.config?.mode === 'sequential' || this.config?.forceBatchOnly === true;
+    
+    if (isSequentialMode && ojsToProcess.length > 1) {
+      console.log(`🚀 [SEQUENCIAL] Usando BatchOJProcessor para ${ojsToProcess.length} OJs em modo sequencial`);
+      this.sendStatus('info', `🚀 ${servidor.nome}: Processamento sequencial em lote iniciado`, null, 'Modo sequencial ativo', null, servidor.nome);
       
-      this.sendStatus('info', `OJ ${i + 1}/${ojsToProcess.length}: ${orgao}`, null, 'Processando vinculação', orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
-            
       try {
-        const startOJ = Date.now();
-        await this.processOrgaoJulgador(orgao);
-        const timeOJ = Date.now() - startOJ;
+        // Criar instância do BatchOJProcessor se não existir
+        if (!this.batchOJProcessor) {
+          this.batchOJProcessor = new BatchOJProcessor(
+            this.page,
+            this.config,
+            this.performanceMonitor,
+            this.performanceDashboard
+          );
+        }
         
-        ojsProcessadasTotal++; // Incrementar contador após sucesso
+        const batchResult = await this.batchOJProcessor.processBatchOJs(
+          ojsToProcess,
+          (progress) => {
+            // Callback de progresso
+            this.sendStatus('info', `📋 OJ ${progress.current}/${progress.total}: ${progress.orgao}`, null, 'Processamento em lote', progress.orgao, servidor.nome, progress.current - 1, ojsToProcess.length);
+          }
+        );
         
-        serverResult.sucessos++;
-        serverResult.detalhes.push({
-          orgao,
-          status: 'Incluído com Sucesso',
-          tempo: timeOJ,
-          perfil: this.config.perfil,
-          timestamp: new Date().toISOString()
-        });
+        // Processar resultados do lote
+        for (const resultado of batchResult.results) {
+          ojsProcessadasTotal++;
+          serverResult.ojsProcessados++;
+          
+          if (resultado.status === 'success') {
+            serverResult.sucessos++;
+            serverResult.detalhes.push({
+              orgao: resultado.orgao,
+              status: 'Incluído com Sucesso',
+              tempo: resultado.duration,
+              perfil: this.config.perfil,
+              timestamp: new Date().toISOString()
+            });
+            
+            this.results.push({
+              servidor: servidor.nome,
+              orgao: resultado.orgao,
+              status: 'Incluído com Sucesso',
+              erro: null,
+              perfil: this.config.perfil,
+              cpf: this.config.cpf,
+              timestamp: new Date().toISOString()
+            });
+            
+            this.sendStatus('success', `✅ OJ ${resultado.orgao} incluído com sucesso (lote)`, null, null, resultado.orgao, servidor.nome, ojsProcessadasTotal, ojsToProcess.length);
+          } else {
+            serverResult.erros++;
+            serverResult.detalhes.push({
+              orgao: resultado.orgao,
+              status: 'Erro',
+              erro: resultado.error || resultado.message,
+              timestamp: new Date().toISOString()
+            });
+            
+            this.results.push({
+              servidor: servidor.nome,
+              orgao: resultado.orgao,
+              status: 'Erro',
+              erro: resultado.error || resultado.message,
+              cpf: this.config.cpf,
+              timestamp: new Date().toISOString()
+            });
+            
+            this.sendStatus('error', `❌ Erro ao processar OJ ${resultado.orgao}: ${resultado.error || resultado.message}`, null, null, resultado.orgao, servidor.nome, ojsProcessadasTotal, ojsToProcess.length);
+          }
+        }
         
-        this.results.push({
-          servidor: servidor.nome,
-          orgao,
-          status: 'Incluído com Sucesso',
-          erro: null,
-          perfil: this.config.perfil,
-          cpf: this.config.cpf,
-          timestamp: new Date().toISOString()
-        });
-        
-        this.sendStatus('success', `✅ OJ ${orgao} incluído com sucesso`, null, null, orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
+        console.log(`✅ [SEQUENCIAL] Processamento em lote concluído: ${batchResult.summary?.success || 0}/${ojsToProcess.length} sucessos`);
         
       } catch (error) {
-        console.error(`❌ Erro OJ ${orgao} (${servidor.nome}):`, error.message);
+        console.error('❌ [SEQUENCIAL] Erro no processamento em lote:', error.message);
+        this.sendStatus('error', `❌ Erro no processamento sequencial: ${error.message}`, null, null, null, servidor.nome);
         
-        ojsProcessadasTotal++; // Incrementar contador mesmo com erro
-        
-        serverResult.erros++;
-        serverResult.detalhes.push({
-          orgao,
-          status: 'Erro',
-          erro: error.message,
-          timestamp: new Date().toISOString()
-        });
-        
-        this.results.push({
-          servidor: servidor.nome,
-          orgao,
-          status: 'Erro',
-          erro: error.message,
-          cpf: this.config.cpf,
-          timestamp: new Date().toISOString()
-        });
-        
-        this.sendStatus('error', `❌ Erro ao processar OJ ${orgao}: ${error.message}`, null, null, orgao, servidor.nome, ojsProcessadasTotal, totalOjs);
-                
-        // Recuperação rápida sem interromper processamento
-        await this.quickErrorRecovery();
+        // Fallback para processamento individual
+        console.log('⚠️ [SEQUENCIAL] Fallback para processamento individual...');
+        await this.processOJsIndividually(ojsToProcess, servidor, serverResult, ojsProcessadasTotal, totalOjs);
       }
-            
-      // Pausa ultra-otimizada entre OJs (25ms para velocidade máxima)
-      await this.delay(25);
+      
+    } else {
+      // Processamento individual (modo padrão ou single OJ)
+      console.log(`🔍 [INDIVIDUAL] Processamento individual de ${ojsToProcess.length} OJs`);
+      await this.processOJsIndividually(ojsToProcess, servidor, serverResult, ojsProcessadasTotal, totalOjs);
     }
         
     // Adicionar OJs já existentes ao relatório do servidor
@@ -3991,6 +4279,25 @@ Sucessos por Servidor:
     console.log('⚡ Recuperação rápida após erro...');
     
     try {
+      // Verificar se o navegador ainda está ativo
+      await this.ensureBrowserActive();
+      
+      // Verificar se estamos na página correta
+      const currentUrl = this.page.url();
+      console.log(`🔍 URL atual após erro: ${currentUrl}`);
+      
+      // Se estivermos na página de pré-cadastro, tentar voltar
+      if (currentUrl.includes('pre-cadastro')) {
+        console.log('🔄 Detectada página de pré-cadastro, tentando voltar...');
+        try {
+          await this.page.goBack();
+          await this.delay(2000);
+          console.log('✅ Voltou da página de pré-cadastro');
+        } catch (backError) {
+          console.log('⚠️ Erro ao voltar da página de pré-cadastro:', backError.message);
+        }
+      }
+      
       // Fechar modais rapidamente
       await Promise.race([
         this.closeAnyModalsRapido(),
@@ -4003,6 +4310,11 @@ Sucessos por Servidor:
       
     } catch (error) {
       console.log('⚠️ Erro na recuperação rápida:', error.message);
+      // Se houver erro crítico, tentar reconectar navegador
+      if (error.message.includes('Target page, context or browser has been closed')) {
+        console.log('🔄 Erro crítico detectado, reconectando navegador...');
+        await this.reconnectBrowser();
+      }
     }
   }
 
@@ -4016,11 +4328,24 @@ Sucessos por Servidor:
       // Tentar fechar modais de erro
       await this.closeAnyModals();
       
-      // Tentar navegar para uma página estável
-      await Promise.race([
-        this.navigationOptimizer.fastNavigate(this.page, 'https://pje.trt15.jus.br/pjekz/pessoa-fisica'),
-        this.delay(5000)
-      ]);
+      // CORREÇÃO: Verificar se está na página de pré-cadastro e tentar voltar
+      const currentUrl = this.page.url();
+      console.log(`🔍 URL atual durante tentativa de recuperação: ${currentUrl}`);
+      
+      if (currentUrl.includes('pre-cadastro')) {
+        console.log('⚠️ Detectado redirecionamento para pré-cadastro durante tentativa de recuperação');
+        // Tentar voltar usando histórico do navegador
+        try {
+          await this.page.goBack({ waitUntil: 'domcontentloaded', timeout: 5000 });
+          await this.delay(1000);
+          console.log('✅ Voltou da página de pré-cadastro durante tentativa de recuperação');
+        } catch (backError) {
+          console.log('⚠️ Não foi possível voltar, mantendo na página atual');
+        }
+      } else {
+        // Se não está em pré-cadastro, aguardar estabilização
+        await this.delay(2000);
+      }
       
       console.log('✅ Recuperação automática concluída');
       
@@ -4043,14 +4368,21 @@ Sucessos por Servidor:
       const currentUrl = this.page.url();
       console.log(`🔍 URL atual antes da limpeza: ${currentUrl}`);
       
-      // Se não estiver na página de pessoas, navegar para ela
-      if (!currentUrl.includes('pessoa-fisica')) {
-        console.log('🔄 Navegando de volta para página de pessoas...');
-        await this.navigationOptimizer.fastNavigate(this.page, 'https://pje.trt15.jus.br/pjekz/pessoa-fisica');
-        await this.delay(1000);
+      // CORREÇÃO: Não navegar para pessoa-fisica genérica para evitar redirecionamento para pré-cadastro
+      // Apenas fechar modais e aguardar estabilização
+      if (currentUrl.includes('pre-cadastro')) {
+        console.log('⚠️ Detectado redirecionamento para pré-cadastro - mantendo na página atual');
+        // Tentar voltar usando histórico do navegador
+        try {
+          await this.page.goBack({ waitUntil: 'domcontentloaded', timeout: 5000 });
+          await this.delay(1000);
+          console.log('✅ Voltou da página de pré-cadastro');
+        } catch (backError) {
+          console.log('⚠️ Não foi possível voltar, mantendo na página atual');
+        }
       }
       
-      console.log('✅ Estado limpo garantido');
+      console.log('✅ Estado limpo garantido sem redirecionamento');
       
     } catch (error) {
       console.warn('⚠️ Erro ao garantir estado limpo:', error.message);
@@ -4078,11 +4410,28 @@ Sucessos por Servidor:
         await this.delay(500);
       }
       
-      // Navegar para página base e aguardar carregamento completo
-      const baseUrl = 'https://pje.trt15.jus.br/pjekz/pessoa-fisica';
+      // CORREÇÃO: Não navegar para pessoa-fisica genérica para evitar redirecionamento para pré-cadastro
+      // Verificar se está na página de pré-cadastro e tentar voltar
+      const currentUrl = this.page.url();
+      console.log(`🔍 URL atual durante recuperação: ${currentUrl}`);
       
-      console.log(`🔄 Navegando para página base: ${baseUrl}`);
-      await this.navigationOptimizer.optimizedNavigate(this.page, baseUrl);
+      if (currentUrl.includes('pre-cadastro')) {
+        console.log('⚠️ Detectado redirecionamento para pré-cadastro durante recuperação');
+        // Tentar voltar usando histórico do navegador
+        try {
+          await this.page.goBack({ waitUntil: 'domcontentloaded', timeout: 5000 });
+          await this.delay(1000);
+          console.log('✅ Voltou da página de pré-cadastro durante recuperação');
+        } catch (backError) {
+          console.log('⚠️ Não foi possível voltar, tentando reload da página atual');
+          try {
+            await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+            await this.delay(1000);
+          } catch (reloadError) {
+            console.log('⚠️ Reload falhou, mantendo na página atual');
+          }
+        }
+      }
       
       // Aguardar página estabilizar completamente
       await Promise.race([
@@ -4128,7 +4477,7 @@ Sucessos por Servidor:
     
     try {
       // Fechar conexões antigas se ainda existirem
-      if (this.browser && !this.browser.contexts().length === 0) {
+      if (this.browser && this.browser.contexts().length > 0) {
         try {
           await this.browser.close();
         } catch (e) {
@@ -4154,14 +4503,86 @@ Sucessos por Servidor:
   }
 
   async ensureBrowserActive() {
-    if (!this.page || this.page.isClosed()) {
-      console.log('🔄 Página fechada detectada, reconectando...');
+    try {
+      // Verificar se o navegador existe e está ativo
+      if (!this.browser || !this.browser.isConnected()) {
+        console.log('🔄 Navegador desconectado detectado, reconectando...');
+        await this.reconnectBrowser();
+        return;
+      }
+
+      // Verificar se a página existe e não está fechada
+      if (!this.page || this.page.isClosed()) {
+        console.log('🔄 Página fechada detectada, reconectando...');
+        await this.reconnectBrowser();
+        return;
+      }
+
+      // Verificar se a página está responsiva
+      try {
+        await this.page.evaluate(() => document.readyState);
+      } catch (error) {
+        console.log('🔄 Página não responsiva detectada, reconectando...', error.message);
+        await this.reconnectBrowser();
+        return;
+      }
+
+      console.log('✅ Navegador ativo e responsivo');
+    } catch (error) {
+      console.error('❌ Erro ao verificar estado do navegador:', error.message);
       await this.reconnectBrowser();
+    }
+  }
+
+  async detectAndHandlePreCadastro() {
+    try {
+      const currentUrl = this.page.url();
+      console.log(`🔍 Verificando URL atual: ${currentUrl}`);
+      
+      if (currentUrl.includes('pre-cadastro')) {
+        console.log('⚠️ Detectada navegação para página de pré-cadastro!');
+        
+        // Tentar voltar usando o botão do navegador
+        try {
+          await this.page.goBack();
+          await this.delay(3000);
+          console.log('✅ Voltou da página de pré-cadastro usando goBack()');
+          return true;
+        } catch (backError) {
+          console.log('⚠️ Erro ao usar goBack(), tentando navegação direta...');
+          
+          // Se goBack() falhar, tentar navegar diretamente para a página de servidores
+          try {
+            const baseUrl = currentUrl.split('/pre-cadastro')[0];
+            const servidorUrl = `${baseUrl}/servidor`;
+            await this.page.goto(servidorUrl);
+            await this.delay(3000);
+            console.log('✅ Navegou diretamente para página de servidores');
+            return true;
+          } catch (navError) {
+            console.log('❌ Erro ao navegar diretamente:', navError.message);
+            return false;
+          }
+        }
+      }
+      
+      return false; // Não estava na página de pré-cadastro
+    } catch (error) {
+      console.log('❌ Erro ao detectar/tratar pré-cadastro:', error.message);
+      return false;
     }
   }
 
   async handleErrorRecovery() {
     console.log('Iniciando recuperação após erro...');
+    
+    // Verificar se estamos na página de pré-cadastro
+    const handledPreCadastro = await this.detectAndHandlePreCadastro();
+    
+    if (handledPreCadastro) {
+      console.log('✅ Recuperação de pré-cadastro concluída');
+      return;
+    }
         
     // Aguardar estabilização
     await this.delay(3000);

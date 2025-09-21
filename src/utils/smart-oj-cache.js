@@ -69,45 +69,45 @@ class SmartOJCache {
       const verificacao = this.verificarOJComPerfil(oj, ojsVinculadosNormalizados, perfilDesejado);
 
       switch (verificacao.acao) {
-        case 'pular':
-          resultado.ojsJaVinculadosPerfilCorreto.push({
-            oj,
-            textoEncontrado: verificacao.textoEncontrado,
-            perfilEncontrado: verificacao.perfilEncontrado,
-            tipoCorrespondencia: verificacao.tipoCorrespondencia
-          });
-          resultado.estatisticas.jaVinculadosPerfilCorreto++;
-          this.logger.info(`✅ OJ + Perfil correto: "${oj}" → "${verificacao.textoEncontrado}" (${verificacao.perfilEncontrado})`);
-          break;
+      case 'pular':
+        resultado.ojsJaVinculadosPerfilCorreto.push({
+          oj,
+          textoEncontrado: verificacao.textoEncontrado,
+          perfilEncontrado: verificacao.perfilEncontrado,
+          tipoCorrespondencia: verificacao.tipoCorrespondencia
+        });
+        resultado.estatisticas.jaVinculadosPerfilCorreto++;
+        this.logger.info(`✅ OJ + Perfil correto: "${oj}" → "${verificacao.textoEncontrado}" (${verificacao.perfilEncontrado})`);
+        break;
 
-        case 'atualizar_perfil':
-          resultado.ojsVinculadosPerfilDiferente.push({
-            oj,
-            textoEncontrado: verificacao.textoEncontrado,
-            perfilEncontrado: verificacao.perfilEncontrado,
-            perfilDesejado: verificacao.perfilDesejado,
-            tipoCorrespondencia: verificacao.tipoCorrespondencia
-          });
-          resultado.estatisticas.vinculadosPerfilDiferente++;
-          this.logger.info(`🔄 Perfil diferente: "${oj}" → "${verificacao.perfilEncontrado}" ≠ "${verificacao.perfilDesejado}"`);
-          break;
+      case 'atualizar_perfil':
+        resultado.ojsVinculadosPerfilDiferente.push({
+          oj,
+          textoEncontrado: verificacao.textoEncontrado,
+          perfilEncontrado: verificacao.perfilEncontrado,
+          perfilDesejado: verificacao.perfilDesejado,
+          tipoCorrespondencia: verificacao.tipoCorrespondencia
+        });
+        resultado.estatisticas.vinculadosPerfilDiferente++;
+        this.logger.info(`🔄 Perfil diferente: "${oj}" → "${verificacao.perfilEncontrado}" ≠ "${verificacao.perfilDesejado}"`);
+        break;
 
-        case 'verificar_perfil':
-          resultado.ojsVinculadosPerfilDesconhecido.push({
-            oj,
-            textoEncontrado: verificacao.textoEncontrado,
-            perfilDesejado: verificacao.perfilDesejado,
-            tipoCorrespondencia: verificacao.tipoCorrespondencia
-          });
-          resultado.estatisticas.vinculadosPerfilDesconhecido++;
-          this.logger.info(`❓ Perfil desconhecido: "${oj}" → Verificar perfil atual`);
-          break;
+      case 'verificar_perfil':
+        resultado.ojsVinculadosPerfilDesconhecido.push({
+          oj,
+          textoEncontrado: verificacao.textoEncontrado,
+          perfilDesejado: verificacao.perfilDesejado,
+          tipoCorrespondencia: verificacao.tipoCorrespondencia
+        });
+        resultado.estatisticas.vinculadosPerfilDesconhecido++;
+        this.logger.info(`❓ Perfil desconhecido: "${oj}" → Verificar perfil atual`);
+        break;
 
-        case 'vincular_novo':
-          resultado.ojsParaVincular.push(oj);
-          resultado.estatisticas.paraVincular++;
-          this.logger.info(`🆕 Novo para vincular: "${oj}" com perfil "${perfilDesejado}"`);
-          break;
+      case 'vincular_novo':
+        resultado.ojsParaVincular.push(oj);
+        resultado.estatisticas.paraVincular++;
+        this.logger.info(`🆕 Novo para vincular: "${oj}" com perfil "${perfilDesejado}"`);
+        break;
       }
 
       // Atualizar cache
@@ -650,7 +650,7 @@ class SmartOJCache {
               textoEncontrado: ojVinculadoOriginal,
               tipoCorrespondencia: 'exata',
               perfilEncontrado: cacheEntry.perfil,
-              perfilDesejado: perfilDesejado,
+              perfilDesejado,
               acao: 'pular' // Não precisa processar
             };
           } else {
@@ -661,7 +661,7 @@ class SmartOJCache {
               textoEncontrado: ojVinculadoOriginal,
               tipoCorrespondencia: 'exata',
               perfilEncontrado: cacheEntry.perfil,
-              perfilDesejado: perfilDesejado,
+              perfilDesejado,
               acao: 'atualizar_perfil' // Precisa atualizar o perfil
             };
           }
@@ -673,7 +673,7 @@ class SmartOJCache {
             textoEncontrado: ojVinculadoOriginal,
             tipoCorrespondencia: 'exata',
             perfilEncontrado: 'desconhecido',
-            perfilDesejado: perfilDesejado,
+            perfilDesejado,
             acao: 'verificar_perfil' // Precisa verificar o perfil atual
           };
         }
@@ -688,7 +688,7 @@ class SmartOJCache {
         ...resultadoSimilaridade,
         perfilCorreto: false,
         perfilEncontrado: 'desconhecido',
-        perfilDesejado: perfilDesejado,
+        perfilDesejado,
         acao: 'verificar_perfil'
       };
     }
@@ -700,7 +700,7 @@ class SmartOJCache {
       textoEncontrado: null,
       tipoCorrespondencia: null,
       perfilEncontrado: null,
-      perfilDesejado: perfilDesejado,
+      perfilDesejado,
       acao: 'vincular_novo' // Precisa vincular OJ + perfil
     };
   }
@@ -1044,78 +1044,43 @@ class SmartOJCache {
   }
 
   /**
-   * Verifica correspondência por palavras-chave principais
-   * @param {string} texto1 
-   * @param {string} texto2 
-   * @returns {boolean}
+   * Verifica correspondência entre palavras-chave
    */
   _verificarPalavrasChave(texto1, texto2) {
-    // Verificação especial para CEJUSCs - devem ser idênticos
-    const isCejusc1 = texto1.toLowerCase().includes('cejusc');
-    const isCejusc2 = texto2.toLowerCase().includes('cejusc');
+    const palavrasChave1 = this._extrairPalavrasChave(texto1);
+    const palavrasChave2 = this._extrairPalavrasChave(texto2);
     
-    if (isCejusc1 || isCejusc2) {
-      // Para CEJUSCs, só considera correspondência se forem exatamente iguais
-      const texto1Norm = texto1.replace(/\s+/g, ' ').trim().toLowerCase();
-      const texto2Norm = texto2.replace(/\s+/g, ' ').trim().toLowerCase();
-      return texto1Norm === texto2Norm;
-    }
+    if (palavrasChave1.length === 0 || palavrasChave2.length === 0) return false;
     
-    const palavrasChaveGenericas = [
-      'vara', 'tribunal', 'juizado', 'turma', 'camara', 'secao',
-      'comarca', 'foro', 'instancia', 'supremo', 'superior',
-      'regional', 'federal', 'estadual', 'militar', 'eleitoral',
-      'trabalho', 'justica', 'civil', 'criminal', 'fazenda'
-    ];
-
-    const stopwords = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'the']);
-
-    const tokenizar = (texto) => texto
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .map(t => t.trim())
-      .filter(t => t.length > 0);
-
-    const tokens1 = tokenizar(texto1);
-    const tokens2 = tokenizar(texto2);
-
-    if (tokens1.length === 0 || tokens2.length === 0) {
-      return false;
-    }
-
-    const chaves1 = tokens1.filter(t => palavrasChaveGenericas.includes(t));
-    const chaves2 = tokens2.filter(t => palavrasChaveGenericas.includes(t));
-
-    if (chaves1.length === 0 || chaves2.length === 0) {
-      return false;
-    }
-
-    const especificos1 = new Set(tokens1.filter(t => !palavrasChaveGenericas.includes(t) && !stopwords.has(t) && !/^\d/.test(t) && t.length > 3));
-    const especificos2 = new Set(tokens2.filter(t => !palavrasChaveGenericas.includes(t) && !stopwords.has(t) && !/^\d/.test(t) && t.length > 3));
-
-    // É necessário pelo menos um token específico em comum (ex: nome da cidade)
-    const temEspecificoComum = [...especificos1].some(token => especificos2.has(token));
-    if (!temEspecificoComum) {
-      return false;
-    }
-
-    const chavesComuns = chaves1.filter(chave => chaves2.includes(chave));
-    const percentualComum = chavesComuns.length / Math.min(chaves1.length, chaves2.length);
-
-    return percentualComum >= 0.6 && chavesComuns.length >= 2;
+    const palavrasComuns = palavrasChave1.filter(p1 => 
+      palavrasChave2.some(p2 => p1 === p2)
+    );
+    
+    const percentualComum = palavrasComuns.length / Math.min(palavrasChave1.length, palavrasChave2.length);
+    return percentualComum >= 0.6;
   }
 
   /**
-   * Retorna estatísticas do cache
-   * @returns {Object} Estatísticas do cache
+   * Extrai palavras-chave relevantes do texto
+   */
+  _extrairPalavrasChave(texto) {
+    const palavrasRelevantes = texto.toLowerCase()
+      .split(/\s+/)
+      .filter(palavra => palavra.length > 3)
+      .filter(palavra => !/^(da|de|do|das|dos|para|com|por|em|na|no|nas|nos|uma|um|uns|umas|que|qual|quais|onde|quando|como|porque|pela|pelo|pelas|pelos)$/.test(palavra));
+    
+    return [...new Set(palavrasRelevantes)];
+  }
+
+  /**
+   * Obtém estatísticas do cache
    */
   obterEstatisticas() {
     return {
-      tamanhoCache: this.cache.size,
+      totalOJs: this.cache.size,
+      ojsVinculados: Array.from(this.cache.values()).filter(item => item.jaVinculado).length,
       cacheValido: this.cacheValido,
-      ultimaAtualizacao: this.ultimaAtualizacao,
-      ojsJaVinculados: Array.from(this.cache.values()).filter(item => item.jaVinculado).length,
-      ojsParaVincular: Array.from(this.cache.values()).filter(item => !item.jaVinculado).length
+      ultimaAtualizacao: this.ultimaAtualizacao
     };
   }
 }

@@ -150,20 +150,20 @@ class OptimizedAutomationFlow {
    */
   async executeStrategy(strategy, serverData, comparisonResult) {
     switch (strategy.type) {
-      case 'skip':
-        return await this.executeSkipStrategy(serverData, comparisonResult);
+    case 'skip':
+      return await this.executeSkipStrategy(serverData, comparisonResult);
       
-      case 'quick':
-        return await this.executeQuickStrategy(serverData, comparisonResult);
+    case 'quick':
+      return await this.executeQuickStrategy(serverData, comparisonResult);
       
-      case 'batch':
-        return await this.executeBatchStrategy(serverData, comparisonResult);
+    case 'batch':
+      return await this.executeBatchStrategy(serverData, comparisonResult);
       
-      case 'full':
-        return await this.executeFullStrategy(serverData, comparisonResult);
+    case 'full':
+      return await this.executeFullStrategy(serverData, comparisonResult);
       
-      default:
-        throw new Error(`Estratégia desconhecida: ${strategy.type}`);
+    default:
+      throw new Error(`Estratégia desconhecida: ${strategy.type}`);
     }
   }
 

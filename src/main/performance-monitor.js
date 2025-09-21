@@ -47,12 +47,12 @@ class PerformanceMonitor {
     };
     
     this.thresholds = {
-      navigation: 5000, // 5s
-      click: 2000, // 2s
-      elementSearch: 10000, // 10s - Aumentado para dar mais tempo para encontrar elementos
-      pjeOperation: 15000, // 15s - Aumentado para operações PJe complexas
-      memoryWarning: 500 * 1024 * 1024, // 500MB
-      cpuWarning: 80 // 80%
+      navigation: 3000, // Reduzido de 5000 - 3s para navegação
+      click: 1000, // Reduzido de 2000 - 1s para cliques
+      elementSearch: 6000, // Reduzido de 10000 - 6s para busca de elementos
+      pjeOperation: 8000, // Reduzido de 15000 - 8s para operações PJe
+      memoryWarning: 800 * 1024 * 1024, // Aumentado de 500MB para 800MB
+      cpuWarning: 85 // Aumentado de 80% para 85%
     };
     
     this.alerts = [];
@@ -80,12 +80,12 @@ class PerformanceMonitor {
     this.isMonitoring = true;
     console.log('🔍 Iniciando monitoramento de performance...');
     
-    // Monitoramento a cada 30 segundos
+    // Monitoramento a cada 15 segundos (reduzido de 30s)
     this.monitoringInterval = setInterval(() => {
       this.collectSystemMetrics();
       this.analyzePerformance();
       this.detectBottlenecks();
-    }, 30000);
+    }, 15000);
     
     // Coleta inicial
     this.collectSystemMetrics();
@@ -341,29 +341,29 @@ class PerformanceMonitor {
       suggestions: []
     };
     
-    // Analisar navegação
-    if (this.metrics.navigation.averageTime > this.thresholds.navigation * 0.7) {
+    // Analisar navegação - threshold mais agressivo
+    if (this.metrics.navigation.averageTime > this.thresholds.navigation * 0.6) {
       analysis.issues.push('Navegação lenta detectada');
       analysis.suggestions.push('Considere usar navegação otimizada ou cache de páginas');
       analysis.overall = 'warning';
     }
     
-    // Analisar cliques
-    if (this.metrics.clicks.averageTime > this.thresholds.click * 0.7) {
+    // Analisar cliques - threshold mais agressivo
+    if (this.metrics.clicks.averageTime > this.thresholds.click * 0.6) {
       analysis.issues.push('Cliques lentos detectados');
       analysis.suggestions.push('Verifique seletores e considere usar cache DOM');
       analysis.overall = 'warning';
     }
     
-    // Analisar busca de elementos
-    if (this.metrics.elementSearch.averageTime > this.thresholds.elementSearch * 0.7) {
+    // Analisar busca de elementos - threshold mais agressivo
+    if (this.metrics.elementSearch.averageTime > this.thresholds.elementSearch * 0.6) {
       analysis.issues.push('Busca de elementos lenta');
       analysis.suggestions.push('Otimize seletores e implemente cache de elementos');
       analysis.overall = 'warning';
     }
     
-    // Analisar operações PJE
-    if (this.metrics.pjeOperations.averageTime > this.thresholds.pjeOperation * 0.7) {
+    // Analisar operações PJE - threshold mais agressivo
+    if (this.metrics.pjeOperations.averageTime > this.thresholds.pjeOperation * 0.6) {
       analysis.issues.push('Operações PJE lentas');
       analysis.suggestions.push('Implemente retry inteligente e otimize timeouts');
       analysis.overall = 'error';
@@ -497,7 +497,7 @@ class PerformanceMonitor {
     const recommendations = [];
     
     // Recomendações baseadas em métricas
-    if (this.metrics.navigation.averageTime > 3000) {
+    if (this.metrics.navigation.averageTime > 2000) { // Reduzido de 3000
       recommendations.push({
         type: 'navigation',
         priority: 'high',
@@ -505,7 +505,7 @@ class PerformanceMonitor {
       });
     }
     
-    if (this.metrics.clicks.averageTime > 1500) {
+    if (this.metrics.clicks.averageTime > 800) { // Reduzido de 1500
       recommendations.push({
         type: 'interaction',
         priority: 'medium',
@@ -513,7 +513,7 @@ class PerformanceMonitor {
       });
     }
     
-    if (this.metrics.elementSearch.averageTime > 2000) {
+    if (this.metrics.elementSearch.averageTime > 1200) { // Reduzido de 2000
       recommendations.push({
         type: 'search',
         priority: 'medium',

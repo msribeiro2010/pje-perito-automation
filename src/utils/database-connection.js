@@ -9,8 +9,8 @@ class DatabaseConnection {
     this.pool = null;
     this.isConnected = false;
     this.credentials = credentials;
-    this.connectionConfig = credentials ? this.buildConnectionConfig(credentials, 'pje_1grau_bugfix') : config.database1Grau;
-    this.connectionConfig2Grau = credentials ? this.buildConnectionConfig(credentials, 'pje_2grau_bugfix') : config.database2Grau;
+    this.connectionConfig = credentials ? this.buildConnectionConfig(credentials, credentials.database1Grau || 'pje_1grau') : config.database1Grau;
+    this.connectionConfig2Grau = credentials ? this.buildConnectionConfig(credentials, credentials.database2Grau || 'pje_2grau') : config.database2Grau;
   }
 
   /**
@@ -33,9 +33,9 @@ class DatabaseConnection {
    */
   buildConnectionConfig(credentials, database) {
     return {
-      host: credentials.host || 'pje-db-bugfix-a1',
+      host: credentials.host || 'localhost',
       port: credentials.port || 5432,
-      database: database,
+      database,
       user: credentials.user,
       password: credentials.password,
       max: 10,
@@ -49,8 +49,8 @@ class DatabaseConnection {
    */
   async updateCredentials(credentials) {
     this.credentials = credentials;
-    this.connectionConfig = this.buildConnectionConfig(credentials, 'pje_1grau_bugfix');
-    this.connectionConfig2Grau = this.buildConnectionConfig(credentials, 'pje_2grau_bugfix');
+    this.connectionConfig = this.buildConnectionConfig(credentials, credentials.database1Grau || 'pje_1grau');
+    this.connectionConfig2Grau = this.buildConnectionConfig(credentials, credentials.database2Grau || 'pje_2grau');
     
     // Fechar conexão atual se existir
     if (this.pool) {
@@ -149,8 +149,8 @@ class DatabaseConnection {
       const ojsInativosEncontrados = [];
 
       console.log(`🔍 [DEBUG] BOTUCATU CASO - Verificando ${ojsParaVerificar.length} OJs:`);
-      console.log(`🔍 [DEBUG] BOTUCATU CASO - OJs para verificar:`, ojsParaVerificar);
-      console.log(`🔍 [DEBUG] BOTUCATU CASO - OJs encontradas no BD:`, ojsCadastrados.map(oj => oj.ds_orgao_julgador));
+      console.log('🔍 [DEBUG] BOTUCATU CASO - OJs para verificar:', ojsParaVerificar);
+      console.log('🔍 [DEBUG] BOTUCATU CASO - OJs encontradas no BD:', ojsCadastrados.map(oj => oj.ds_orgao_julgador));
 
       for (const ojVerificar of ojsParaVerificar) {
         console.log(`🔍 [DEBUG] BOTUCATU CASO - Verificando: "${ojVerificar}"`);
@@ -160,7 +160,7 @@ class DatabaseConnection {
           const ojVerificarNormalizado = this.normalizeName(ojVerificar);
           const match = nomeNormalizado === ojVerificarNormalizado;
           
-          console.log(`🔍 [DEBUG] BOTUCATU CASO - Comparando:`);
+          console.log('🔍 [DEBUG] BOTUCATU CASO - Comparando:');
           console.log(`   BD: "${nomeNormalizado}"`);
           console.log(`   Verificar: "${ojVerificarNormalizado}"`);
           console.log(`   Match: ${match}`);
@@ -177,7 +177,7 @@ class DatabaseConnection {
               dataInicio: ojEncontrado.dt_inicio,
               status: 'ativo'
             });
-            console.log(`✅ [DEBUG] BOTUCATU CASO - Adicionada a JÁ CADASTRADOS (ativa)`);
+            console.log('✅ [DEBUG] BOTUCATU CASO - Adicionada a JÁ CADASTRADOS (ativa)');
           } else {
             ojsInativosEncontrados.push({
               nome: ojEncontrado.ds_orgao_julgador,
@@ -186,25 +186,25 @@ class DatabaseConnection {
               dataFinal: ojEncontrado.dt_final,
               status: 'inativo'
             });
-            console.log(`⚠️ [DEBUG] BOTUCATU CASO - Adicionada a INATIVOS`);
+            console.log('⚠️ [DEBUG] BOTUCATU CASO - Adicionada a INATIVOS');
           }
         } else {
           console.log(`🔄 [DEBUG] BOTUCATU CASO - OJ "${ojVerificar}" NÃO ENCONTRADA no BD`);
           ojsParaProcessar.push(ojVerificar);
-          console.log(`🔄 [DEBUG] BOTUCATU CASO - Adicionada a PARA PROCESSAR`);
+          console.log('🔄 [DEBUG] BOTUCATU CASO - Adicionada a PARA PROCESSAR');
         }
       }
 
-      console.log(`🔍 [DEBUG] BOTUCATU CASO - RESULTADO FINAL:`);
+      console.log('🔍 [DEBUG] BOTUCATU CASO - RESULTADO FINAL:');
       console.log(`   JÁ CADASTRADOS: ${ojsJaCadastrados.length}`, ojsJaCadastrados.map(oj => oj.nome));
       console.log(`   PARA PROCESSAR: ${ojsParaProcessar.length}`, ojsParaProcessar);
       console.log(`   INATIVOS: ${ojsInativosEncontrados.length}`, ojsInativosEncontrados.map(oj => oj.nome));
 
       return {
         totalVerificados: ojsParaVerificar.length,
-        ojsJaCadastrados: ojsJaCadastrados,
+        ojsJaCadastrados,
         ojsInativos: ojsInativosEncontrados,
-        ojsParaProcessar: ojsParaProcessar,
+        ojsParaProcessar,
         estatisticas: {
           totalCadastrados: ojsCadastrados.length,
           totalAtivos: ojsAtivos.length,
@@ -494,7 +494,7 @@ class DatabaseConnection {
         paramIndex++;
       }
 
-      query += ` ORDER BY ulv.dt_inicio DESC, nome`;
+      query += ' ORDER BY ulv.dt_inicio DESC, nome';
 
       console.log(`🔍 Executando query para servidores ${grau}º grau`);
       console.log('Query:', query);

@@ -40,7 +40,7 @@ class ProcessDatabaseService {
       const [schema, table] = fqName.split('.');
       try {
         const res = await client.query(
-          `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2 LIMIT 1`,
+          'SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2 LIMIT 1',
           [schema, table]
         );
         if (res.rowCount > 0) return fqName;
@@ -113,12 +113,12 @@ class ProcessDatabaseService {
       ]);
 
       const selectColeg = colegiadoQualified
-        ? `ojc.ds_orgao_julgador_colegiado`
-        : `NULL::text as ds_orgao_julgador_colegiado`;
+        ? 'ojc.ds_orgao_julgador_colegiado'
+        : 'NULL::text as ds_orgao_julgador_colegiado';
       const joinColeg = colegiadoQualified
         ? `LEFT JOIN ${colegiadoQualified} ojc ON ojc.id_orgao_julgador_colegiado = ptrf.id_orgao_julgador_colegiado`
         : '';
-      const groupByColeg = colegiadoQualified ? `, ojc.ds_orgao_julgador_colegiado` : '';
+      const groupByColeg = colegiadoQualified ? ', ojc.ds_orgao_julgador_colegiado' : '';
 
       const query = `
         SELECT

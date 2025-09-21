@@ -1,7 +1,8 @@
 // Central IA - NAPJe Sistema de Automacao Inteligente - Main Process
 // Sistema de automação inteligente para vinculação de peritos e servidores no PJE
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, shell } = require('electron');
+const os = require('os');
 // Ajuste de limite de listeners para evitar MaxListenersExceededWarning
 try {
   if (process && typeof process.setMaxListeners === 'function') {
@@ -619,9 +620,16 @@ ipcMain.handle('start-parallel-automation-v2', async (_, config) => {
       servidorAutomationV2.setMainWindow(mainWindow);
     }
     
-    // Extrair parâmetros necessários do config
+    // Extrair parâmetros necessários do config e configurar modo paralelo
     const servidores = config.servidores || [];
     const maxInstances = config.numInstances || config.maxInstances || 2;
+    
+    // Configurar explicitamente para modo paralelo
+    config.mode = 'parallel';
+    config.useParallelProcessor = true;
+    config.forceBatchOnly = false;
+    
+    console.log(`🚀 [MAIN] Configurado para modo paralelo com ${maxInstances} instâncias`);
     
     const result = await servidorAutomationV2.startParallelAutomation(servidores, config, maxInstances);
     return { success: true, ...result };
@@ -836,13 +844,69 @@ ipcMain.handle('test-database-credentials', async (_, credentials) => {
       return { success: false, error: 'Usuário e senha são obrigatórios' };
     }
     
-    // Simular teste de conexão (funcionalidade simplificada)
     console.log('🔍 Testando credenciais do banco de dados...');
     
-    // Retornar sucesso para manter compatibilidade
-    return { success: true, message: 'Credenciais validadas (modo simplificado)' };
+    // Criar instância temporária da conexão para teste
+    const testConnection = new DatabaseConnection(credentials);
+    
+    // Tentar inicializar a conexão
+    const connectionResult = await testConnection.initialize();
+    
+    if (connectionResult) {
+      // Testar se a conexão está saudável
+      const isHealthy = await testConnection.isHealthy();
+      
+      if (isHealthy) {
+        // Fechar a conexão de teste
+        await testConnection.close();
+        
+        console.log('✅ Conexão com banco de dados estabelecida com sucesso');
+        return { 
+          success: true, 
+          message: 'Conexão estabelecida com sucesso! Banco de dados acessível.',
+          details: {
+            host: credentials.host || 'pje-db-bugfix-a1',
+            port: credentials.port || 5432,
+            user: credentials.user,
+            database1Grau: credentials.database1Grau || 'pje_1grau_bugfix',
+            database2Grau: credentials.database2Grau || 'pje_2grau_bugfix'
+          }
+        };
+      } else {
+        await testConnection.close();
+        return { success: false, error: 'Conexão estabelecida mas banco não está respondendo adequadamente' };
+      }
+    } else {
+      await testConnection.close();
+      return { success: false, error: 'Não foi possível estabelecer conexão com o banco de dados' };
+    }
+    
   } catch (error) {
-    return { success: false, error: error && error.message ? error.message : 'Erro desconhecido' };
+    console.error('❌ Erro ao testar conexão com banco:', error);
+    
+    let errorMessage = 'Erro desconhecido ao conectar com banco';
+    let errorCode = error.code || 'UNKNOWN_ERROR';
+    
+    // Tratar erros específicos do PostgreSQL
+    if (error.code === 'ENOTFOUND') {
+      errorMessage = `Servidor não encontrado: ${credentials.host}. Verifique se o host está correto e acessível.`;
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = `Conexão recusada em ${credentials.host}:${credentials.port}. Verifique se o PostgreSQL está rodando.`;
+    } else if (error.code === '28P01') {
+      errorMessage = `Falha na autenticação para usuário "${credentials.user}". Verifique usuário e senha.`;
+    } else if (error.code === '3D000') {
+      errorMessage = `Base de dados não encontrada. Verifique se "${credentials.database1Grau}" e "${credentials.database2Grau}" existem.`;
+    } else if (error.code === 'ETIMEDOUT') {
+      errorMessage = `Timeout na conexão com ${credentials.host}:${credentials.port}. Servidor pode estar sobrecarregado.`;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    return { 
+      success: false, 
+      error: errorMessage,
+      details: errorCode
+    };
   }
 });
 
@@ -1480,3 +1544,246 @@ function gerarMensagemFinal(relatorio) {
   
   return mensagem;
 }
+
+// ========== HANDLERS SERVIDOR AUTOMATION V2 ==========
+
+// Handler para automação sequencial (BatchOJProcessor apenas)
+ipcMain.handle('start-servidor-automation-v2-sequential', async (event, config) => {
+  try {
+    console.log('🚀 [MAIN] Iniciando automação sequencial (BatchOJProcessor apenas)');
+    
+    const servidorAutomation = new ServidorAutomationV2();
+    
+    // Configurar para modo sequencial - força uso do BatchOJProcessor
+    config.mode = 'sequential';
+    config.useParallelProcessor = false;
+    config.forceBatchOnly = true;
+    
+    const result = await servidorAutomation.startAutomation(config);
+    
+    console.log('✅ [MAIN] Automação sequencial concluída');
+    return result;
+    
+  } catch (error) {
+    console.error('❌ [MAIN] Erro na automação sequencial:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// ========== SISTEMA DE LOGS ==========
+let systemLogs = [];
+const MAX_LOG_ENTRIES = 1000;
+let lastCacheClear = null;
+
+function addSystemLog(type, message, details = null) {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+    details
+  };
+  systemLogs.push(logEntry);
+  if (systemLogs.length > MAX_LOG_ENTRIES) {
+    systemLogs = systemLogs.slice(-MAX_LOG_ENTRIES);
+  }
+  return logEntry;
+}
+
+function formatBytes(bytes, decimals = 2) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+// ========== HANDLERS DE CACHE ==========
+ipcMain.handle('clear-cache', async () => {
+  try {
+    const ses = session.defaultSession;
+    await ses.clearCache();
+    await ses.clearStorageData({
+      storages: ['appcache', 'filesystem', 'indexdb', 'localstorage', 'shadercache', 'websql', 'serviceworkers']
+    });
+    lastCacheClear = new Date().toISOString();
+    addSystemLog('success', 'Cache limpo com sucesso');
+    return { success: true, message: 'Cache limpo com sucesso' };
+  } catch (error) {
+    addSystemLog('error', 'Erro ao limpar cache', error.message);
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('get-cache-size', async () => {
+  try {
+    const ses = session.defaultSession;
+    const cacheSize = await ses.getCacheSize();
+    return { 
+      success: true, 
+      size: cacheSize,
+      sizeFormatted: formatBytes(cacheSize),
+      lastClearDate: lastCacheClear
+    };
+  } catch (error) {
+    return { success: false, size: 0, sizeFormatted: '0 B' };
+  }
+});
+
+// ========== HANDLERS DE BACKUP ==========
+ipcMain.handle('export-backup', async () => {
+  try {
+    const backupData = {
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      peritos: [],
+      servidores: [],
+      configurations: {},
+      logs: systemLogs.slice(-100)
+    };
+
+    // Carregar dados de peritos
+    const peritosPath = path.join(__dirname, '../data/perito.json');
+    if (fs.existsSync(peritosPath)) {
+      backupData.peritos = JSON.parse(fs.readFileSync(peritosPath, 'utf-8'));
+    }
+
+    // Carregar dados de servidores
+    const servidoresPath = path.join(__dirname, '../data/servidores.json');
+    if (fs.existsSync(servidoresPath)) {
+      backupData.servidores = JSON.parse(fs.readFileSync(servidoresPath, 'utf-8'));
+    }
+
+    // Carregar configurações
+    const configPath = path.join(__dirname, '../.env');
+    if (fs.existsSync(configPath)) {
+      const envContent = fs.readFileSync(configPath, 'utf-8');
+      const lines = envContent.split('\n');
+      lines.forEach(line => {
+        const [key, value] = line.split('=');
+        if (key && value) {
+          backupData.configurations[key] = value;
+        }
+      });
+    }
+
+    addSystemLog('success', 'Backup exportado com sucesso');
+    return { success: true, data: backupData };
+  } catch (error) {
+    addSystemLog('error', 'Erro ao exportar backup', error.message);
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('restore-backup', async (event, backupData) => {
+  try {
+    if (!backupData || !backupData.version) {
+      throw new Error('Arquivo de backup inválido');
+    }
+
+    // Restaurar peritos
+    if (backupData.peritos) {
+      const peritosPath = path.join(__dirname, '../data/perito.json');
+      fs.writeFileSync(peritosPath, JSON.stringify(backupData.peritos, null, 2));
+    }
+
+    // Restaurar servidores
+    if (backupData.servidores) {
+      const servidoresPath = path.join(__dirname, '../data/servidores.json');
+      fs.writeFileSync(servidoresPath, JSON.stringify(backupData.servidores, null, 2));
+    }
+
+    // Restaurar configurações
+    if (backupData.configurations) {
+      const envContent = Object.entries(backupData.configurations)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+      const configPath = path.join(__dirname, '../.env');
+      fs.writeFileSync(configPath, envContent);
+    }
+
+    addSystemLog('success', 'Backup restaurado com sucesso');
+    return { success: true, message: 'Backup restaurado com sucesso' };
+  } catch (error) {
+    addSystemLog('error', 'Erro ao restaurar backup', error.message);
+    return { success: false, message: error.message };
+  }
+});
+
+// ========== HANDLERS DE LOGS ==========
+ipcMain.handle('get-system-logs', async (event, options = {}) => {
+  const { limit = 100, type = 'all' } = options;
+  let filteredLogs = systemLogs;
+  
+  if (type !== 'all') {
+    filteredLogs = systemLogs.filter(log => log.type === type);
+  }
+  
+  return {
+    success: true,
+    logs: filteredLogs.slice(-limit),
+    total: filteredLogs.length
+  };
+});
+
+ipcMain.handle('clear-logs', async () => {
+  systemLogs = [];
+  addSystemLog('info', 'Logs limpos');
+  return { success: true };
+});
+
+// ========== HANDLERS DE PERFORMANCE ==========
+ipcMain.handle('get-performance-metrics', async () => {
+  try {
+    // CPU Usage
+    const cpuUsage = process.getCPUUsage();
+    
+    // Memory info
+    const totalMemory = os.totalmem();
+    const freeMemory = os.freemem();
+    const usedMemory = totalMemory - freeMemory;
+    const memUsage = process.memoryUsage();
+    
+    return {
+      success: true,
+      cpu: {
+        percentage: Math.round((cpuUsage.percentCPUUsage || 0) * 100)
+      },
+      memory: {
+        used: usedMemory,
+        total: totalMemory,
+        percentage: Math.round((usedMemory / totalMemory) * 100),
+        formatted: {
+          used: formatBytes(usedMemory),
+          total: formatBytes(totalMemory)
+        },
+        process: {
+          heapUsed: memUsage.heapUsed,
+          heapTotal: memUsage.heapTotal,
+          rss: memUsage.rss,
+          formatted: {
+            heapUsed: formatBytes(memUsage.heapUsed),
+            heapTotal: formatBytes(memUsage.heapTotal),
+            rss: formatBytes(memUsage.rss)
+          }
+        }
+      },
+      uptime: process.uptime(),
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    return {
+      success: false,
+      cpu: { percentage: 0 },
+      memory: { percentage: 0, used: 0, total: 0 }
+    };
+  }
+});
+
+// Adicionar log de inicialização
+app.on('ready', () => {
+  addSystemLog('success', 'Sistema iniciado com sucesso');
+});

@@ -7,65 +7,67 @@ class SmartRetryManager {
   constructor(timeoutManager) {
     this.timeoutManager = timeoutManager;
     
-    // Configurações base de retry
+    // Configurações base de retry - ULTRA OTIMIZADAS
     this.retryConfigs = {
       // Operações críticas do PJE
       navigation: {
-        maxRetries: 5,
-        baseDelay: 1000,
-        maxDelay: 30000,
-        backoffMultiplier: 2,
-        jitterFactor: 0.1,
-        retryableErrors: ['TimeoutError', 'NetworkError', 'ElementNotFound']
+        maxRetries: 3,          // Reduzido ainda mais
+        baseDelay: 400,         // Reduzido ainda mais
+        maxDelay: 10000,        // Reduzido ainda mais
+        backoffMultiplier: 1.5, // Reduzido ainda mais
+        jitterFactor: 0.05,     // Reduzido ainda mais
+        retryableErrors: ['TimeoutError', 'NetworkError', 'ElementNotFound'],
+        smartRetry: true        // Ativa retry inteligente
       },
       
       // Cliques e interações
       interaction: {
-        maxRetries: 3,
-        baseDelay: 500,
-        maxDelay: 10000,
-        backoffMultiplier: 1.5,
-        jitterFactor: 0.2,
-        retryableErrors: ['ElementNotVisible', 'ElementDetached', 'TimeoutError']
+        maxRetries: 2,          // Reduzido para mais velocidade
+        baseDelay: 200,         // Reduzido ainda mais
+        maxDelay: 3000,         // Reduzido ainda mais
+        backoffMultiplier: 1.2, // Reduzido ainda mais
+        jitterFactor: 0.1,      // Reduzido ainda mais
+        retryableErrors: ['ElementNotVisible', 'ElementDetached', 'TimeoutError'],
+        smartRetry: true        // Ativa retry inteligente
       },
       
       // Busca de elementos
       elementSearch: {
-        maxRetries: 4,
-        baseDelay: 300,
-        maxDelay: 8000,
-        backoffMultiplier: 1.8,
-        jitterFactor: 0.15,
+        maxRetries: 3,          // Reduzido de 4
+        baseDelay: 200,         // Reduzido de 300
+        maxDelay: 5000,         // Reduzido de 8000
+        backoffMultiplier: 1.6, // Reduzido de 1.8
+        jitterFactor: 0.12,     // Reduzido de 0.15
         retryableErrors: ['ElementNotFound', 'TimeoutError']
       },
       
       // Operações de rede
       network: {
-        maxRetries: 6,
-        baseDelay: 2000,
-        maxDelay: 60000,
-        backoffMultiplier: 2.5,
-        jitterFactor: 0.3,
+        maxRetries: 5,          // Reduzido de 6
+        baseDelay: 1200,        // Reduzido de 2000
+        maxDelay: 40000,        // Reduzido de 60000
+        backoffMultiplier: 2.2, // Reduzido de 2.5
+        jitterFactor: 0.25,     // Reduzido de 0.3
         retryableErrors: ['NetworkError', 'TimeoutError', 'ConnectionReset']
       },
       
       // Operações PJE específicas
       pjeOperation: {
-        maxRetries: 4,
-        baseDelay: 1500,
-        maxDelay: 20000,
-        backoffMultiplier: 2,
-        jitterFactor: 0.25,
+        maxRetries: 3,          // Reduzido de 4
+        baseDelay: 800,         // Reduzido de 1500
+        maxDelay: 12000,        // Reduzido de 20000
+        backoffMultiplier: 1.8, // Reduzido de 2
+        jitterFactor: 0.2,      // Reduzido de 0.25
         retryableErrors: ['PJEError', 'SessionExpired', 'TimeoutError']
       },
       
       // Salvamento de dados
       save: {
         maxRetries: 3,
-        baseDelay: 800,
-        maxDelay: 15000,
-        backoffMultiplier: 2.2,
-        jitterFactor: 0.1,
+        baseDelay: 500,         // Reduzido de 800
+        maxDelay: 10000,        // Reduzido de 15000
+        backoffMultiplier: 2.0, // Reduzido de 2.2
+        jitterFactor: 0.08,     // Reduzido de 0.1
         retryableErrors: ['SaveError', 'ValidationError', 'TimeoutError']
       }
     };

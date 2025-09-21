@@ -333,7 +333,7 @@ class SmartDatabaseVerifier {
         resultado.detalhes.push({
           servidor: servidor.nome || servidor.cpf,
           idUsuario: servidor.idUsuario,
-          status: status,
+          status,
           ojsParaProcessar: verificacaoOJs.ojsParaProcessar,
           ojsJaCadastrados: verificacaoOJs.ojsJaCadastrados,
           ojsInativos: verificacaoOJs.ojsInativos,

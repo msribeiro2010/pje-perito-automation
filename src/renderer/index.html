@@ -370,6 +370,10 @@
                     </div>
                 </div>
             </div>
+
+            <div class="config-tabs">
+                <button class="config-tab-button active" data-config-tab="sistema">Sistema</button>
+            </div>
             
             <!-- Configurações Grid Layout -->
             <div id="sistema-config" class="config-section active">
@@ -454,7 +458,7 @@
                                     <div class="form-group-premium flex-3">
                                         <div class="input-wrapper">
                                             <i class="fas fa-server input-icon"></i>
-                                            <input type="text" id="dbHost" placeholder="pje-db-bugfix-a1" value="pje-db-bugfix-a1">
+                                            <input type="text" id="dbHost" placeholder="localhost" value="localhost">
                                             <label for="dbHost" class="floating-label">Host</label>
                                         </div>
                                     </div>
@@ -499,7 +503,7 @@
                                         <div class="form-group-premium">
                                             <div class="input-wrapper grau-1">
                                                 <span class="grau-badge">1º</span>
-                                                <input type="text" id="dbDatabase1Grau" placeholder="pje_1grau_bugfix" value="pje_1grau_bugfix">
+                                                <input type="text" id="dbDatabase1Grau" placeholder="pje_1grau" value="pje_1grau">
                                                 <label for="dbDatabase1Grau" class="floating-label">1º Grau</label>
                                             </div>
                                         </div>
@@ -507,7 +511,7 @@
                                         <div class="form-group-premium">
                                             <div class="input-wrapper grau-2">
                                                 <span class="grau-badge">2º</span>
-                                                <input type="text" id="dbDatabase2Grau" placeholder="pje_2grau_bugfix" value="pje_2grau_bugfix">
+                                                <input type="text" id="dbDatabase2Grau" placeholder="pje_2grau" value="pje_2grau">
                                                 <label for="dbDatabase2Grau" class="floating-label">2º Grau</label>
                                             </div>
                                         </div>
@@ -842,8 +846,10 @@
                         <select id="limiteOjs1Grau" class="form-control">
                             <option value="100">100</option>
                             <option value="500">500</option>
-                            <option value="1000" selected>1000</option>
+                            <option value="1000">1000</option>
                             <option value="2000">2000</option>
+                            <option value="5000">5000</option>
+                            <option value="0" selected>Sem limite (Todos)</option>
                         </select>
                     </div>
                 </div>
@@ -916,8 +922,10 @@
                         <select id="limiteOjs2Grau" class="form-control">
                             <option value="100">100</option>
                             <option value="500">500</option>
-                            <option value="1000" selected>1000</option>
+                            <option value="1000">1000</option>
                             <option value="2000">2000</option>
+                            <option value="5000">5000</option>
+                            <option value="0" selected>Sem limite (Todos)</option>
                         </select>
                     </div>
                 </div>
@@ -1009,6 +1017,24 @@
                             ></textarea>
                         </div>
                         
+                        <div class="import-section" style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                            <h4 style="margin: 0 0 10px 0; color: #495057; font-size: 14px;">
+                                <i class="fas fa-file-import"></i> Importação em Lote
+                            </h4>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="file" id="importOJsFile" accept=".json" style="display: none;">
+                                <button type="button" id="importOJsBtn" class="btn btn-info" style="flex: 1;">
+                                    <i class="fas fa-upload"></i> Importar Lista JSON
+                                </button>
+                                <button type="button" id="downloadExampleBtn" class="btn btn-outline-secondary" title="Baixar exemplo de arquivo JSON">
+                                    <i class="fas fa-download"></i> Exemplo
+                                </button>
+                            </div>
+                            <small style="color: #6c757d; margin-top: 5px; display: block;">
+                                Importe uma lista de OJs em formato JSON. <a href="#" id="showJsonFormat" style="color: #007bff;">Ver formato esperado</a>
+                            </small>
+                        </div>
+
                         <div class="comparison-actions" style="display: flex; gap: 10px; margin-top: 15px;">
                             <button type="button" id="compararOJs" class="btn btn-primary" style="flex: 1;">
                                 <i class="fas fa-search-plus"></i> Comparar OJs

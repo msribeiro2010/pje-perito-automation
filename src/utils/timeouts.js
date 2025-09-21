@@ -9,80 +9,80 @@ class TimeoutManager {
    * Valores baseados em análise de performance e testes extensivos
    */
   static TIMEOUTS_BASE = {
-    // Navegação e carregamento de página - OTIMIZADO
+    // Navegação e carregamento de página - ULTRA OTIMIZADO
     navegacao: {
-      carregarPagina: 8000,      // Reduzido de 12000 - mais agressivo
-      redirecionamento: 5000,    // Reduzido de 8000
-      aguardarElemento: 2500,    // Reduzido de 4000
-      aguardarModal: 1500,       // Reduzido de 3000
-      aguardarOverlay: 1000,     // Reduzido de 2000
-      networkIdle: 3000,         // Novo: aguardar rede estável
-      domStable: 1000            // Novo: aguardar DOM estável
+      carregarPagina: 3000,      // Reduzido ainda mais - ultra agressivo
+      redirecionamento: 2000,    // Reduzido para resposta mais rápida
+      aguardarElemento: 1000,    // Reduzido para busca mais ágil
+      aguardarModal: 800,        // Reduzido para modais
+      aguardarOverlay: 500,      // Reduzido para overlays
+      networkIdle: 1500,         // Reduzido para rede
+      domStable: 400             // Reduzido para estabilização DOM
     },
     
-    // Autenticação - OTIMIZADO
+    // Autenticação - ULTRA OTIMIZADO
     autenticacao: {
-      botaoLogin: 1500,          // Reduzido de 2500
-      preencherCampos: 800,      // Reduzido de 1500
-      aguardarRedirect: 4000,    // Reduzido de 6000
-      validarLogin: 2000,        // Reduzido de 3000
-      detectarCaptcha: 1000      // Novo: detectar captcha
+      botaoLogin: 800,           // Reduzido para login mais rápido
+      preencherCampos: 400,      // Reduzido para digitação
+      aguardarRedirect: 2000,    // Reduzido para redirect
+      validarLogin: 1000,        // Reduzido para validação
+      detectarCaptcha: 500       // Reduzido para detecção
     },
     
-    // Interações com elementos - ULTRA OTIMIZADO
+    // Interações com elementos - MÁXIMA OTIMIZAÇÃO
     interacao: {
-      clicar: 400,               // Reduzido de 800 - muito mais rápido
-      digitar: 200,              // Reduzido de 400
-      aguardarResposta: 1500,    // Reduzido de 2500
-      aguardarElemento: 8000,    // Aumentado para 8000ms para operações complexas
-      validarAcao: 800,          // Reduzido de 1500
-      estabilizar: 300,          // Reduzido de 500
-      hover: 200,                // Novo: para hover
-      focus: 150                 // Novo: para focus
+      clicar: 200,               // Ultra rápido para cliques
+      digitar: 100,              // Ultra rápido para digitação
+      aguardarResposta: 800,     // Reduzido para respostas
+      aguardarElemento: 3000,    // Reduzido para operações complexas
+      validarAcao: 400,          // Reduzido para validações
+      estabilizar: 150,          // Reduzido para estabilização
+      hover: 100,                // Reduzido para hover
+      focus: 50                  // Reduzido para focus
     },
     
     // Operações com dropdowns e seletores - OTIMIZADO
     dropdown: {
-      abrir: 1500,               // Aumentado para 1500ms
-      carregarOpcoes: 3000,      // Aumentado para 3000ms
-      selecionar: 1200,          // Aumentado para 1200ms
-      fechar: 800,               // Aumentado para 800ms
-      buscarOpcao: 2000,         // Mantido em 2000ms
-      filtrar: 500               // Novo: para filtros
+      abrir: 1200,               // Reduzido de 1500ms
+      carregarOpcoes: 2500,      // Reduzido de 3000ms
+      selecionar: 1000,          // Reduzido de 1200ms
+      fechar: 600,               // Reduzido de 800ms
+      buscarOpcao: 1500,         // Reduzido de 2000ms
+      filtrar: 400               // Reduzido de 500
     },
     
-    // Operações específicas do PJE - OTIMIZADO
+    // Operações específicas do PJE - BALANCEADO
     pje: {
-      abrirAcordeao: 1000,       // Reduzido de 1800
-      buscarOJ: 8000,            // Aumentado para 8000ms para dar mais tempo ao botão Adicionar
-      vincularOJ: 15000,         // Aumentado para 15000ms para operações complexas
-      verificarVinculo: 1500,    // Reduzido de 2500
-      confirmarAcao: 1200,       // Reduzido de 2000
-      aguardarProcessamento: 2500, // Reduzido de 4000
-      validarResultado: 800,     // Reduzido de 1500
-      salvarConfiguracao: 2000,  // Novo: para salvar
-      carregarLista: 1500        // Novo: para carregar listas
+      abrirAcordeao: 800,        // Reduzido de 1000
+      buscarOJ: 6000,            // Reduzido de 8000ms - mais agressivo
+      vincularOJ: 12000,         // Reduzido de 15000ms - mais eficiente
+      verificarVinculo: 1200,    // Reduzido de 1500
+      confirmarAcao: 1000,       // Reduzido de 1200
+      aguardarProcessamento: 2000, // Reduzido de 2500
+      validarResultado: 600,     // Reduzido de 800
+      salvarConfiguracao: 1500,  // Reduzido de 2000
+      carregarLista: 1200        // Reduzido de 1500
     },
     
-    // Operações de cache e otimização - NOVO
+    // Operações de cache e otimização - OTIMIZADO
     cache: {
-      verificarCache: 100,       // Verificação de cache
-      atualizarCache: 200,       // Atualização de cache
-      limparCache: 50            // Limpeza de cache
+      verificarCache: 50,        // Reduzido de 100
+      atualizarCache: 150,       // Reduzido de 200
+      limparCache: 30            // Reduzido de 50
     }
   };
 
   /**
    * Multiplicadores baseados na performance da rede/sistema
-   * Sistema inteligente com detecção automática de performance
+   * Sistema inteligente com detecção automática de performance - OTIMIZADO
    */
   static MULTIPLICADORES = {
-    ultraRapido: 0.3,    // Sistema ultra rápido - máxima agressividade
-    rapido: 0.5,         // Sistema rápido - muito agressivo
-    normal: 1.0,         // Performance normal
-    lento: 1.2,          // Sistema lento - penalização mínima
-    muitoLento: 1.5,     // Sistema muito lento - reduzido ainda mais
-    critico: 2.0         // Novo: para sistemas críticos
+    ultraRapido: 0.25,   // Reduzido de 0.3 - máxima agressividade
+    rapido: 0.4,         // Reduzido de 0.5 - mais agressivo
+    normal: 0.8,         // Reduzido de 1.0 - padrão mais rápido
+    lento: 1.0,          // Reduzido de 1.2 - menos penalização
+    muitoLento: 1.3,     // Reduzido de 1.5 - penalização menor
+    critico: 1.8         // Reduzido de 2.0 - menos conservador
   };
 
   /**

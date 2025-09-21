@@ -218,6 +218,9 @@ class PeritoApp {
 
     // Event listeners para processamento paralelo
     this.setupParallelProcessingListeners();
+    
+    // Event listeners para Central de Configurações
+    this.setupConfigurationListeners();
 
     // Controle de pausa/retomada removido
 
@@ -328,8 +331,26 @@ class PeritoApp {
       this.limparComparacao();
     });
 
-    document.getElementById('gerarAutomacaoFaltantes')?.addEventListener('click', () => {
-      this.gerarAutomacaoFaltantes();
+    document.getElementById('gerarAutomacaoFaltantes')?.addEventListener('click', async () => {
+      await this.gerarAutomacaoFaltantes();
+    });
+
+    // Event listeners para importação JSON de OJs
+    document.getElementById('importOJsBtn')?.addEventListener('click', () => {
+      document.getElementById('importOJsFile').click();
+    });
+
+    document.getElementById('importOJsFile')?.addEventListener('change', (e) => {
+      this.importarOJsJSON(e.target.files[0]);
+    });
+
+    document.getElementById('downloadExampleBtn')?.addEventListener('click', () => {
+      this.downloadExampleJSON();
+    });
+
+    document.getElementById('showJsonFormat')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.showJsonFormatHelp();
     });
 
     // Preview de servidor ao digitar CPF ou Nome
@@ -418,6 +439,40 @@ class PeritoApp {
       if (e.target === servidorModal) {
         this.closeServidorModal();
       }
+    });
+
+    // Password toggle functionality
+    this.setupPasswordToggle();
+  }
+
+  setupPasswordToggle() {
+    // Seleciona todos os botões de toggle de senha
+    const toggleButtons = document.querySelectorAll('.toggle-password');
+    
+    toggleButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        // Encontra o input de senha relacionado
+        const inputWrapper = button.closest('.input-wrapper');
+        const passwordInput = inputWrapper.querySelector('input[type="password"], input[type="text"]');
+        const icon = button.querySelector('i');
+        
+        if (passwordInput && icon) {
+          // Alterna o tipo do input
+          if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+            button.setAttribute('title', 'Ocultar senha');
+          } else {
+            passwordInput.type = 'password';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+            button.setAttribute('title', 'Mostrar senha');
+          }
+        }
+      });
     });
   }
 
@@ -511,8 +566,8 @@ class PeritoApp {
         const index = parseInt(e.target.dataset.index);
         if (e.target.checked) {
           if (Array.isArray(this.selectedPeritos) && !this.selectedPeritos.includes(index)) {
-        this.selectedPeritos.push(index);
-      }
+            this.selectedPeritos.push(index);
+          }
         } else {
           this.selectedPeritos = this.selectedPeritos.filter(i => i !== index);
         }
@@ -822,13 +877,41 @@ class PeritoApp {
     );
   }
 
-  // Função para validar CPF (formato básico)
+  // Função para validar CPF com algoritmo completo (inclui dígitos verificadores)
   isValidCPF(cpf) {
     if (!cpf) return false;
+    
     // Remove formatação
     const cleanCPF = cpf.replace(/[^\d]/g, '');
-    // Verifica se tem 11 dígitos e não é sequência repetida
-    return cleanCPF.length === 11 && !/^(\d)\1{10}$/.test(cleanCPF);
+    
+    // Verifica se tem 11 dígitos
+    if (cleanCPF.length !== 11) return false;
+    
+    // Verifica se não é sequência repetida (111.111.111-11, etc)
+    if (/^(\d)\1{10}$/.test(cleanCPF)) return false;
+    
+    // Validação dos dígitos verificadores
+    let sum = 0;
+    let remainder;
+    
+    // Valida primeiro dígito verificador
+    for (let i = 1; i <= 9; i++) {
+      sum += parseInt(cleanCPF.substring(i - 1, i)) * (11 - i);
+    }
+    remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(cleanCPF.substring(9, 10))) return false;
+    
+    // Valida segundo dígito verificador
+    sum = 0;
+    for (let i = 1; i <= 10; i++) {
+      sum += parseInt(cleanCPF.substring(i - 1, i)) * (12 - i);
+    }
+    remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(cleanCPF.substring(10, 11))) return false;
+    
+    return true;
   }
 
   // Função para formatar CPF no padrão XXX.XXX.XXX-XX
@@ -1046,7 +1129,24 @@ class PeritoApp {
       perfilCell.textContent = servidor.perfil;
       
       const ojsCell = document.createElement('td');
-      ojsCell.textContent = servidor.ojs ? servidor.ojs.join(', ') : 'Não definido';
+      if (servidor.ojs && Array.isArray(servidor.ojs)) {
+        // Verificar se os OJs são objetos ou strings
+        const ojsTexto = servidor.ojs.map(oj => {
+          if (typeof oj === 'object' && oj.oj) {
+            // Se for objeto, extrair a propriedade 'oj'
+            return oj.oj;
+          } else if (typeof oj === 'string') {
+            // Se for string, usar diretamente
+            return oj;
+          } else {
+            // Fallback para outros tipos
+            return String(oj);
+          }
+        }).join(', ');
+        ojsCell.textContent = ojsTexto;
+      } else {
+        ojsCell.textContent = 'Não definido';
+      }
       
       const actionsCell = document.createElement('td');
       actionsCell.innerHTML = `
@@ -1203,12 +1303,29 @@ class PeritoApp {
       // Mostrar loading
       this.showVerificationLoading(true);
 
-      // Executar verificação
+      // Executar verificação do banco de dados
+      this.addStatusMessage('info', '🔍 Verificando dados dos servidores no banco...');
       const resultado = await this.executarVerificacaoBanco();
-
-      // Mostrar resultados
-      this.showVerificationLoading(false);
-      this.exibirResultadosVerificacao(resultado);
+      
+      // Executar verificação prévia de OJs para servidores selecionados
+      if (this.selectedServidores.length > 0) {
+        this.addStatusMessage('info', '🧠 Analisando OJs cadastrados...');
+        const resultadosOJs = await this.realizarVerificacaoPrevia();
+        
+        // Combinar resultados
+        const resultadoCompleto = {
+          ...resultado,
+          verificacaoOJs: resultadosOJs
+        };
+        
+        // Mostrar resultados
+        this.showVerificationLoading(false);
+        this.exibirResultadosVerificacao(resultadoCompleto);
+      } else {
+        // Mostrar resultados apenas do banco
+        this.showVerificationLoading(false);
+        this.exibirResultadosVerificacao(resultado);
+      }
 
     } catch (error) {
       console.error('Erro na verificação do banco:', error);
@@ -1236,7 +1353,7 @@ class PeritoApp {
         // Buscar servidor no banco por CPF
         console.log(`🔍 Buscando servidor no banco: ${servidor.cpf}`);
         const servidorBanco = await this.buscarServidorNoBanco(servidor.cpf);
-        console.log(`📋 Resultado da busca:`, servidorBanco ? 'Encontrado' : 'Não encontrado');
+        console.log('📋 Resultado da busca:', servidorBanco ? 'Encontrado' : 'Não encontrado');
         
         if (!servidorBanco) {
           console.log(`❌ Servidor não encontrado no banco: ${servidor.nome}`);
@@ -1255,9 +1372,9 @@ class PeritoApp {
           if (discrepancias.length > 0) {
             console.log(`⚠️ Discrepâncias encontradas para ${servidor.nome}:`, discrepancias);
             resultado.discrepâncias.push({
-              servidor: servidor,
-              servidorBanco: servidorBanco,
-              discrepancias: discrepancias
+              servidor,
+              servidorBanco,
+              discrepancias
             });
           } else {
             console.log(`✅ Servidor compatível: ${servidor.nome}`);
@@ -1545,10 +1662,34 @@ class PeritoApp {
         }
 
         const validServidores = [];
-        let invalidCount = 0;
+        const invalidServidores = [];
+        const invalidCPFs = [];
 
         // Validar cada servidor importado
         result.data.forEach((servidor, index) => {
+          // Primeiro verificar se tem estrutura básica
+          if (!servidor || typeof servidor !== 'object') {
+            invalidServidores.push({
+              linha: index + 1,
+              nome: 'Dados inválidos',
+              cpf: 'N/A',
+              erro: 'Estrutura de dados inválida'
+            });
+            return;
+          }
+          
+          // Verificar CPF especificamente
+          if (!this.isValidCPF(servidor.cpf)) {
+            invalidCPFs.push({
+              linha: index + 1,
+              nome: servidor.nome || 'Nome não informado',
+              cpf: servidor.cpf || 'CPF não informado',
+              erro: 'CPF inválido'
+            });
+            return;
+          }
+          
+          // Verificar outros dados
           if (this.validateServidorData(servidor)) {
             // Normalizar OJs se existirem
             if (servidor.ojs && Array.isArray(servidor.ojs)) {
@@ -1567,10 +1708,28 @@ class PeritoApp {
               validServidores.push(servidor);
             }
           } else {
-            invalidCount++;
-            console.warn(`Servidor inválido na linha ${index + 1}:`, servidor);
+            // Outros problemas além do CPF
+            let erro = 'Dados incompletos: ';
+            if (!servidor.nome || servidor.nome.trim().length === 0) erro += 'nome inválido, ';
+            if (!servidor.perfil || servidor.perfil.trim().length === 0) erro += 'perfil inválido, ';
+            if (!Array.isArray(servidor.ojs)) erro += 'OJs inválidos, ';
+            erro = erro.slice(0, -2); // Remove última vírgula
+            
+            invalidServidores.push({
+              linha: index + 1,
+              nome: servidor.nome || 'Nome não informado',
+              cpf: servidor.cpf || 'CPF não informado',
+              erro: erro
+            });
           }
         });
+
+        // Se houver CPFs inválidos, mostrar modal para correção
+        if (invalidCPFs.length > 0 || invalidServidores.length > 0) {
+          const allInvalid = [...invalidCPFs, ...invalidServidores];
+          this.showInvalidCPFsModal(allInvalid, validServidores, result.data);
+          return;
+        }
 
         // Adicionar servidores válidos
         if (validServidores.length > 0) {
@@ -1580,12 +1739,8 @@ class PeritoApp {
         }
 
         // Mostrar resultado da importação
-        let message = `Importação concluída: ${validServidores.length} servidores adicionados`;
-        if (invalidCount > 0) {
-          message += `, ${invalidCount} registros inválidos ignorados`;
-        }
-        
-        this.showNotification(message, validServidores.length > 0 ? 'success' : 'warning');
+        const message = `✅ Importação concluída com sucesso! ${validServidores.length} servidores adicionados`;
+        this.showNotification(message, 'success');
         
       } else if (result.canceled) {
         // Usuário cancelou a operação
@@ -1612,6 +1767,156 @@ class PeritoApp {
       servidor.perfil.trim().length > 0 &&
       Array.isArray(servidor.ojs)
     );
+  }
+
+  // Função para mostrar modal com CPFs inválidos
+  showInvalidCPFsModal(invalidServidores, validServidores, allData) {
+    // Criar modal dinamicamente
+    const modal = document.createElement('div');
+    modal.id = 'invalid-cpfs-modal';
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.style.zIndex = '9999';
+    
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.style.maxWidth = '800px';
+    modalContent.style.maxHeight = '80vh';
+    modalContent.style.overflow = 'auto';
+    
+    // Header do modal
+    const header = document.createElement('div');
+    header.innerHTML = `
+      <h2 style="color: #dc3545; margin-bottom: 20px;">
+        <i class="fas fa-exclamation-triangle"></i> Problemas na Importação
+      </h2>
+      <p style="margin-bottom: 20px;">
+        Foram encontrados ${invalidServidores.length} servidor(es) com problemas. 
+        ${validServidores.length} servidor(es) estão válidos e prontos para importação.
+      </p>
+    `;
+    
+    // Tabela de servidores inválidos
+    const table = document.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.innerHTML = `
+      <thead>
+        <tr style="background-color: #f8f9fa;">
+          <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Linha</th>
+          <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Nome</th>
+          <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">CPF</th>
+          <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Erro</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${invalidServidores.map(servidor => `
+          <tr>
+            <td style="padding: 8px; border: 1px solid #dee2e6;">${servidor.linha}</td>
+            <td style="padding: 8px; border: 1px solid #dee2e6;">${servidor.nome}</td>
+            <td style="padding: 8px; border: 1px solid #dee2e6; font-family: monospace;">
+              ${servidor.cpf}
+              ${servidor.erro === 'CPF inválido' ? 
+                '<span style="color: #dc3545; font-size: 12px;"> (inválido)</span>' : ''}
+            </td>
+            <td style="padding: 8px; border: 1px solid #dee2e6; color: #dc3545;">
+              ${servidor.erro}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    `;
+    
+    // Botões de ação
+    const buttonsDiv = document.createElement('div');
+    buttonsDiv.style.marginTop = '20px';
+    buttonsDiv.style.display = 'flex';
+    buttonsDiv.style.justifyContent = 'space-between';
+    buttonsDiv.style.gap = '10px';
+    
+    // Botão para exportar lista de erros
+    const exportButton = document.createElement('button');
+    exportButton.className = 'btn btn-warning';
+    exportButton.innerHTML = '<i class="fas fa-download"></i> Exportar Lista de Erros';
+    exportButton.onclick = () => {
+      this.exportInvalidCPFsList(invalidServidores);
+    };
+    
+    // Container para botões da direita
+    const rightButtons = document.createElement('div');
+    rightButtons.style.display = 'flex';
+    rightButtons.style.gap = '10px';
+    
+    // Botão para cancelar
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'btn btn-danger';
+    cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancelar Importação';
+    cancelButton.onclick = () => {
+      document.body.removeChild(modal);
+      this.showNotification('Importação cancelada', 'warning');
+    };
+    
+    // Botão para importar apenas válidos
+    const importValidButton = document.createElement('button');
+    importValidButton.className = 'btn btn-success';
+    importValidButton.innerHTML = `<i class="fas fa-check"></i> Importar ${validServidores.length} Válidos`;
+    importValidButton.disabled = validServidores.length === 0;
+    importValidButton.onclick = async () => {
+      document.body.removeChild(modal);
+      if (validServidores.length > 0) {
+        this.servidores.push(...validServidores);
+        await this.saveServidores();
+        this.renderServidoresTable();
+        this.showNotification(
+          `✅ ${validServidores.length} servidor(es) válido(s) importado(s) com sucesso! ` +
+          `${invalidServidores.length} ignorado(s) por problemas de validação.`,
+          'success'
+        );
+      }
+    };
+    
+    // Montar botões
+    buttonsDiv.appendChild(exportButton);
+    rightButtons.appendChild(cancelButton);
+    rightButtons.appendChild(importValidButton);
+    buttonsDiv.appendChild(rightButtons);
+    
+    // Montar modal
+    modalContent.appendChild(header);
+    modalContent.appendChild(table);
+    modalContent.appendChild(buttonsDiv);
+    modal.appendChild(modalContent);
+    
+    // Adicionar ao body
+    document.body.appendChild(modal);
+    
+    // Fechar ao clicar fora do modal
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+        this.showNotification('Importação cancelada', 'warning');
+      }
+    };
+  }
+  
+  // Função para exportar lista de CPFs inválidos
+  exportInvalidCPFsList(invalidServidores) {
+    const csvContent = 'Linha,Nome,CPF,Erro\n' +
+      invalidServidores.map(s => 
+        `${s.linha},"${s.nome}","${s.cpf}","${s.erro}"`
+      ).join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `servidores_invalidos_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    this.showNotification('Lista de erros exportada como CSV', 'success');
   }
 
   // Função para mostrar exemplo de importação de servidores
@@ -1800,35 +2105,9 @@ class PeritoApp {
       return;
     }
 
-    // NOVA FUNCIONALIDADE: Verificação prévia antes de iniciar automação
-    try {
-      this.addStatusMessage('info', '🧠 Analisando cadastros existentes...');
-      
-      // Realizar verificação prévia de todos os servidores selecionados
-      const resultadosVerificacao = await this.realizarVerificacaoPrevia();
-      
-      if (!resultadosVerificacao || resultadosVerificacao.length === 0) {
-        this.addStatusMessage('error', 'Erro na verificação prévia - cancelando automação');
-        return;
-      }
-      
-      // Mostrar painel de confirmação com resultados
-      const confirmacao = await this.mostrarPainelConfirmacao(resultadosVerificacao);
-      
-      if (!confirmacao) {
-        this.addStatusMessage('info', 'Automação cancelada pelo usuário');
-        return;
-      }
-      
-      // Atualizar servidores selecionados com dados da verificação
-      this.atualizarServidoresComVerificacao(resultadosVerificacao);
-      
-    } catch (error) {
-      console.error('Erro na verificação prévia:', error);
-      this.addStatusMessage('error', `Erro na verificação prévia: ${error.message}`);
-      return;
-    }
-
+    // Iniciar automação imediatamente sem verificação prévia
+    this.addStatusMessage('info', '🚀 Iniciando automação imediatamente...');
+    
     // Prosseguir com automação normal
     const selectedMode = document.querySelector('input[name="automation-mode"]:checked');
     const isParallelMode = selectedMode && selectedMode.value === 'parallel';
@@ -1851,10 +2130,10 @@ class PeritoApp {
     this.addStatusMessage('info', `📋 Processando ${this.selectedServidores.length} servidor(es) selecionado(s)`);
     
     // Debug removido para produção
-    console.log(`🔍 [DEBUG] ESTRUTURA DADOS - servidores array:`, this.servidores);
+    console.log('🔍 [DEBUG] ESTRUTURA DADOS - servidores array:', this.servidores);
     
     if (this.selectedServidores.length === 0) {
-      console.log(`❌ [DEBUG] ESTRUTURA DADOS - Nenhum servidor selecionado!`);
+      console.log('❌ [DEBUG] ESTRUTURA DADOS - Nenhum servidor selecionado!');
       return [];
     }
     
@@ -1867,8 +2146,8 @@ class PeritoApp {
         continue;
       }
       
-      console.log(`🔍 [DEBUG] ESTRUTURA DADOS - Processando servidor:`, servidor);
-      console.log(`🔍 [DEBUG] ESTRUTURA DADOS - Chaves disponíveis:`, Object.keys(servidor || {}));
+      console.log('🔍 [DEBUG] ESTRUTURA DADOS - Processando servidor:', servidor);
+      console.log('🔍 [DEBUG] ESTRUTURA DADOS - Chaves disponíveis:', Object.keys(servidor || {}));
       
       // Debug visível sobre os dados do servidor
       this.addStatusMessage('info', `🔍 Verificando servidor: ${servidor.nome || 'NOME_INDEFINIDO'} (${servidor.cpf || 'CPF_INDEFINIDO'})`);
@@ -1879,7 +2158,7 @@ class PeritoApp {
       this.addStatusMessage('info', `🔍 DEBUG: OJs = ${JSON.stringify(ojs)}`);
       this.addStatusMessage('info', `🔍 DEBUG: Quantidade OJs = ${ojs.length}`);
       
-      console.log(`🔍 [DEBUG] BOTUCATU FRONTEND - ENVIANDO para verificação:`);
+      console.log('🔍 [DEBUG] BOTUCATU FRONTEND - ENVIANDO para verificação:');
       console.log(`   Servidor: ${servidor.nome}`);
       console.log(`   CPF: ${servidor.cpf}`);
       console.log(`   Perfil: ${servidor.perfil}`);
@@ -1893,10 +2172,10 @@ class PeritoApp {
           ojs
         );
         
-        console.log(`🔍 [DEBUG] BOTUCATU FRONTEND - RESULTADO da verificação:`, resultado);
+        console.log('🔍 [DEBUG] BOTUCATU FRONTEND - RESULTADO da verificação:', resultado);
         
         resultados.push({
-          servidor: servidor,
+          servidor,
           verificacao: resultado,
           sucesso: true
         });
@@ -1916,7 +2195,7 @@ class PeritoApp {
       } catch (error) {
         console.error(`Erro na verificação de ${servidor.nome}:`, error);
         resultados.push({
-          servidor: servidor,
+          servidor,
           erro: error.message,
           sucesso: false
         });
@@ -1958,8 +2237,8 @@ class PeritoApp {
           const jaCadastradosCount = stats.jaCadastrados || verificacao.ojsJaCadastrados?.length || 0;
           
           console.log(`🔍 [DEBUG] BOTUCATU FRONTEND - Servidor: ${resultado.servidor.nome}`);
-          console.log(`🔍 [DEBUG] BOTUCATU FRONTEND - Verificacao:`, verificacao);
-          console.log(`🔍 [DEBUG] BOTUCATU FRONTEND - Stats:`, stats);
+          console.log('🔍 [DEBUG] BOTUCATU FRONTEND - Verificacao:', verificacao);
+          console.log('🔍 [DEBUG] BOTUCATU FRONTEND - Stats:', stats);
           console.log(`🔍 [DEBUG] BOTUCATU FRONTEND - Para Processar: ${paraProcesarCount}`);
           console.log(`🔍 [DEBUG] BOTUCATU FRONTEND - Já Cadastrados: ${jaCadastradosCount}`);
           
@@ -2177,7 +2456,10 @@ class PeritoApp {
       
       // Limpar caches globais antes de iniciar
       try { await window.electronAPI.invoke('reset-automation-caches'); } catch (e) {}
-      const result = await window.electronAPI.startServidorAutomationV2(config);
+      
+      // Usar método específico para modo SEQUENCIAL (BatchOJProcessor apenas)
+      config.mode = 'sequential'; // Adicionar flag de modo
+      const result = await window.electronAPI.startServidorAutomationV2Sequential(config);
 
       if (!result || !result.success) {
         this.addStatusMessage('error', `Erro na automação em lote: ${result && result.error ? result.error : 'Erro desconhecido'}`);
@@ -2869,31 +3151,85 @@ class PeritoApp {
   async testDatabaseConnection() {
     try {
       const credentials = {
-        host: document.getElementById('dbHost').value,
-        port: parseInt(document.getElementById('dbPort').value),
-        user: document.getElementById('dbUser').value,
+        host: document.getElementById('dbHost').value || 'localhost',
+        port: parseInt(document.getElementById('dbPort').value) || 5432,
+        user: document.getElementById('dbUser').value || 'postgres',
         password: document.getElementById('dbPassword').value,
-        database1Grau: document.getElementById('dbDatabase1Grau').value,
-        database2Grau: document.getElementById('dbDatabase2Grau').value
+        database1Grau: document.getElementById('dbDatabase1Grau').value || 'pje_1grau',
+        database2Grau: document.getElementById('dbDatabase2Grau').value || 'pje_2grau'
       };
 
       // Validar campos obrigatórios
       if (!credentials.user || !credentials.password) {
-        this.showDatabaseStatus('Usuário e senha são obrigatórios', 'error');
+        this.showDatabaseStatus('❌ Usuário e senha são obrigatórios', 'error');
         return;
       }
 
-      this.showDatabaseStatus('Testando conexão...', 'info');
+      // Validar formato do host
+      if (!credentials.host.trim()) {
+        this.showDatabaseStatus('❌ Host é obrigatório', 'error');
+        return;
+      }
+
+      // Validar porta
+      if (isNaN(credentials.port) || credentials.port < 1 || credentials.port > 65535) {
+        this.showDatabaseStatus('❌ Porta deve ser um número entre 1 e 65535', 'error');
+        return;
+      }
+
+      // Mostrar feedback de carregamento
+      this.showDatabaseStatus('🔍 Testando conexão com o banco de dados...', 'info');
+      
+      // Desabilitar botão durante o teste
+      const testButton = document.getElementById('testDbConnection');
+      const originalText = testButton.innerHTML;
+      testButton.disabled = true;
+      testButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Testando...</span>';
       
       const result = await window.electronAPI.testDatabaseCredentials(credentials);
+      
+      // Reabilitar botão
+      testButton.disabled = false;
+      testButton.innerHTML = originalText;
+      
       if (result.success) {
-        this.showDatabaseStatus('Conexão estabelecida com sucesso!', 'success');
+        let successMessage = '✅ ' + result.message;
+        if (result.details) {
+          successMessage += '\n\n📋 Detalhes da conexão:\n';
+          successMessage += `• Host: ${result.details.host}:${result.details.port}\n`;
+          successMessage += `• Usuário: ${result.details.user}\n`;
+          successMessage += `• Base 1º Grau: ${result.details.database1Grau}\n`;
+          successMessage += `• Base 2º Grau: ${result.details.database2Grau}`;
+        }
+        this.showDatabaseStatus(successMessage, 'success');
+        
+        // Atualizar indicador de status na interface
+        this.updateConnectionIndicator(true);
+        
+        // Mostrar notificação de sucesso
+        this.showNotification('Conexão com banco de dados estabelecida com sucesso!', 'success');
       } else {
-        this.showDatabaseStatus('Erro: ' + result.error, 'error');
+        let errorMessage = '❌ Falha na conexão: ' + result.error;
+        if (result.details) {
+          errorMessage += `\n\n🔧 Código do erro: ${result.details}`;
+        }
+        errorMessage += '\n\n💡 Verifique:\n• Se o servidor está acessível\n• Se as credenciais estão corretas\n• Se as bases de dados existem';
+        
+        this.showDatabaseStatus(errorMessage, 'error');
+        this.updateConnectionIndicator(false);
+        this.showNotification('Erro ao conectar com banco de dados', 'error');
       }
     } catch (error) {
       console.error('Erro ao testar conexão:', error);
-      this.showDatabaseStatus('Erro ao testar conexão', 'error');
+      
+      // Reabilitar botão em caso de erro
+      const testButton = document.getElementById('testDbConnection');
+      testButton.disabled = false;
+      testButton.innerHTML = '<i class="fas fa-plug"></i> <span>Testar Conexão</span>';
+      
+      this.showDatabaseStatus('❌ Erro inesperado ao testar conexão: ' + error.message, 'error');
+      this.updateConnectionIndicator(false);
+      this.showNotification('Erro inesperado ao testar conexão', 'error');
     }
   }
 
@@ -3100,6 +3436,29 @@ class PeritoApp {
         }
       }, 200);
     }, 2000);
+  }
+
+  updateConnectionIndicator(isConnected) {
+    // Atualizar indicador visual de conexão com banco
+    const indicator = document.getElementById('dbConnectionIndicator');
+    if (indicator) {
+      indicator.className = isConnected ? 'connection-indicator connected' : 'connection-indicator disconnected';
+      indicator.title = isConnected ? 'Conectado ao banco de dados' : 'Desconectado do banco de dados';
+    }
+    
+    // Atualizar status no botão de teste
+    const testButton = document.getElementById('testDbConnection');
+    if (testButton && isConnected) {
+      testButton.classList.add('connected');
+    } else if (testButton) {
+      testButton.classList.remove('connected');
+    }
+    
+    // Atualizar texto de status se existir
+    const statusText = document.getElementById('dbStatusText');
+    if (statusText && isConnected) {
+      statusText.textContent = 'Conectado';
+    }
   }
 
   // ===== HISTORY AND AUTOCOMPLETE =====
@@ -3511,29 +3870,29 @@ class PeritoApp {
       if (suggestions.length === 0) return;
 
       switch (e.key) {
-        case 'ArrowDown':
+      case 'ArrowDown':
+        e.preventDefault();
+        currentSuggestionIndex = Math.min(currentSuggestionIndex + 1, suggestions.length - 1);
+        updateSelectedItem();
+        break;
+          
+      case 'ArrowUp':
+        e.preventDefault();
+        currentSuggestionIndex = Math.max(currentSuggestionIndex - 1, -1);
+        updateSelectedItem();
+        break;
+          
+      case 'Enter':
+        if (currentSuggestionIndex >= 0 && suggestions[currentSuggestionIndex]) {
           e.preventDefault();
-          currentSuggestionIndex = Math.min(currentSuggestionIndex + 1, suggestions.length - 1);
-          updateSelectedItem();
-          break;
+          insertSuggestion(suggestions[currentSuggestionIndex].dataset.suggestion);
+        }
+        break;
           
-        case 'ArrowUp':
-          e.preventDefault();
-          currentSuggestionIndex = Math.max(currentSuggestionIndex - 1, -1);
-          updateSelectedItem();
-          break;
-          
-        case 'Enter':
-          if (currentSuggestionIndex >= 0 && suggestions[currentSuggestionIndex]) {
-            e.preventDefault();
-            insertSuggestion(suggestions[currentSuggestionIndex].dataset.suggestion);
-          }
-          break;
-          
-        case 'Escape':
-          suggestionsContainer.classList.remove('show');
-          currentSuggestionIndex = -1;
-          break;
+      case 'Escape':
+        suggestionsContainer.classList.remove('show');
+        currentSuggestionIndex = -1;
+        break;
       }
     });
 
@@ -3731,7 +4090,7 @@ class PeritoApp {
     ];
 
     let passedTests = 0;
-    let totalTests = testCases.length;
+    const totalTests = testCases.length;
 
     console.log(`Executando ${totalTests} casos de teste...`);
 
@@ -5012,7 +5371,7 @@ class PeritoApp {
     console.log(`🔍 [CONTAGEM DEBUG] Total de vínculos (rows do banco): ${servidores.reduce((total, s) => total + (s.ojs ? s.ojs.length : 0), 0)}`);
     console.log(`🔍 [CONTAGEM DEBUG] OJs únicos encontrados: ${ojCount}`);
     console.log(`🔍 [CONTAGEM DEBUG] Usuários únicos: ${userCount}`);
-    console.log(`🔍 [CONTAGEM DEBUG] Lista de OJs únicos:`, Array.from(uniqueOJs).slice(0, 10));
+    console.log('🔍 [CONTAGEM DEBUG] Lista de OJs únicos:', Array.from(uniqueOJs).slice(0, 10));
     
     // Atualizar métricas na nova interface
     try {
@@ -5601,6 +5960,257 @@ class OJSelector {
   refresh() {
     this.loadOptions();
   }
+  
+  // Método para configurar os listeners das funcionalidades da Central de Configurações
+  setupConfigurationListeners() {
+    // Cache Management
+    const clearCacheBtn = document.querySelector('#clearCacheButton, .control-card .btn-premium[onclick*="clearCache"]');
+    if (clearCacheBtn) {
+      clearCacheBtn.addEventListener('click', () => this.clearCache());
+    }
+    
+    // Backup and Restore
+    const exportBackupBtn = document.querySelector('#exportBackupButton, .control-card .btn-premium.secondary');
+    if (exportBackupBtn) {
+      exportBackupBtn.addEventListener('click', () => this.exportBackup());
+    }
+    
+    const restoreBackupBtn = document.querySelector('#restoreBackupButton, .control-card .btn-premium.outline');
+    if (restoreBackupBtn) {
+      restoreBackupBtn.addEventListener('click', () => this.restoreBackup());
+    }
+    
+    // System Logs
+    const viewLogsBtn = document.querySelector('#viewLogsButton, .logs-preview .btn-premium');
+    if (viewLogsBtn) {
+      viewLogsBtn.addEventListener('click', () => this.viewSystemLogs());
+    }
+    
+    // Performance monitoring
+    this.startPerformanceMonitoring();
+    
+    // Update cache size
+    this.updateCacheInfo();
+  }
+  
+  // Cache Management Functions
+  async clearCache() {
+    try {
+      const result = await window.electronAPI.clearCache();
+      if (result.success) {
+        this.addStatusMessage('success', 'Cache limpo com sucesso');
+        this.updateCacheInfo();
+      } else {
+        this.addStatusMessage('error', `Erro ao limpar cache: ${result.message}`);
+      }
+    } catch (error) {
+      this.addStatusMessage('error', `Erro ao limpar cache: ${error.message}`);
+    }
+  }
+  
+  async updateCacheInfo() {
+    try {
+      const result = await window.electronAPI.getCacheSize();
+      if (result.success) {
+        // Update cache size display
+        const cacheValueElement = document.querySelector('.cache-info .value');
+        if (cacheValueElement) {
+          cacheValueElement.textContent = result.sizeFormatted;
+        }
+        
+        // Update last clear date
+        const lastClearElement = document.querySelectorAll('.cache-info .value')[1];
+        if (lastClearElement && result.lastClearDate) {
+          const date = new Date(result.lastClearDate);
+          const now = new Date();
+          const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+          lastClearElement.textContent = diffDays === 0 ? 'Hoje' : `Há ${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}`;
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar informações do cache:', error);
+    }
+  }
+  
+  // Backup and Restore Functions
+  async exportBackup() {
+    try {
+      const result = await window.electronAPI.exportBackup();
+      if (result.success) {
+        // Create download link
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        this.addStatusMessage('success', 'Backup exportado com sucesso');
+      } else {
+        this.addStatusMessage('error', `Erro ao exportar backup: ${result.message}`);
+      }
+    } catch (error) {
+      this.addStatusMessage('error', `Erro ao exportar backup: ${error.message}`);
+    }
+  }
+  
+  async restoreBackup() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        try {
+          const text = await file.text();
+          const backupData = JSON.parse(text);
+          
+          const result = await window.electronAPI.restoreBackup(backupData);
+          if (result.success) {
+            this.addStatusMessage('success', 'Backup restaurado com sucesso. Recarregue a página para ver as alterações.');
+            // Reload data
+            await this.loadPeritos();
+            await this.loadServidores();
+          } else {
+            this.addStatusMessage('error', `Erro ao restaurar backup: ${result.message}`);
+          }
+        } catch (error) {
+          this.addStatusMessage('error', `Erro ao processar arquivo de backup: ${error.message}`);
+        }
+      }
+    };
+    input.click();
+  }
+  
+  // System Logs Functions
+  async viewSystemLogs() {
+    try {
+      const result = await window.electronAPI.getSystemLogs({ limit: 200 });
+      if (result.success) {
+        this.showLogsModal(result.logs);
+      } else {
+        this.addStatusMessage('error', 'Erro ao carregar logs do sistema');
+      }
+    } catch (error) {
+      this.addStatusMessage('error', `Erro ao carregar logs: ${error.message}`);
+    }
+  }
+  
+  showLogsModal(logs) {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.style.maxWidth = '80%';
+    modalContent.style.maxHeight = '80%';
+    modalContent.style.overflow = 'auto';
+    
+    let logsHTML = `
+      <div class="modal-header">
+        <h2>Logs do Sistema</h2>
+        <span class="close">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 15px;">
+          <button id="clearLogsBtn" class="btn-premium outline">Limpar Logs</button>
+        </div>
+        <div class="logs-container" style="max-height: 400px; overflow-y: auto; background: #f5f5f5; padding: 15px; border-radius: 5px;">
+    `;
+    
+    logs.reverse().forEach(log => {
+      const date = new Date(log.timestamp);
+      const timeStr = date.toLocaleString('pt-BR');
+      const iconMap = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        info: 'ℹ️'
+      };
+      const icon = iconMap[log.type] || 'ℹ️';
+      
+      logsHTML += `
+        <div class="log-entry" style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 3px; border-left: 3px solid ${log.type === 'error' ? '#e74c3c' : log.type === 'success' ? '#27ae60' : log.type === 'warning' ? '#f39c12' : '#3498db'};">
+          <div style="font-size: 12px; color: #666; margin-bottom: 4px;">${timeStr}</div>
+          <div>${icon} ${log.message}</div>
+          ${log.details ? `<div style="font-size: 11px; color: #888; margin-top: 4px;">${log.details}</div>` : ''}
+        </div>
+      `;
+    });
+    
+    logsHTML += `
+        </div>
+      </div>
+    `;
+    
+    modalContent.innerHTML = logsHTML;
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+    
+    // Event listeners
+    modalContent.querySelector('.close').addEventListener('click', () => {
+      modal.remove();
+    });
+    
+    modalContent.querySelector('#clearLogsBtn').addEventListener('click', async () => {
+      try {
+        await window.electronAPI.clearLogs();
+        this.addStatusMessage('success', 'Logs limpos com sucesso');
+        modal.remove();
+      } catch (error) {
+        this.addStatusMessage('error', `Erro ao limpar logs: ${error.message}`);
+      }
+    });
+    
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+  
+  // Performance Monitoring Functions
+  startPerformanceMonitoring() {
+    // Update performance metrics every 2 seconds
+    setInterval(() => {
+      this.updatePerformanceMetrics();
+    }, 2000);
+    
+    // Initial update
+    this.updatePerformanceMetrics();
+  }
+  
+  async updatePerformanceMetrics() {
+    try {
+      const result = await window.electronAPI.getPerformanceMetrics();
+      if (result.success) {
+        // Update CPU meter
+        const cpuFill = document.querySelector('.meter .meter-fill');
+        const cpuValue = document.querySelector('.meter .meter-value');
+        if (cpuFill && cpuValue) {
+          cpuFill.style.width = `${result.cpu.percentage}%`;
+          cpuValue.textContent = `${result.cpu.percentage}%`;
+        }
+        
+        // Update RAM meter if exists
+        const ramMeter = document.querySelectorAll('.meter')[1];
+        if (ramMeter) {
+          const ramFill = ramMeter.querySelector('.meter-fill');
+          const ramValue = ramMeter.querySelector('.meter-value');
+          if (ramFill && ramValue) {
+            ramFill.style.width = `${result.memory.percentage}%`;
+            ramValue.textContent = `${result.memory.percentage}%`;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar métricas de performance:', error);
+    }
+  }
 }
 
 /**
@@ -5743,7 +6353,7 @@ PeritoApp.prototype.renderizarTabelaOJsBanco = function(tabelaId, ojs) {
       const esquerda = text.slice(0, text.lastIndexOf('-')).trim();
       // Pegar a sequência final de cidade da esquerda (suporta compostas: "São José dos Campos")
       const toks = esquerda.split(/\s+/);
-      let cityTokens = [];
+      const cityTokens = [];
       let started = false;
       for (let i = toks.length - 1; i >= 0; i--) {
         const tk = toks[i];
@@ -5867,16 +6477,16 @@ PeritoApp.prototype.renderizarTabelaOJsBanco = function(tabelaId, ojs) {
       .sort((a, b) => (a?.nome || '').localeCompare(b?.nome || '', 'pt-BR', { sensitivity: 'base' }));
 
     listaOrdenada.forEach(oj => {
-        const row = tbody.insertRow();
-        row.className = 'oj-row';
+      const row = tbody.insertRow();
+      row.className = 'oj-row';
 
-        // Nome do Órgão (única coluna)
-        const cellNome = row.insertCell();
-        const nomeFormatado = this.formatarNomeOJ(oj.nome || '');
-        cellNome.innerHTML = nomeFormatado || '-';
-        cellNome.title = oj.nome || nomeFormatado;
-        cellNome.style.paddingLeft = '20px'; // Indentação para mostrar hierarquia
-      });
+      // Nome do Órgão (única coluna)
+      const cellNome = row.insertCell();
+      const nomeFormatado = this.formatarNomeOJ(oj.nome || '');
+      cellNome.innerHTML = nomeFormatado || '-';
+      cellNome.title = oj.nome || nomeFormatado;
+      cellNome.style.paddingLeft = '20px'; // Indentação para mostrar hierarquia
+    });
   });
 };
 
@@ -6184,7 +6794,7 @@ PeritoApp.prototype.copiarTextoFallback = function(texto, quantidade = null) {
 };
 
 // Inicialização da aplicação
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', () => {
   console.log('🚀 Iniciando aplicação PJE Automation...');
 
   try {
@@ -6204,14 +6814,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const buscarTodasOjs2GrauBtn = document.getElementById('buscarTodasOjs2Grau');
 
     if (buscarTodasOjs1GrauBtn) {
-      buscarTodasOjs1GrauBtn.addEventListener('click', function() {
+      buscarTodasOjs1GrauBtn.addEventListener('click', () => {
         console.log('🔍 Clicado em Buscar Todas OJs 1º Grau');
         app.buscarTodasOJsDoBanco('1');
       });
     }
 
     if (buscarTodasOjs2GrauBtn) {
-      buscarTodasOjs2GrauBtn.addEventListener('click', function() {
+      buscarTodasOjs2GrauBtn.addEventListener('click', () => {
         console.log('🔍 Clicado em Buscar Todas OJs 2º Grau');
         app.buscarTodasOJsDoBanco('2');
       });
@@ -6220,7 +6830,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Event listener para limpeza de cache de verificação de OJs
     const limparCacheBtn = document.getElementById('limparCacheOJs');
     if (limparCacheBtn) {
-      limparCacheBtn.addEventListener('click', async function() {
+      limparCacheBtn.addEventListener('click', async () => {
         console.log('🧹 Iniciando limpeza de cache de verificação de OJs...');
 
         // Confirmar ação com o usuário
@@ -6314,18 +6924,18 @@ PeritoApp.prototype.hideBugfixBanner = function(bannerId) {
   try {
     const banner = document.getElementById(bannerId);
     if (banner) {
-      banner.classList.add("hidden");
+      banner.classList.add('hidden');
       console.log(`🔇 Banner ${bannerId} foi fechado pelo usuário`);
       
       // Salvar preferência no localStorage para não mostrar novamente nesta sessão
-      const hiddenBanners = JSON.parse(localStorage.getItem("hiddenBugfixBanners") || "[]");
+      const hiddenBanners = JSON.parse(localStorage.getItem('hiddenBugfixBanners') || '[]');
       if (!hiddenBanners.includes(bannerId)) {
         hiddenBanners.push(bannerId);
-        localStorage.setItem("hiddenBugfixBanners", JSON.stringify(hiddenBanners));
+        localStorage.setItem('hiddenBugfixBanners', JSON.stringify(hiddenBanners));
       }
     }
   } catch (error) {
-    console.error("❌ Erro ao esconder banner:", error);
+    console.error('❌ Erro ao esconder banner:', error);
   }
 };
 
@@ -6335,16 +6945,16 @@ PeritoApp.prototype.hideBugfixBanner = function(bannerId) {
  */
 PeritoApp.prototype.checkHiddenBanners = function() {
   try {
-    const hiddenBanners = JSON.parse(localStorage.getItem("hiddenBugfixBanners") || "[]");
+    const hiddenBanners = JSON.parse(localStorage.getItem('hiddenBugfixBanners') || '[]');
     hiddenBanners.forEach(bannerId => {
       const banner = document.getElementById(bannerId);
       if (banner) {
-        banner.classList.add("hidden");
+        banner.classList.add('hidden');
         console.log(`🔇 Banner ${bannerId} permanece escondido (preferência salva)`);
       }
     });
   } catch (error) {
-    console.error("❌ Erro ao verificar banners escondidos:", error);
+    console.error('❌ Erro ao verificar banners escondidos:', error);
   }
 };
 
@@ -6353,19 +6963,19 @@ PeritoApp.prototype.checkHiddenBanners = function() {
  */
 PeritoApp.prototype.compararOJs = function() {
   try {
-    const linhasDigitadas = document.getElementById("ojsComparacaoTextarea").value
-      .split("\n")
+    const linhasDigitadas = document.getElementById('ojsComparacaoTextarea').value
+      .split('\n')
       .map(linha => linha.trim())
       .filter(linha => linha.length > 0);
     
     if (linhasDigitadas.length === 0) {
-      this.showNotification("Digite os OJs cadastrados para comparar", "warning");
+      this.showNotification('Digite os OJs cadastrados para comparar', 'warning');
       return;
     }
     
     // Obter OJs do usuário consultado da última busca
     if (!this.servidoresData || this.servidoresData.length === 0) {
-      this.showNotification("Faça uma busca de usuário primeiro para ter dados para comparar", "warning");
+      this.showNotification('Faça uma busca de usuário primeiro para ter dados para comparar', 'warning');
       return;
     }
     
@@ -6396,8 +7006,8 @@ PeritoApp.prototype.compararOJs = function() {
       }
     });
     
-    console.log("🔍 [COMPARACAO] Itens Digitados:", itensDigitados);
-    console.log("🔍 [COMPARACAO] Vínculos do Usuário:", vinculosUsuario);
+    console.log('🔍 [COMPARACAO] Itens Digitados:', itensDigitados);
+    console.log('🔍 [COMPARACAO] Vínculos do Usuário:', vinculosUsuario);
     
     // Calcular diferenças considerando perfil
     const ojsFaltantes = [];
@@ -6440,10 +7050,10 @@ PeritoApp.prototype.compararOJs = function() {
     const ojsDigitadosUnicos = [...new Set(itensDigitados.map(i => i.oj))];
     const ojsNaoListados = ojsUsuarioUnicos.filter(oj => !ojsDigitadosUnicos.includes(oj));
     
-    console.log("✅ [COMPARACAO] OJs/Perfis que PRECISAM ser vinculados:", ojsFaltantes);
-    console.log("⚠️ [COMPARACAO] OJs com PERFIL DIFERENTE:", ojsVinculadosComPerfilDiferente);
-    console.log("🔗 [COMPARACAO] OJs/Perfis que JÁ estão vinculados:", ojsJaVinculados);
-    console.log("📋 [COMPARACAO] OJs do usuário não listados:", ojsNaoListados);
+    console.log('✅ [COMPARACAO] OJs/Perfis que PRECISAM ser vinculados:', ojsFaltantes);
+    console.log('⚠️ [COMPARACAO] OJs com PERFIL DIFERENTE:', ojsVinculadosComPerfilDiferente);
+    console.log('🔗 [COMPARACAO] OJs/Perfis que JÁ estão vinculados:', ojsJaVinculados);
+    console.log('📋 [COMPARACAO] OJs do usuário não listados:', ojsNaoListados);
     
     // Atualizar interface com os dados corretos
     this.exibirResultadoComparacao(ojsFaltantes, ojsJaVinculados, ojsVinculadosComPerfilDiferente, ojsNaoListados);
@@ -6458,8 +7068,8 @@ PeritoApp.prototype.compararOJs = function() {
     };
     
   } catch (error) {
-    console.error("❌ Erro ao comparar OJs:", error);
-    this.showNotification("Erro ao comparar OJs: " + error.message, "error");
+    console.error('❌ Erro ao comparar OJs:', error);
+    this.showNotification('Erro ao comparar OJs: ' + error.message, 'error');
   }
 };
 
@@ -6467,12 +7077,12 @@ PeritoApp.prototype.compararOJs = function() {
  * Exibe os resultados da comparação na interface
  */
 PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinculados, ojsVinculadosComPerfilDiferente, ojsNaoListados) {
-  const resultadoDiv = document.getElementById("resultadoComparacao");
-  const listaFaltantes = document.getElementById("listaFaltantes");
-  const listaExtras = document.getElementById("listaExtras");
-  const countFaltantes = document.getElementById("countFaltantes");
-  const countExtras = document.getElementById("countExtras");
-  const btnGerarAutomacao = document.getElementById("gerarAutomacaoFaltantes");
+  const resultadoDiv = document.getElementById('resultadoComparacao');
+  const listaFaltantes = document.getElementById('listaFaltantes');
+  const listaExtras = document.getElementById('listaExtras');
+  const countFaltantes = document.getElementById('countFaltantes');
+  const countExtras = document.getElementById('countExtras');
+  const btnGerarAutomacao = document.getElementById('gerarAutomacaoFaltantes');
   
   // Calcular total de faltantes (incluindo perfis diferentes)
   const totalFaltantes = ojsFaltantes.length + ojsVinculadosComPerfilDiferente.length;
@@ -6482,8 +7092,8 @@ PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinc
   countExtras.textContent = ojsJaVinculados.length;
   
   // Atualizar cor dos badges
-  countFaltantes.style.background = totalFaltantes > 0 ? "#e74c3c" : "#28a745";
-  countExtras.style.background = ojsJaVinculados.length > 0 ? "#28a745" : "#6c757d";
+  countFaltantes.style.background = totalFaltantes > 0 ? '#e74c3c' : '#28a745';
+  countExtras.style.background = ojsJaVinculados.length > 0 ? '#28a745' : '#6c757d';
   
   // Mostrar OJs faltantes (que precisam ser adicionados)
   let htmlFaltantes = '';
@@ -6495,7 +7105,7 @@ PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinc
       .map(item => `<div class="oj-item" style="color: #e74c3c;">
         <i class="fas fa-plus-circle"></i> ${item.textoCompleto}
       </div>`)
-      .join("");
+      .join('');
   }
   
   // OJs com perfil diferente
@@ -6512,15 +7122,15 @@ PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinc
           Perfis atuais: ${item.perfisExistentes.join(', ') || 'Sem perfil definido'}
         </div>
       </div>`)
-      .join("");
+      .join('');
   }
   
   if (totalFaltantes > 0) {
     listaFaltantes.innerHTML = htmlFaltantes;
-    btnGerarAutomacao.style.display = "block";
+    btnGerarAutomacao.style.display = 'block';
   } else {
     listaFaltantes.innerHTML = '<div style="color: #28a745; text-align: center; padding: 20px;"><i class="fas fa-check-circle"></i> Todos os OJs e perfis da lista já estão vinculados corretamente!</div>';
-    btnGerarAutomacao.style.display = "none";
+    btnGerarAutomacao.style.display = 'none';
   }
   
   // Mostrar OJs já vinculados (da lista que o usuário já possui)
@@ -6549,7 +7159,7 @@ PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinc
           html += '</div>';
           return html;
         })
-        .join("");
+        .join('');
   } else {
     listaExtras.innerHTML = '<div style="color: #6c757d; text-align: center; padding: 20px;"><i class="fas fa-info-circle"></i> Nenhum OJ da lista está vinculado ainda</div>';
   }
@@ -6565,13 +7175,13 @@ PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinc
   }
   
   // Mostrar seção de resultados
-  resultadoDiv.classList.remove("hidden");
+  resultadoDiv.classList.remove('hidden');
   
   // Scroll suave para os resultados
-  resultadoDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+  resultadoDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
   
   // Notificação resumo
-  let mensagem = `Comparação concluída: `;
+  let mensagem = 'Comparação concluída: ';
   const partes = [];
   
   if (ojsFaltantes.length > 0) {
@@ -6585,33 +7195,33 @@ PeritoApp.prototype.exibirResultadoComparacao = function(ojsFaltantes, ojsJaVinc
   }
   
   mensagem += partes.join(', ');
-  this.showNotification(mensagem, totalFaltantes > 0 ? "warning" : "success");
+  this.showNotification(mensagem, totalFaltantes > 0 ? 'warning' : 'success');
 };
 
 /**
  * Limpa a comparação de OJs
  */
 PeritoApp.prototype.limparComparacao = function() {
-  document.getElementById("ojsComparacaoTextarea").value = "";
-  document.getElementById("resultadoComparacao").classList.add("hidden");
+  document.getElementById('ojsComparacaoTextarea').value = '';
+  document.getElementById('resultadoComparacao').classList.add('hidden');
   this.dadosComparacao = null;
-  this.showNotification("Comparação limpa", "info");
+  this.showNotification('Comparação limpa', 'info');
 };
 
 /**
  * Gera automação para os OJs faltantes
  */
-PeritoApp.prototype.gerarAutomacaoFaltantes = function() {
+PeritoApp.prototype.gerarAutomacaoFaltantes = async function() {
   try {
     if (!this.dadosComparacao || !this.dadosComparacao.ojsFaltantes.length) {
-      this.showNotification("Nenhum OJ faltante para gerar automação", "warning");
+      this.showNotification('Nenhum OJ faltante para gerar automação', 'warning');
       return;
     }
     
     const { ojsFaltantes, usuarioConsultado } = this.dadosComparacao;
     
     if (!usuarioConsultado || !usuarioConsultado.nome || !usuarioConsultado.cpf) {
-      this.showNotification("Dados do usuário não encontrados para gerar automação", "error");
+      this.showNotification('Dados do usuário não encontrados para gerar automação', 'error');
       return;
     }
     
@@ -6619,54 +7229,348 @@ PeritoApp.prototype.gerarAutomacaoFaltantes = function() {
     const servidorParaAutomacao = {
       nome: usuarioConsultado.nome,
       cpf: usuarioConsultado.cpf,
-      perfil: "Servidor",
+      perfil: 'Servidor',
       ojs: ojsFaltantes
     };
     
-    console.log("🤖 [AUTOMACAO] Gerando para servidor:", servidorParaAutomacao);
+    console.log('🤖 [AUTOMACAO] Gerando para servidor:', servidorParaAutomacao);
     
     // Confirmar com usuário
     const confirmar = confirm(
       `Gerar automação para vincular ${ojsFaltantes.length} OJ(s) faltante(s) ao usuário?\n\n` +
       `Usuário: ${usuarioConsultado.nome}\n` +
       `CPF: ${usuarioConsultado.cpf}\n\n` +
-      `OJs a serem vinculados:\n${ojsFaltantes.slice(0, 5).join("\n")}` +
-      (ojsFaltantes.length > 5 ? `\n... e mais ${ojsFaltantes.length - 5} OJ(s)` : "")
+      `OJs a serem vinculados:\n${ojsFaltantes.slice(0, 5).join('\n')}` +
+      (ojsFaltantes.length > 5 ? `\n... e mais ${ojsFaltantes.length - 5} OJ(s)` : '')
     );
     
     if (!confirmar) {
       return;
     }
     
-    // Salvar servidor temporário para automação
-    const servidoresAtuais = JSON.parse(localStorage.getItem("servidores") || "[]");
+    // Carregar servidores atuais do sistema (não do localStorage)
+    const servidoresAtuais = this.servidores || [];
     const servidorExistente = servidoresAtuais.find(s => s.cpf === servidorParaAutomacao.cpf);
     
     if (servidorExistente) {
       // Atualizar servidor existente com novos OJs
       const ojsExistentes = servidorExistente.ojs || [];
-      const novosOJs = ojsFaltantes.filter(oj => !ojsExistentes.includes(oj));
-      servidorExistente.ojs = [...ojsExistentes, ...novosOJs];
       
-      localStorage.setItem("servidores", JSON.stringify(servidoresAtuais));
-      this.showNotification(`Servidor atualizado com ${novosOJs.length} novo(s) OJ(s) para automação`, "success");
+      // Função para comparar OJs (considerando que podem ser objetos ou strings)
+      const ojJaExiste = (novoOj, ojsExistentes) => {
+        return ojsExistentes.some(ojExistente => {
+          // Se ambos são objetos, comparar pela propriedade 'oj'
+          if (typeof novoOj === 'object' && typeof ojExistente === 'object') {
+            return novoOj.oj === ojExistente.oj;
+          }
+          // Se ambos são strings, comparar diretamente
+          if (typeof novoOj === 'string' && typeof ojExistente === 'string') {
+            return novoOj === ojExistente;
+          }
+          // Se um é objeto e outro string, comparar oj do objeto com a string
+          if (typeof novoOj === 'object' && typeof ojExistente === 'string') {
+            return novoOj.oj === ojExistente;
+          }
+          if (typeof novoOj === 'string' && typeof ojExistente === 'object') {
+            return novoOj === ojExistente.oj;
+          }
+          return false;
+        });
+      };
+      
+      // Filtrar apenas OJs que realmente não existem
+      const novosOJs = ojsFaltantes.filter(oj => !ojJaExiste(oj, ojsExistentes));
+      
+      // Remover duplicatas dos OJs existentes também (caso já existam)
+      const ojsLimpos = ojsExistentes.filter((oj, index, arr) => {
+        return arr.findIndex(outroOj => {
+          if (typeof oj === 'object' && typeof outroOj === 'object') {
+            return oj.oj === outroOj.oj;
+          }
+          if (typeof oj === 'string' && typeof outroOj === 'string') {
+            return oj === outroOj;
+          }
+          if (typeof oj === 'object' && typeof outroOj === 'string') {
+            return oj.oj === outroOj;
+          }
+          if (typeof oj === 'string' && typeof outroOj === 'object') {
+            return oj === outroOj.oj;
+          }
+          return false;
+        }) === index;
+      });
+      
+      servidorExistente.ojs = [...ojsLimpos, ...novosOJs];
+      
+      this.showNotification(`Servidor atualizado com ${novosOJs.length} novo(s) OJ(s) para automação`, 'success');
     } else {
       // Adicionar novo servidor
       servidoresAtuais.push(servidorParaAutomacao);
-      localStorage.setItem("servidores", JSON.stringify(servidoresAtuais));
-      this.showNotification("Servidor adicionado para automação", "success");
+      this.servidores = servidoresAtuais;
+      this.showNotification('Servidor adicionado para automação', 'success');
     }
+    
+    // Salvar os dados atualizados usando o sistema correto (electronAPI)
+    await this.saveServidores();
+    
+    // Atualizar a interface da seção Gerenciar Servidores
+    this.renderServidoresTable();
+    this.updateDashboardStats();
     
     // Redirecionar para aba de servidores
     setTimeout(() => {
-      const confirmarRedirect = confirm("Deseja ir para a aba Servidores para executar a automação?");
+      const confirmarRedirect = confirm('Deseja ir para a aba Servidores para executar a automação?');
       if (confirmarRedirect) {
-        this.switchTab("servidores");
+        this.switchTab('servidores');
       }
     }, 1000);
     
   } catch (error) {
-    console.error("❌ Erro ao gerar automação:", error);
-    this.showNotification("Erro ao gerar automação: " + error.message, "error");
+    console.error('❌ Erro ao gerar automação:', error);
+    this.showNotification('Erro ao gerar automação: ' + error.message, 'error');
   }
+};
+
+/**
+ * Importa lista de OJs de um arquivo JSON
+ */
+PeritoApp.prototype.importarOJsJSON = function(file) {
+  if (!file) {
+    this.showNotification('Nenhum arquivo selecionado', 'warning');
+    return;
+  }
+
+  if (!file.name.toLowerCase().endsWith('.json')) {
+    this.showNotification('Por favor, selecione um arquivo JSON válido', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const jsonData = JSON.parse(e.target.result);
+      
+      // Validar estrutura do JSON
+      if (!this.validarFormatoJSON(jsonData)) {
+        return;
+      }
+
+      // Processar e inserir dados no textarea
+      const linhasOJs = this.processarDadosJSON(jsonData);
+      const textarea = document.getElementById('ojsComparacaoTextarea');
+      
+      if (textarea.value.trim()) {
+        // Se já tem conteúdo, perguntar se quer substituir ou adicionar
+        const opcao = confirm(
+          'O campo já contém dados. Deseja:\n\n' +
+          'OK = Substituir conteúdo existente\n' +
+          'Cancelar = Adicionar ao conteúdo existente'
+        );
+        
+        if (opcao) {
+          textarea.value = linhasOJs.join('\n');
+        } else {
+          textarea.value += '\n' + linhasOJs.join('\n');
+        }
+      } else {
+        textarea.value = linhasOJs.join('\n');
+      }
+
+      this.showNotification(
+        `✅ Importados ${linhasOJs.length} OJ(s) do arquivo ${file.name}`, 
+        'success'
+      );
+
+      // Limpar o input file para permitir reimportação do mesmo arquivo
+      document.getElementById('importOJsFile').value = '';
+
+    } catch (error) {
+      console.error('❌ Erro ao processar arquivo JSON:', error);
+      this.showNotification(
+        'Erro ao processar arquivo JSON: ' + error.message, 
+        'error'
+      );
+    }
+  };
+
+  reader.onerror = () => {
+    this.showNotification('Erro ao ler o arquivo', 'error');
+  };
+
+  reader.readAsText(file);
+};
+
+/**
+ * Valida o formato do JSON importado
+ */
+PeritoApp.prototype.validarFormatoJSON = function(data) {
+  // Formato 1: Array simples de strings
+  if (Array.isArray(data)) {
+    if (data.every(item => typeof item === 'string')) {
+      return true;
+    }
+    
+    // Formato 2: Array de objetos com propriedades oj e perfil
+    if (data.every(item => 
+      typeof item === 'object' && 
+      item !== null && 
+      typeof item.oj === 'string'
+    )) {
+      return true;
+    }
+  }
+  
+  // Formato 3: Objeto com propriedade ojs
+  if (typeof data === 'object' && data !== null && Array.isArray(data.ojs)) {
+    return this.validarFormatoJSON(data.ojs);
+  }
+
+  this.showNotification(
+    'Formato JSON inválido. Use um dos formatos suportados. Clique em \'Ver formato esperado\' para mais detalhes.',
+    'error'
+  );
+  return false;
+};
+
+/**
+ * Processa os dados JSON e converte para formato de linhas
+ */
+PeritoApp.prototype.processarDadosJSON = function(data) {
+  let ojs = [];
+
+  // Se é objeto com propriedade ojs, extrair array
+  if (typeof data === 'object' && data !== null && Array.isArray(data.ojs)) {
+    ojs = data.ojs;
+  } else if (Array.isArray(data)) {
+    ojs = data;
+  }
+
+  return ojs.map(item => {
+    if (typeof item === 'string') {
+      return item.trim();
+    } else if (typeof item === 'object' && item !== null) {
+      const oj = item.oj ? item.oj.trim() : '';
+      const perfil = item.perfil ? item.perfil.trim() : '';
+      
+      if (perfil) {
+        return `${oj} - ${perfil}`;
+      } else {
+        return oj;
+      }
+    }
+    return '';
+  }).filter(linha => linha.length > 0);
+};
+
+/**
+ * Baixa um arquivo de exemplo JSON
+ */
+PeritoApp.prototype.downloadExampleJSON = function() {
+  const exemploJSON = {
+    'descricao': 'Exemplo de arquivo JSON para importação de OJs',
+    'formato': 'Pode ser array simples ou objetos com oj e perfil',
+    'ojs': [
+      '1ª Vara do Trabalho de Campinas',
+      '2ª Vara do Trabalho de Campinas - Diretor de Secretaria',
+      'Vara do Trabalho de Botucatu - Assessor',
+      '3ª Vara Cível de Limeira - Servidor'
+    ]
+  };
+
+  const blob = new Blob([JSON.stringify(exemploJSON, null, 2)], {
+    type: 'application/json'
+  });
+  
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'exemplo-ojs.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  this.showNotification('📁 Arquivo de exemplo baixado', 'info');
+};
+
+/**
+ * Mostra ajuda sobre o formato JSON esperado
+ */
+PeritoApp.prototype.showJsonFormatHelp = function() {
+  const helpHTML = `
+    <div style="text-align: left; max-width: 600px;">
+      <h3>📋 Formatos JSON Suportados</h3>
+      
+      <h4>1. Array Simples de Strings:</h4>
+      <pre style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 12px;">[
+  "1ª Vara do Trabalho de Campinas",
+  "2ª Vara do Trabalho de Campinas - Diretor",
+  "Vara do Trabalho de Botucatu - Assessor"
+]</pre>
+
+      <h4>2. Array de Objetos:</h4>
+      <pre style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 12px;">[
+  {
+    "oj": "1ª Vara do Trabalho de Campinas",
+    "perfil": "Diretor de Secretaria"
+  },
+  {
+    "oj": "2ª Vara do Trabalho de Campinas"
+  }
+]</pre>
+
+      <h4>3. Objeto com Propriedade 'ojs':</h4>
+      <pre style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 12px;">{
+  "descricao": "Lista de OJs para importar",
+  "ojs": [
+    "1ª Vara do Trabalho de Campinas",
+    "2ª Vara do Trabalho de Campinas - Diretor"
+  ]
+}</pre>
+
+      <p><strong>💡 Dicas:</strong></p>
+      <ul>
+        <li>Use hífen (-) para separar OJ do perfil</li>
+        <li>Perfil é opcional</li>
+        <li>Linhas vazias são ignoradas</li>
+        <li>Clique em "Exemplo" para baixar um arquivo modelo</li>
+      </ul>
+    </div>
+  `;
+
+  // Criar modal simples para mostrar a ajuda
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+    background: rgba(0,0,0,0.5); z-index: 10000; display: flex; 
+    align-items: center; justify-content: center;
+  `;
+  
+  const content = document.createElement('div');
+  content.style.cssText = `
+    background: white; padding: 20px; border-radius: 10px; 
+    max-width: 90%; max-height: 90%; overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  `;
+  
+  content.innerHTML = helpHTML + `
+    <div style="text-align: center; margin-top: 20px;">
+      <button onclick="this.closest('.modal').remove()" 
+              style="padding: 10px 20px; background: #007bff; color: white; 
+                     border: none; border-radius: 5px; cursor: pointer;">
+        Fechar
+      </button>
+    </div>
+  `;
+  
+  modal.className = 'modal';
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+  
+  // Fechar ao clicar fora
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  });
 };

@@ -6,11 +6,11 @@
 const DatabaseConnection = require('./database-connection');
 
 class ServidorDatabaseService {
-    constructor() {
-        this.dbConnection = new DatabaseConnection();
-    }
+  constructor() {
+    this.dbConnection = new DatabaseConnection();
+  }
 
-    /**
+  /**
      * Busca servidores por CPF/Nome e perfil
      * @param {string} grau - Grau do servidor (1 ou 2)
      * @param {string} filtroNome - Filtro por nome ou CPF
@@ -18,29 +18,29 @@ class ServidorDatabaseService {
      * @param {number} limite - Limite de resultados (padrão: 100)
      * @returns {Promise<Array>} Lista de servidores encontrados
      */
-    async buscarServidores(grau = '1', filtroNome = '', perfil = '', limite = 100, incluirDataFim = false) {
-        try {
-            console.log('🔍 Iniciando busca de servidores...');
-            console.log(`📋 Parâmetros: grau=${grau}, filtroNome=${filtroNome}, perfil=${perfil}, limite=${limite}, incluirDataFim=${incluirDataFim}`);
+  async buscarServidores(grau = '1', filtroNome = '', perfil = '', limite = 100, incluirDataFim = false) {
+    try {
+      console.log('🔍 Iniciando busca de servidores...');
+      console.log(`📋 Parâmetros: grau=${grau}, filtroNome=${filtroNome}, perfil=${perfil}, limite=${limite}, incluirDataFim=${incluirDataFim}`);
             
-            // Usar o banco correto baseado no grau
-            const config = require('../../database.config.js');
-            const { Pool } = require('pg');
+      // Usar o banco correto baseado no grau
+      const config = require('../../database.config.js');
+      const { Pool } = require('pg');
             
-            // Selecionar configuração baseada no grau
-            const dbConfig = grau === '2' ? config.database2Grau : config.database1Grau;
-            console.log(`📋 Conectando ao banco do ${grau}º grau: ${dbConfig.database}`);
+      // Selecionar configuração baseada no grau
+      const dbConfig = grau === '2' ? config.database2Grau : config.database1Grau;
+      console.log(`📋 Conectando ao banco do ${grau}º grau: ${dbConfig.database}`);
             
-            // Criar pool específico para o grau
-            const pool = new Pool(dbConfig);
+      // Criar pool específico para o grau
+      const pool = new Pool(dbConfig);
             
-            // Testar conexão
-            const testClient = await pool.connect();
-            await testClient.query('SELECT 1');
-            testClient.release();
-            console.log(`✅ Conectado ao banco do ${grau}º grau`);
+      // Testar conexão
+      const testClient = await pool.connect();
+      await testClient.query('SELECT 1');
+      testClient.release();
+      console.log(`✅ Conectado ao banco do ${grau}º grau`);
             
-            let query = `
+      let query = `
                 SELECT 
                     l.id_usuario,
                     l.ds_nome as nome,
@@ -57,114 +57,114 @@ class ServidorDatabaseService {
                 WHERE 1=1
             `;
             
-            const params = [];
-            let paramIndex = 1;
+      const params = [];
+      let paramIndex = 1;
             
-            // Filtro por CPF ou Nome
-            if (filtroNome && filtroNome.trim()) {
-                const filtro = filtroNome.trim();
-                // Se contém apenas números, buscar por CPF, senão buscar por nome
-                if (/^\d+$/.test(filtro)) {
-                    query += ` AND l.ds_login = $${paramIndex}`;
-                    params.push(filtro);
-                } else {
-                    query += ` AND UPPER(l.ds_nome) LIKE UPPER($${paramIndex})`;
-                    params.push(`%${filtro}%`);
-                }
-                paramIndex++;
-            }
+      // Filtro por CPF ou Nome
+      if (filtroNome && filtroNome.trim()) {
+        const filtro = filtroNome.trim();
+        // Se contém apenas números, buscar por CPF, senão buscar por nome
+        if (/^\d+$/.test(filtro)) {
+          query += ` AND l.ds_login = $${paramIndex}`;
+          params.push(filtro);
+        } else {
+          query += ` AND UPPER(l.ds_nome) LIKE UPPER($${paramIndex})`;
+          params.push(`%${filtro}%`);
+        }
+        paramIndex++;
+      }
             
-            // Filtro por perfil
-            if (perfil && perfil.trim()) {
-                query += ` AND UPPER(p.ds_nome) LIKE UPPER($${paramIndex})`;
-                params.push(`%${perfil.trim()}%`);
-                paramIndex++;
-            }
+      // Filtro por perfil
+      if (perfil && perfil.trim()) {
+        query += ` AND UPPER(p.ds_nome) LIKE UPPER($${paramIndex})`;
+        params.push(`%${perfil.trim()}%`);
+        paramIndex++;
+      }
             
-            // Filtro por data fim preenchida
-            if (incluirDataFim) {
-                query += ` AND us.dt_final IS NOT NULL`;
-            }
+      // Filtro por data fim preenchida
+      if (incluirDataFim) {
+        query += ' AND us.dt_final IS NOT NULL';
+      }
             
-            query += `
+      query += `
                 ORDER BY l.ds_nome, o.ds_orgao_julgador
             `;
             
-            // Adicionar limite
-            if (limite > 0) {
-                query += ` LIMIT $${paramIndex}`;
-                params.push(limite);
-            }
+      // Adicionar limite
+      if (limite > 0) {
+        query += ` LIMIT $${paramIndex}`;
+        params.push(limite);
+      }
             
-            console.log('📋 Query de servidores: ', query);
-            console.log('📋 Parâmetros:', params);
+      console.log('📋 Query de servidores: ', query);
+      console.log('📋 Parâmetros:', params);
             
-            const client = await pool.connect();
-            const result = await client.query(query, params);
-            client.release();
+      const client = await pool.connect();
+      const result = await client.query(query, params);
+      client.release();
             
-            // Agrupar dados por servidor
-            const servidoresMap = new Map();
+      // Agrupar dados por servidor
+      const servidoresMap = new Map();
             
-            result.rows.forEach(row => {
-                const servidorKey = `${row.id_usuario}-${row.cpf}`;
+      result.rows.forEach(row => {
+        const servidorKey = `${row.id_usuario}-${row.cpf}`;
                 
-                if (!servidoresMap.has(servidorKey)) {
-                    servidoresMap.set(servidorKey, {
-                        id: row.id_usuario,
-                        nome: row.nome,
-                        cpf: row.cpf,
-                        ojs: []
-                    });
-                }
-                
-                // Adicionar OJ apenas se existir
-                if (row.orgao_julgador) {
-                    servidoresMap.get(servidorKey).ojs.push({
-                        orgaoJulgador: row.orgao_julgador,
-                        perfil: row.perfil || 'Não informado',
-                        dataInicio: row.data_inicio ? new Date(row.data_inicio).toLocaleDateString('pt-BR') : 'Não informado',
-                        idUsuarioLocalizacao: row.id_usuario_localizacao
-                    });
-                }
-            });
-            
-            const servidores = Array.from(servidoresMap.values());
-            
-            console.log(`✅ Encontrados ${servidores.length} servidores com ${result.rows.length} vínculos`);
-            
-            // Fechar o pool
-            await pool.end();
-            
-            return servidores;
-            
-        } catch (error) {
-            console.error(`❌ Erro ao buscar servidores ${grau}º grau:`, error);
-            // Tentar fechar o pool se existir
-            if (typeof pool !== 'undefined' && pool) {
-                try {
-                    await pool.end();
-                } catch (e) {
-                    console.error('Erro ao fechar pool:', e);
-                }
-            }
-            throw error;
+        if (!servidoresMap.has(servidorKey)) {
+          servidoresMap.set(servidorKey, {
+            id: row.id_usuario,
+            nome: row.nome,
+            cpf: row.cpf,
+            ojs: []
+          });
         }
+                
+        // Adicionar OJ apenas se existir
+        if (row.orgao_julgador) {
+          servidoresMap.get(servidorKey).ojs.push({
+            orgaoJulgador: row.orgao_julgador,
+            perfil: row.perfil || 'Não informado',
+            dataInicio: row.data_inicio ? new Date(row.data_inicio).toLocaleDateString('pt-BR') : 'Não informado',
+            idUsuarioLocalizacao: row.id_usuario_localizacao
+          });
+        }
+      });
+            
+      const servidores = Array.from(servidoresMap.values());
+            
+      console.log(`✅ Encontrados ${servidores.length} servidores com ${result.rows.length} vínculos`);
+            
+      // Fechar o pool
+      await pool.end();
+            
+      return servidores;
+            
+    } catch (error) {
+      console.error(`❌ Erro ao buscar servidores ${grau}º grau:`, error);
+      // Tentar fechar o pool se existir
+      if (typeof pool !== 'undefined' && pool) {
+        try {
+          await pool.end();
+        } catch (e) {
+          console.error('Erro ao fechar pool:', e);
+        }
+      }
+      throw error;
     }
+  }
 
-    /**
+  /**
      * Busca OJs vinculados a um servidor específico
      * @param {number} idUsuarioLocalizacao - ID da localização do usuário
      * @returns {Promise<Array>} Lista de OJs vinculados
      */
-    async buscarOJsDoServidor(idUsuarioLocalizacao) {
-        try {
-            console.log(`🔍 Buscando OJs do servidor (ID: ${idUsuarioLocalizacao})`);
+  async buscarOJsDoServidor(idUsuarioLocalizacao) {
+    try {
+      console.log(`🔍 Buscando OJs do servidor (ID: ${idUsuarioLocalizacao})`);
             
-            // Inicializar conexão
-            await this.dbConnection.initialize();
+      // Inicializar conexão
+      await this.dbConnection.initialize();
             
-            const query = `
+      const query = `
                 SELECT DISTINCT
                     oj.id_orgao_julgador as id,
                     oj.ds_orgao_julgador as nome,
@@ -177,60 +177,60 @@ class ServidorDatabaseService {
                 ORDER BY oj.ds_orgao_julgador
             `;
             
-            const client = await this.dbConnection.pool.connect();
-            const result = await client.query(query, [idUsuarioLocalizacao]);
-            client.release();
+      const client = await this.dbConnection.pool.connect();
+      const result = await client.query(query, [idUsuarioLocalizacao]);
+      client.release();
             
-            console.log(`✅ Encontrados ${result.rows.length} OJs vinculados`);
+      console.log(`✅ Encontrados ${result.rows.length} OJs vinculados`);
             
-            return result.rows.map(row => ({
-                id: row.id,
-                nome: row.nome,
-                ativo: row.ativo === 'S',
-                grau: row.grau,
-                status: row.ativo === 'S' ? 'Ativo' : 'Inativo'
-            }));
+      return result.rows.map(row => ({
+        id: row.id,
+        nome: row.nome,
+        ativo: row.ativo === 'S',
+        grau: row.grau,
+        status: row.ativo === 'S' ? 'Ativo' : 'Inativo'
+      }));
             
-        } catch (error) {
-            console.error('❌ Erro ao buscar OJs do servidor:', error);
-            throw error;
-        }
+    } catch (error) {
+      console.error('❌ Erro ao buscar OJs do servidor:', error);
+      throw error;
     }
+  }
 
-    /**
+  /**
      * Testa conectividade com o banco de dados
      * @returns {Promise<boolean>} True se conectado com sucesso
      */
-    async testarConectividade() {
-        try {
-            console.log('🔌 Testando conectividade com banco de dados...');
+  async testarConectividade() {
+    try {
+      console.log('🔌 Testando conectividade com banco de dados...');
             
-            // Inicializar conexão
-            await this.dbConnection.initialize();
+      // Inicializar conexão
+      await this.dbConnection.initialize();
             
-            const client = await this.dbConnection.pool.connect();
-            const result = await client.query('SELECT 1 as teste');
-            client.release();
-            return {
-                conectado: true,
-                timestamp: new Date().toISOString(),
-                detalhes: 'Conexão estabelecida com sucesso'
-            };
+      const client = await this.dbConnection.pool.connect();
+      const result = await client.query('SELECT 1 as teste');
+      client.release();
+      return {
+        conectado: true,
+        timestamp: new Date().toISOString(),
+        detalhes: 'Conexão estabelecida com sucesso'
+      };
             
-        } catch (error) {
-            console.error('❌ Erro ao testar conectividade:', error);
-            return false;
-        }
+    } catch (error) {
+      console.error('❌ Erro ao testar conectividade:', error);
+      return false;
     }
+  }
 
-    /**
+  /**
      * Fecha a conexão com o banco
      */
-    async close() {
-        if (this.dbConnection) {
-            await this.dbConnection.close();
-        }
+  async close() {
+    if (this.dbConnection) {
+      await this.dbConnection.close();
     }
+  }
 }
 
 module.exports = ServidorDatabaseService;

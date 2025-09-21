@@ -1347,21 +1347,48 @@ class ParallelOJProcessor {
       }
       
       if (!botaoEncontrado) {
-        // Debug: listar todos os botões no modal
+        // Debug: listar botões no modal com seletores otimizados (CORRIGIDO: strict mode violation)
         try {
-          console.log('🔍 DEBUG: Listando botões no modal...');
-          const botoesModal = await this.page.locator('mat-dialog-container button, [role="dialog"] button').all();
-          for (let i = 0; i < botoesModal.length; i++) {
+          console.log('🔍 DEBUG: Listando botões no modal com seletores otimizados...');
+          
+          // Seletores específicos para evitar violação de strict mode (505 elementos)
+          const seletoresOtimizados = [
+            'mat-dialog-container .mat-dialog-actions button',
+            '[role="dialog"][aria-modal="true"] button[type="submit"]',
+            'mat-dialog-container button:has-text("Gravar")',
+            'mat-dialog-container button:has-text("Salvar")',
+            'mat-dialog-container button:has-text("Confirmar")'
+          ];
+          
+          let totalBotoes = 0;
+          for (const seletor of seletoresOtimizados) {
             try {
-              const texto = await botoesModal[i].textContent();
-              const isVisible = await botoesModal[i].isVisible();
-              console.log(`  Botão ${i + 1}: "${texto}" (visível: ${isVisible})`);
+              const botoesModal = await this.page.locator(seletor).all();
+              if (botoesModal.length > 0 && botoesModal.length < 20) { // Evitar seletores que retornam muitos elementos
+                console.log(`📋 Seletor "${seletor}": ${botoesModal.length} botões encontrados`);
+                
+                for (let i = 0; i < Math.min(botoesModal.length, 5); i++) { // Limitar a 5 botões por seletor
+                  try {
+                    const texto = await botoesModal[i].textContent();
+                    const isVisible = await botoesModal[i].isVisible();
+                    console.log(`  Botão ${totalBotoes + i + 1}: "${texto}" (visível: ${isVisible})`);
+                  } catch (e) {
+                    console.log(`  Botão ${totalBotoes + i + 1}: Erro ao obter informações`);
+                  }
+                }
+                totalBotoes += botoesModal.length;
+                
+                // Se encontrou botões válidos, parar busca
+                if (botoesModal.length > 0) break;
+              }
             } catch (e) {
-              console.log(`  Botão ${i + 1}: Erro ao obter informações`);
+              console.log(`⚠️ Seletor "${seletor}" falhou: ${e.message}`);
             }
           }
+          
+          console.log(`✅ Total de botões encontrados: ${totalBotoes} (otimizado)`);
         } catch (debugError) {
-          console.log(`⚠️ Erro no debug de botões: ${debugError.message}`);
+          console.log(`⚠️ Erro no debug de botões otimizado: ${debugError.message}`);
         }
         
         throw new Error('Botão Gravar/Salvar não encontrado no modal');

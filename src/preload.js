@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Automação de Servidores V2
   startServidorAutomationV2: (config) => ipcRenderer.invoke('start-servidor-automation-v2', config),
+  startServidorAutomationV2Sequential: (config) => ipcRenderer.invoke('start-servidor-automation-v2-sequential', config),
   startParallelAutomationV2: (config) => ipcRenderer.invoke('start-parallel-automation-v2', config),
   stopServidorAutomationV2: () => ipcRenderer.invoke('stop-servidor-automation-v2'),
   getServidorAutomationV2Status: () => ipcRenderer.invoke('get-servidor-automation-v2-status'),
@@ -69,6 +70,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   buscarProcessoTarefaAtual: (numero, grau) => ipcRenderer.invoke('buscar-processo-tarefa-atual', numero, grau),
   buscarProcessoPartes: (numero, grau) => ipcRenderer.invoke('buscar-processo-partes', numero, grau),
   buscarProcessoInfo: (numero, grau) => ipcRenderer.invoke('buscar-processo-info', numero, grau),
+  
+  // Central de Configurações - Cache Management
+  clearCache: () => ipcRenderer.invoke('clear-cache'),
+  getCacheSize: () => ipcRenderer.invoke('get-cache-size'),
+  
+  // Central de Configurações - Backup e Restore
+  exportBackup: () => ipcRenderer.invoke('export-backup'),
+  restoreBackup: (backupData) => ipcRenderer.invoke('restore-backup', backupData),
+  
+  // Central de Configurações - System Logs
+  getSystemLogs: (options) => ipcRenderer.invoke('get-system-logs', options),
+  clearLogs: () => ipcRenderer.invoke('clear-logs'),
+  
+  // Central de Configurações - Performance Monitoring
+  getPerformanceMetrics: () => ipcRenderer.invoke('get-performance-metrics'),
   
   // Eventos
   onAutomationStatus: (callback) => {

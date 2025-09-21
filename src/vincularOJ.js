@@ -3,6 +3,7 @@ const { normalizarTexto, extrairTokensSignificativos, calcularSimilaridade, veri
 const { obterTimeoutAdaptativo } = require('./utils/index');
 const SeletorManager = require('./utils/seletores');
 const { resolverProblemaVarasLimeira, SolucaoLimeiraCompleta, VARAS_LIMEIRA } = require('../solucao-limeira-completa.js');
+const AccordionOptimizer = require('./utils/accordion-optimizer');
 
 /**
  * Verifica se uma vara é de Limeira e precisa de tratamento especial
@@ -57,6 +58,24 @@ async function expandirOrgaosJulgadores(page, modoRapido = false) {
     try {
         const modo = modoRapido ? '⚡' : '🔄';
         console.log(`${modo} Expandindo seção de Órgãos Julgadores...`);
+        
+        // OTIMIZAÇÃO: Usar AccordionOptimizer para expansão rápida
+        if (modoRapido) {
+            try {
+                const optimizer = new AccordionOptimizer(page, console);
+                const result = await optimizer.expandAccordionOptimized();
+                
+                if (result.success) {
+                    console.log(`✅ Acordeão expandido em ${result.duration}ms (otimizado)`);
+                    
+                    // Retornar painel expandido
+                    const painelOJ = await page.locator('.mat-expansion-panel-content:visible, [role="region"]:visible').first();
+                    return { sucesso: true, painelOJ };
+                }
+            } catch (optimizerError) {
+                console.log(`⚠️ Otimizador falhou, usando método tradicional: ${optimizerError.message}`);
+            }
+        }
         
         // Aguardar página estabilizar (otimizado se modo rápido)
         const timeout = modoRapido ? 300 : 1000;
@@ -2144,26 +2163,19 @@ async function vincularOJMelhorado(page, nomeOJ, papel = 'Secretário de Audiên
     const verificacao = await verificarOJJaCadastrado(page, nomeOJ);
     
     if (verificacao.jaCadastrado) {
-      console.log(`🎯 OJ "${nomeOJ}" JÁ ESTÁ CADASTRADO!`);
+      console.log(`✅ OJ "${nomeOJ}" JÁ ESTÁ CADASTRADO!`);
       console.log(`   📄 Encontrado como: "${verificacao.ojEncontrado}"`);
       console.log(`   🔍 Tipo de match: ${verificacao.tipoMatch}`);
+      console.log(`⏭️ Pulando para próximo OJ sem sair do modal...`);
       
-      // Tentar clicar no botão VOLTAR para continuar com próximo OJ
-      console.log(`${tipoModo} 🔄 Tentando clicar no botão VOLTAR para continuar...`);
-      const voltarClicado = await clicarBotaoVoltar(page);
-      
-      if (voltarClicado) {
-        console.log(`${tipoModo} ✓ Botão VOLTAR clicado com sucesso`);
-      } else {
-        console.log(`${tipoModo} ⚠️ Não foi possível clicar no botão VOLTAR`);
-      }
-      
+      // NÃO CLICAR EM VOLTAR - apenas lançar erro para pular este OJ
+      // O BatchOJProcessor vai tratar isso e continuar no modal
       const error = new Error(`OJ "${nomeOJ}" já está cadastrado como "${verificacao.ojEncontrado}"`);
       error.code = 'OJ_JA_CADASTRADO';
       error.ojEncontrado = verificacao.ojEncontrado;
       error.tipoMatch = verificacao.tipoMatch;
       error.ojsEncontrados = verificacao.ojsEncontrados;
-      error.voltarClicado = voltarClicado;
+      error.skipOJ = true; // Flag para indicar que deve pular sem fechar modal
       throw error;
     }
     
